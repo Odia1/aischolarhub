@@ -1,0 +1,80 @@
+2026-08-13T21:30:01.278+0000	writing `admin.system.version` to `archive on stdout`
+2026-08-13T21:30:01.280+0000	done dumping `admin.system.version` (1 document)
+2026-08-13T21:30:01.281+0000	writing `LibreChat.systemgrants` to `archive on stdout`
+2026-08-13T21:30:01.281+0000	writing `LibreChat.accessroles` to `archive on stdout`
+2026-08-13T21:30:01.281+0000	writing `LibreChat.agentcategories` to `archive on stdout`
+2026-08-13T21:30:01.285+0000	writing `LibreChat.users` to `archive on stdout`
+2026-08-13T21:30:01.287+0000	done dumping `LibreChat.systemgrants` (23 documents)
+2026-08-13T21:30:01.287+0000	writing `LibreChat.balances` to `archive on stdout`
+2026-08-13T21:30:01.289+0000	done dumping `LibreChat.agentcategories` (7 documents)
+2026-08-13T21:30:01.289+0000	writing `LibreChat.roles` to `archive on stdout`
+2026-08-13T21:30:01.293+0000	done dumping `LibreChat.users` (3 documents)
+2026-08-13T21:30:01.293+0000	writing `LibreChat.sessions` to `archive on stdout`
+2026-08-13T21:30:01.294+0000	done dumping `LibreChat.accessroles` (17 documents)
+2026-08-13T21:30:01.295+0000	writing `LibreChat.librechatCredentialMetadata` to `archive on stdout`
+2026-08-13T21:30:01.298+0000	done dumping `LibreChat.roles` (2 documents)
+2026-08-13T21:30:01.298+0000	writing `LibreChat.messages` to `archive on stdout`
+2026-08-13T21:30:01.299+0000	done dumping `LibreChat.balances` (3 documents)
+2026-08-13T21:30:01.299+0000	writing `LibreChat.toolcalls` to `archive on stdout`
+2026-08-13T21:30:01.299+0000	done dumping `LibreChat.sessions` (1 document)
+2026-08-13T21:30:01.299+0000	writing `LibreChat.prompts` to `archive on stdout`
+2026-08-13T21:30:01.307+0000	done dumping `LibreChat.librechatCredentialMetadata` (1 document)
+2026-08-13T21:30:01.307+0000	writing `LibreChat.configs` to `archive on stdout`
+2026-08-13T21:30:01.309+0000	done dumping `LibreChat.prompts` (0 documents)
+2026-08-13T21:30:01.309+0000	writing `LibreChat.skillsyncstatuses` to `archive on stdout`
+2026-08-13T21:30:01.313+0000	done dumping `LibreChat.messages` (0 documents)
+2026-08-13T21:30:01.313+0000	writing `LibreChat.projects` to `archive on stdout`
+2026-08-13T21:30:01.317+0000	done dumping `LibreChat.toolcalls` (0 documents)
+2026-08-13T21:30:01.317+0000	writing `LibreChat.skillsynccredentials` to `archive on stdout`
+2026-08-13T21:30:01.319+0000	done dumping `LibreChat.configs` (0 documents)
+2026-08-13T21:30:01.320+0000	writing `LibreChat.pluginauths` to `archive on stdout`
+2026-08-13T21:30:01.320+0000	done dumping `LibreChat.projects` (0 documents)
+2026-08-13T21:30:01.320+0000	writing `LibreChat.tokens` to `archive on stdout`
+2026-08-13T21:30:01.323+0000	done dumping `LibreChat.skillsyncstatuses` (0 documents)
+2026-08-13T21:30:01.323+0000	writing `LibreChat.mcpservers` to `archive on stdout`
+2026-08-13T21:30:01.325+0000	done dumping `LibreChat.skillsynccredentials` (0 documents)
+2026-08-13T21:30:01.325+0000	writing `LibreChat.agentapikeys` to `archive on stdout`
+2026-08-13T21:30:01.327+0000	done dumping `LibreChat.tokens` (0 documents)
+2026-08-13T21:30:01.327+0000	writing `LibreChat.aclentries` to `archive on stdout`
+2026-08-13T21:30:01.329+0000	done dumping `LibreChat.pluginauths` (0 documents)
+2026-08-13T21:30:01.329+0000	writing `LibreChat.sharedlinks` to `archive on stdout`
+2026-08-13T21:30:01.333+0000	done dumping `LibreChat.sharedlinks` (0 documents)
+2026-08-13T21:30:01.333+0000	writing `LibreChat.skills` to `archive on stdout`
+2026-08-13T21:30:01.333+0000	done dumping `LibreChat.agentapikeys` (0 documents)
+2026-08-13T21:30:01.333+0000	writing `LibreChat.agents` to `archive on stdout`
+2026-08-13T21:30:01.336+0000	done dumping `LibreChat.aclentries` (0 documents)
+2026-08-13T21:30:01.336+0000	writing `LibreChat.keys` to `archive on stdout`
+2026-08-13T21:30:01.337+0000	done dumping `LibreChat.mcpservers` (0 documents)
+2026-08-13T21:30:01.337+0000	writing `LibreChat.auditlogs` to `archive on stdout`
+2026-08-13T21:30:01.340+0000	done dumping `LibreChat.skills` (0 documents)
+2026-08-13T21:30:01.340+0000	writing `LibreChat.toolfavorites` to `archive on stdout`
+2026-08-13T21:30:01.341+0000	done dumping `LibreChat.agents` (0 documents)
+2026-08-13T21:30:01.341+0000	writing `LibreChat.assistants` to `archive on stdout`
+2026-08-13T21:30:01.343+0000	done dumping `LibreChat.auditlogs` (0 documents)
+2026-08-13T21:30:01.343+0000	writing `LibreChat.groups` to `archive on stdout`
+2026-08-13T21:30:01.346+0000	done dumping `LibreChat.keys` (0 documents)
+2026-08-13T21:30:01.346+0000	writing `LibreChat.files` to `archive on stdout`
+2026-08-13T21:30:01.348+0000	done dumping `LibreChat.toolfavorites` (0 documents)
+2026-08-13T21:30:01.348+0000	writing `LibreChat.conversationtags` to `archive on stdout`
+2026-08-13T21:30:01.350+0000	done dumping `LibreChat.assistants` (0 documents)
+2026-08-13T21:30:01.350+0000	writing `LibreChat.chatprojects` to `archive on stdout`
+2026-08-13T21:30:01.352+0000	done dumping `LibreChat.files` (0 documents)
+2026-08-13T21:30:01.352+0000	writing `LibreChat.transactions` to `archive on stdout`
+2026-08-13T21:30:01.354+0000	done dumping `LibreChat.groups` (0 documents)
+2026-08-13T21:30:01.354+0000	writing `LibreChat.promptgroups` to `archive on stdout`
+2026-08-13T21:30:01.356+0000	done dumping `LibreChat.chatprojects` (0 documents)
+2026-08-13T21:30:01.356+0000	writing `LibreChat.memoryentries` to `archive on stdout`
+2026-08-13T21:30:01.358+0000	done dumping `LibreChat.conversationtags` (0 documents)
+2026-08-13T21:30:01.358+0000	writing `LibreChat.conversations` to `archive on stdout`
+2026-08-13T21:30:01.359+0000	done dumping `LibreChat.transactions` (0 documents)
+2026-08-13T21:30:01.360+0000	writing `LibreChat.banners` to `archive on stdout`
+2026-08-13T21:30:01.363+0000	done dumping `LibreChat.promptgroups` (0 documents)
+2026-08-13T21:30:01.363+0000	writing `LibreChat.presets` to `archive on stdout`
+2026-08-13T21:30:01.365+0000	done dumping `LibreChat.memoryentries` (0 documents)
+2026-08-13T21:30:01.366+0000	writing `LibreChat.skillfiles` to `archive on stdout`
+2026-08-13T21:30:01.406+0000	done dumping `LibreChat.banners` (0 documents)
+2026-08-13T21:30:01.406+0000	writing `LibreChat.actions` to `archive on stdout`
+2026-08-13T21:30:01.406+0000	done dumping `LibreChat.presets` (0 documents)
+2026-08-13T21:30:01.406+0000	done dumping `LibreChat.conversations` (0 documents)
+2026-08-13T21:30:01.410+0000	done dumping `LibreChat.skillfiles` (0 documents)
+2026-08-13T21:30:01.411+0000	done dumping `LibreChat.actions` (0 documents)

@@ -1,0 +1,140 @@
+version: 1.2.8
+cache: true
+
+# =============================================================================
+# WHAT CHANGED 
+# =============================================================================
+# 1. rateLimits.fileUploads / conversationsImport — your schema here was
+#    actually correct, kept as-is. But this block does NOT cover chat
+#    messages (there's no messages/agents key under rateLimits). The
+#    "50/day, 10/10min" requirement is handled in .env instead — see
+#    MESSAGE_USER_MAX/WINDOW in .env.example, with the reasoning there.
+#
+# 2. Your top-level `presets:` list with title/model/promptPrefix directly
+#    is not a valid schema — "presets" is only a UI toggle
+#    (interface.presets: true/false) for the user-facing "save preset"
+#    feature. The actual mechanism for admin-defined, lockable personas is
+#    `modelSpecs.list[].preset`, which is what's below.
+#
+# 3. Your top-level `rag:` block (provider/chunkSize/chunkOverlap/topK) is
+#    not a librechat.yaml key at all — RAG API tuning (CHUNK_SIZE,
+#    CHUNK_OVERLAP, TOP_K, EMBEDDINGS_PROVIDER) is entirely env-var driven
+#    on the separate rag_api service. Moved to docker-compose.yml.
+#
+# 4. Endpoint choice: you switched from the native `google` endpoint (used
+#    in the earlier phase) to a custom OpenAI-compatible endpoint hitting
+#    Gemini's /v1beta/openai/ compatibility layer. Both work — but don't
+#    run both at once, you'll get two "Gemini 1.5 Flash" entries in the
+#    model picker and split your rate-limit/budget tracking across them.
+#    This file keeps your custom-endpoint choice and removes `google` from
+#    ENDPOINTS in .env.example accordingly. The trade-off: the native
+#    `google` endpoint exposes Gemini-specific controls (safety category
+#    sliders, thinking budget, URL context tool) that the OpenAI-compat
+#    shim does not — fine for a text-tutor use case, worth knowing if you
+#    later want those knobs.
+# =============================================================================
+
+rateLimits:
+  fileUploads:
+    ipMax: 20
+    ipWindowInMinutes: 60
+    userMax: 10
+    userWindowInMinutes: 60
+  conversationsImport:
+    ipMax: 10
+    ipWindowInMinutes: 60
+    userMax: 5
+    userWindowInMinutes: 60
+
+registration:
+  socialLogins: ["google"]
+  allowedDomains:
+    - "seedsnet.org"
+    - "college.edu"
+    - "student.college.edu"
+
+balance:
+  enabled: true
+  startBalance: 200000
+  autoRefillEnabled: true
+  refillIntervalValue: 1
+  refillIntervalUnit: "days"
+  refillAmount: 200000     # daily allowance — this is your practical "50 msgs/day" analog
+
+endpoints:
+  custom:
+    - name: "Google Gemini"
+      apiKey: "${GEMINI_API_KEY}"
+      baseURL: "https://generativelanguage.googleapis.com/v1beta/openai/"
+      models:
+        default: ["gemini-1.5-flash", "gemini-2.0-flash"]
+        fetch: false
+      titleConvo: true
+      titleModel: "gemini-1.5-flash"
+      modelDisplayLabel: "Gemini Flash (Scholar Edition)"
+
+modelSpecs:
+  enforce: true       # students can only use the two personas below, not raw Gemini
+  prioritize: true
+  list:
+    - name: "socratic-tutor"
+      label: "Undergraduate Socratic Tutor"
+      description: "Step-by-step guidance without giving direct homework answers."
+      default: true
+      showIconInMenu: true
+      preset:
+        endpoint: "Google Gemini"      # must exactly match the custom endpoint name above
+        model: "gemini-1.5-flash"
+        modelLabel: "Socratic Tutor"
+        greeting: "Hello! I am your Socratic Study Assistant. What concept are you working on today?"
+        promptPrefix: |
+          [SYSTEM RULE: DOMAIN RESTRICTION]
+          You are an academic tutor strictly for coursework and study
+          materials. If the user asks for non-academic help (recipes,
+          video games, entertainment, pop culture, non-educational coding),
+          reply with: "I am an AI Scholar Assistant restricted to academic
+          and coursework inquiries. Please ask a study-related question!"
+
+          [PEDAGOGICAL INSTRUCTION: SOCRATIC METHOD]
+          Never give the student direct answers to homework problems,
+          essays, or assignment prompts. Instead:
+          1. Break down the user's question into core sub-concepts.
+          2. Ask leading questions to help the user discover the answer.
+          3. Provide hints, analogies, or explanations of underlying
+             formulas/principles — not the final answer.
+
+    - name: "research-synthesizer"
+      label: "PhD & Post-Doc Research Synthesizer"
+      description: "Deep research analysis, LaTeX formatting, and literature critique."
+      default: false
+      showIconInMenu: true
+      preset:
+        endpoint: "Google Gemini"
+        model: "gemini-1.5-flash"
+        modelLabel: "Research Synthesizer"
+        greeting: "Ready to assist with methodology, literature review, and statistical synthesis."
+        promptPrefix: |
+          [SYSTEM RULE: DOMAIN RESTRICTION]
+          Focus strictly on academic research, methodology, literature
+          synthesis, and paper review. Refuse non-academic requests.
+
+          [RESEARCH INSTRUCTION]
+          1. Synthesize methodologies, technical assumptions, and
+             theoretical limits critically.
+          2. Format all mathematical representations using precise LaTeX
+             notation (e.g., $E=mc^2$).
+          3. Point out logical gaps, sample biases, or potential
+             confounding variables in provided experimental designs.
+          4. Never invent citations, DOIs, or page numbers — if you lack
+             grounding for a claim, say so explicitly rather than guessing.
+
+fileConfig:
+  endpoints:
+    default:
+      fileLimit: 5
+      fileSizeLimit: 20
+      totalSizeLimit: 100
+      supportedMimeTypes:
+        - "application/pdf"
+        - "text/plain"
+        - "text/markdown"

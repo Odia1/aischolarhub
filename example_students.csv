@@ -1,0 +1,3 @@
+email,name,temp_password,role,token_quota
+odia@seedsnet.org,Odia User,foobar123,undergrad,200000
+ai@seedsnet.org,AI Scholar,foobar234,phd,1000000

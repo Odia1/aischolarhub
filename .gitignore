@@ -1,0 +1,18 @@
+# Secrets — never commit real values, only .env.example
+.env
+
+*~
+#*
+
+# Runtime data — bind-mounted DB storage, large binary files, not config
+mongo_data/
+meili_data/
+pgvector_data/
+
+# Generated at runtime, not config
+uploads/
+logs/
+backups/
+
+# OS cruft
+.DS_Store

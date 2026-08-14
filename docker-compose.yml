@@ -1,0 +1,173 @@
+# This is now the ONE compose file — local testing and production (your VM)
+# are the same environment, so there's no separate .azure.yml variant
+# anymore. That split only existed because Azure App Service couldn't
+# bind-mount local files or persist storage properly; a real VM does both
+# natively.
+#
+# Resource limits (mem_limit/cpus) are set on every service — this is what
+# actually protects your VM's other lightly-loaded websites from this stack
+# under load, and vice versa. Tune these against your VM's actual spec (see
+# docs/SCALING.md) rather than trusting these numbers blindly; they're sized
+# for a reasonable *shared* VM assumption, not maximal throughput.
+
+services:
+  api:
+    image: ghcr.io/danny-avila/librechat-dev-api:latest
+    container_name: AI_Scholar_Hub
+    ports:
+      - "127.0.0.1:3080:3080"
+    mem_limit: 2g
+    cpus: 1.5
+    depends_on:
+      mongodb:
+        condition: service_started
+      meilisearch:
+        condition: service_started
+      rag_api:
+        condition: service_started
+    env_file:
+      - .env
+    environment:
+      - MONGO_URI=mongodb://mongodb:27017/LibreChat
+      - MEILI_HOST=http://meilisearch:7700
+      - RAG_PORT=8000
+      - RAG_API_URL=http://rag_api:8000
+      - ADMIN_PANEL_URL=https://admin-ai.seedsnet.org
+      - CORS_ORIGIN=https://admin-ai.seedsnet.org,https://aischolarhub.seedsnet.org
+      - COOKIE_DOMAIN=.seedsnet.org
+    volumes:
+      - ./config/librechat.yaml:/app/librechat.yaml:ro
+      - ./uploads:/app/uploads
+      - ./logs:/app/api/logs
+    restart: always
+
+  mongodb:
+    image: mongo:8.0
+    container_name: chat-mongodb
+    command: mongod --noauth
+    mem_limit: 1g
+    cpus: 1.0
+    volumes:
+      - ./mongo_data:/data/db
+    restart: always
+
+  meilisearch:
+    image: getmeili/meilisearch:v1.40.0
+    container_name: chat-meilisearch
+    environment:
+      - MEILI_HOST=http://meilisearch:7700
+      - MEILI_MASTER_KEY=${MEILI_MASTER_KEY}
+      - MEILI_NO_ANALYTICS=true
+    mem_limit: 512m
+    cpus: 0.5
+    volumes:
+      - ./meili_data:/meili_data
+    restart: always
+
+  vectordb:
+    image: pgvector/pgvector:pg15-trixie
+    container_name: vectordb
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      POSTGRES_DB: ragdb
+      POSTGRES_USER: raguser
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U raguser -d ragdb"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    mem_limit: 1g
+    cpus: 1.0
+    volumes:
+      - ./pgvector_data:/var/lib/postgresql/data
+    restart: always
+
+  rag_api:
+    image: ghcr.io/danny-avila/librechat-rag-api-dev:latest
+    container_name: rag_api
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      - DB_HOST=vectordb
+      - POSTGRES_DB=ragdb
+      - POSTGRES_USER=raguser
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - EMBEDDINGS_PROVIDER=ollama
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      - EMBEDDINGS_MODEL=nomic-embed-text
+      - CHUNK_SIZE=1000
+      - CHUNK_OVERLAP=100
+      - TOP_K=3
+    mem_limit: 1.5g
+    cpus: 1.0
+    depends_on:
+      vectordb:
+        condition: service_healthy
+    restart: always
+
+  admin-panel:
+    image: ghcr.io/clickhouse/librechat-admin-panel:latest
+    container_name: aischolarhub-admin-panel
+    ports:
+      - "127.0.0.1:3081:3000"
+    environment:
+      - SESSION_SECRET=${ADMIN_PANEL_SESSION_SECRET}
+      - VITE_API_BASE_URL=https://aischolarhub.seedsnet.org
+      - API_SERVER_URL=http://AI_Scholar_Hub:3080
+      - SESSION_COOKIE_SECURE=true
+    mem_limit: 512m
+    cpus: 0.5
+    depends_on:
+      - api
+    restart: always
+    
+  # admin-panel:
+  #   image: ghcr.io/clickhouse/librechat-admin-panel:latest
+  #   container_name: aischolarhub-admin-panel
+  #   ports:
+  #     - "127.0.0.1:3081:3080"
+  #   env_file:
+  #     - .env
+  #   environment:
+  #     # --- Session & Security Secrets ---
+  #     - SESSION_SECRET=${ADMIN_PANEL_SESSION_SECRET}
+  #     - ADMIN_PANEL_SESSION_SECRET=${ADMIN_PANEL_SESSION_SECRET}
+      
+  #     # --- LibreChat Cryptographic Keys (REQUIRED) ---
+  #     - JWT_SECRET=${JWT_SECRET}
+  #     - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET}
+  #     - CREDS_KEY=${CREDS_KEY}
+  #     - CREDS_IV=${CREDS_IV}
+      
+  #     # --- Endpoints & Internal Network ---
+  #     - VITE_API_BASE_URL=http://AI_Scholar_Hub:3080
+  #     - LIBRECHAT_SERVER_URL=http://AI_Scholar_Hub:3080
+  #     - API_SERVER_URL=http://AI_Scholar_Hub:3080
+
+  #     - DOMAIN_SERVER=https://aischolarhub.seedsnet.org
+  #     - DOMAIN_CLIENT=https://admin-ai.seedsnet.org
+      
+  #     # --- Cookies & DB ---
+  #     - COOKIE_DOMAIN=.seedsnet.org
+  #     # Ensure SameSite is lax for cross-subdomain redirects:
+  #     - SESSION_COOKIE_SECURE=true
+  #     - SESSION_COOKIE_SAME_SITE=lax
+  #     - MONGO_URI=mongodb://mongodb:27017/LibreChat
+  #     - SESSION_COOKIE_SECURE=true
+  #   mem_limit: 512m
+  #   cpus: 0.5
+  #   depends_on:
+  #     - api
+  #   restart: always
+    
+
+# HOW TO RE-VERIFY IMAGE TAGS YOURSELF before assuming they're still current:
+#   api:         https://github.com/danny-avila/librechat-dev-api/pkgs/container/librechat-dev-api
+#   mongodb:     https://hub.docker.com/_/mongo/tags
+#   meilisearch: https://hub.docker.com/r/getmeili/meilisearch/tags
+#   vectordb:    https://hub.docker.com/r/pgvector/pgvector/tags
+#   rag_api:     https://github.com/danny-avila/rag_api/pkgs/container/librechat-rag-api-dev-lite

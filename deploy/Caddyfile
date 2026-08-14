@@ -1,0 +1,19 @@
+# Copy to /etc/caddy/Caddyfile. See deploy/README.md Path B.
+# Caddy handles HTTPS (Let's Encrypt) and the websocket upgrade
+# automatically — no separate config needed for either, unlike nginx.
+
+aischolarhub.yourcollege.edu {
+    reverse_proxy 127.0.0.1:3080
+
+    # Matches fileConfig.totalSizeLimit (100MB) in config/librechat.yaml
+    request_body {
+        max_size 100MB
+    }
+}
+
+# If you add more sites to this VM later, add more blocks here rather than
+# running a second proxy — e.g.:
+#
+# otherapp.yourcollege.edu {
+#     reverse_proxy 127.0.0.1:8080
+# }
