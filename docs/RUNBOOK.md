@@ -1,3 +1,6 @@
+docker exec AI_Scholar_Hub node /app/config/create-user.js ppatra@seedsnet.org "P Patra" ppatra <passwd>   --email-verified=True
+
+
 # Runbook — Day-2 Operations
 
 All commands below run directly on the VM, in `/opt/aischolarhub` (or
@@ -86,3 +89,8 @@ docker system prune    # reclaim space from unused images/containers (safe — w
 **Backups:** see `docs/SCALING.md`'s cron script — this is the one thing
 that was fully automatic on App Service (Azure Files redundancy) and now
 genuinely needs setting up.
+
+
+
+## run all
+cd /opt/aischolarhub && docker compose up -d

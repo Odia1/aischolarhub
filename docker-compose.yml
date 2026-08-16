@@ -11,6 +11,15 @@
 # for a reasonable *shared* VM assumption, not maximal throughput.
 
 services:
+  ollama:
+    image: ollama/ollama:latest
+    container_name: aischolarhub-ollama
+    volumes:
+      - ./ollama_data:/root/.ollama
+    mem_limit: 1.5g
+    cpus: 1.5
+    restart: always
+    
   api:
     image: ghcr.io/danny-avila/librechat-dev-api:latest
     container_name: AI_Scholar_Hub
@@ -67,8 +76,6 @@ services:
   vectordb:
     image: pgvector/pgvector:pg15-trixie
     container_name: vectordb
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     environment:
       POSTGRES_DB: ragdb
       POSTGRES_USER: raguser
@@ -89,24 +96,24 @@ services:
   rag_api:
     image: ghcr.io/danny-avila/librechat-rag-api-dev:latest
     container_name: rag_api
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     environment:
       - DB_HOST=vectordb
       - POSTGRES_DB=ragdb
       - POSTGRES_USER=raguser
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
       - EMBEDDINGS_PROVIDER=ollama
-      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      - OLLAMA_BASE_URL=http://ollama:11434      # was http://host.docker.internal:11434
       - EMBEDDINGS_MODEL=nomic-embed-text
       - CHUNK_SIZE=1000
       - CHUNK_OVERLAP=100
       - TOP_K=3
-    mem_limit: 1.5g
-    cpus: 1.0
     depends_on:
       vectordb:
         condition: service_healthy
+      ollama:
+        condition: service_started
+    mem_limit: 1.5g
+    cpus: 1.0
     restart: always
 
   admin-panel:
@@ -125,44 +132,6 @@ services:
       - api
     restart: always
     
-  # admin-panel:
-  #   image: ghcr.io/clickhouse/librechat-admin-panel:latest
-  #   container_name: aischolarhub-admin-panel
-  #   ports:
-  #     - "127.0.0.1:3081:3080"
-  #   env_file:
-  #     - .env
-  #   environment:
-  #     # --- Session & Security Secrets ---
-  #     - SESSION_SECRET=${ADMIN_PANEL_SESSION_SECRET}
-  #     - ADMIN_PANEL_SESSION_SECRET=${ADMIN_PANEL_SESSION_SECRET}
-      
-  #     # --- LibreChat Cryptographic Keys (REQUIRED) ---
-  #     - JWT_SECRET=${JWT_SECRET}
-  #     - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET}
-  #     - CREDS_KEY=${CREDS_KEY}
-  #     - CREDS_IV=${CREDS_IV}
-      
-  #     # --- Endpoints & Internal Network ---
-  #     - VITE_API_BASE_URL=http://AI_Scholar_Hub:3080
-  #     - LIBRECHAT_SERVER_URL=http://AI_Scholar_Hub:3080
-  #     - API_SERVER_URL=http://AI_Scholar_Hub:3080
-
-  #     - DOMAIN_SERVER=https://aischolarhub.seedsnet.org
-  #     - DOMAIN_CLIENT=https://admin-ai.seedsnet.org
-      
-  #     # --- Cookies & DB ---
-  #     - COOKIE_DOMAIN=.seedsnet.org
-  #     # Ensure SameSite is lax for cross-subdomain redirects:
-  #     - SESSION_COOKIE_SECURE=true
-  #     - SESSION_COOKIE_SAME_SITE=lax
-  #     - MONGO_URI=mongodb://mongodb:27017/LibreChat
-  #     - SESSION_COOKIE_SECURE=true
-  #   mem_limit: 512m
-  #   cpus: 0.5
-  #   depends_on:
-  #     - api
-  #   restart: always
     
 
 # HOW TO RE-VERIFY IMAGE TAGS YOURSELF before assuming they're still current:

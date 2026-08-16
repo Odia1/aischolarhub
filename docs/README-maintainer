@@ -126,3 +126,9 @@ to `SESSION_COOKIE_SECURE=false` in its environment block.
 2. `docker compose logs <service> --tail 100` — the real reason, not a guess
 3. `docker compose down && docker compose up -d` — clean recreate, safe (doesn't touch bind-mounted data)
 4. Check `git log -p docker-compose.yml` — did a recent hand-edit cause this?
+
+======= keep in mid====================
+Symptom	Turned out to be
+Instant bounce to /login	Missing X-Forwarded-Proto header (Secure cookie never set)
+Delay, then 502	Cloudflare-side setting (the one you fixed by examining Cloudflare directly)
+Delay, then bounce to /login again

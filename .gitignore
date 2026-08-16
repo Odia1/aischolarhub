@@ -16,3 +16,4 @@ backups/
 
 # OS cruft
 .DS_Store
+ollama_data/
