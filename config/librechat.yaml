@@ -33,6 +33,27 @@ cache: true
 #    shim does not — fine for a text-tutor use case, worth knowing if you
 #    later want those knobs.
 # =============================================================================
+# 18Aug, 2026 -- Prof. Patra
+# =============================================================================
+# AI SCHOLAR HUB
+#
+# AI providers:
+#   1. Azure GPT-4.1-mini   -> undergraduate tutoring
+#   2. Azure GPT-5.4-mini   -> PhD/research support
+#   3. Google Gemini        -> retained as fallback/testing
+#
+# RAG infrastructure remains external to this file:
+#   Ollama -> embeddings
+#   pgvector -> vector database
+#   rag_api -> retrieval pipeline
+#
+# API keys are stored ONLY in .env.
+# =============================================================================
+
+
+# =============================================================================
+# RATE LIMITS
+# =============================================================================
 
 rateLimits:
   fileUploads:
@@ -40,18 +61,30 @@ rateLimits:
     ipWindowInMinutes: 60
     userMax: 10
     userWindowInMinutes: 60
+
   conversationsImport:
     ipMax: 10
     ipWindowInMinutes: 60
     userMax: 5
     userWindowInMinutes: 60
 
+
+# =============================================================================
+# REGISTRATION
+# =============================================================================
+
 registration:
   socialLogins: ["google"]
+
   allowedDomains:
     - "seedsnet.org"
-    - "college.edu"
+    - "ravenshaw.in"
     - "student.college.edu"
+
+
+# =============================================================================
+# BALANCE / USAGE CONTROL
+# =============================================================================
 
 balance:
   enabled: true
@@ -59,81 +92,272 @@ balance:
   autoRefillEnabled: true
   refillIntervalValue: 1
   refillIntervalUnit: "days"
-  refillAmount: 200000     # daily allowance — this is your practical "50 msgs/day" analog
+  refillAmount: 200000
+
+
+# =============================================================================
+# AZURE OPENAI
+#
+# Azure v1 API base URLs:
+#
+# Undergraduate:
+# https://aischolar-si-ug.services.ai.azure.com/openai/v1/
+#
+# Research:
+# https://aischolar-f1.services.ai.azure.com/openai/v1/
+#
+# Deployment names:
+#   gpt-4.1-mini
+#   gpt-5.4-mini
+#
+# Keys are supplied through .env.
+# =============================================================================
 
 endpoints:
+
+  azureOpenAI:
+
+    titleModel: "current_model"
+
+    titleConvo: true
+
+    plugins: false
+    assistants: false
+    summarize: false
+
+    groups:
+
+      # -----------------------------------------------------------------------
+      # UNDERGRADUATE
+      # -----------------------------------------------------------------------
+
+      - group: "aischolar-undergraduate"
+
+        apiKey: "${AZURE_SI_UG_API_KEY}"
+        instanceName: "aischolar-si-ug"
+
+        baseURL: "https://aischolar-si-ug.services.ai.azure.com/openai/v1/"
+
+        models:
+          gpt-4.1-mini:
+            deploymentName: "gpt-4.1-mini"
+            version: "2025-04-14"
+
+
+      # -----------------------------------------------------------------------
+      # RESEARCH / PhD
+      # -----------------------------------------------------------------------
+
+      - group: "aischolar-research"
+
+        apiKey: "${AZURE_F1_API_KEY}"
+        instanceName: "aischolar-f1"
+
+        baseURL: "https://aischolar-f1.services.ai.azure.com/openai/v1/"
+
+        models:
+          gpt-5.4-mini:
+            deploymentName: "gpt-5.4-mini"
+            version: "2026-03-17"
+
+
+  # ===========================================================================
+  # GEMINI
+  #
+  # Existing Gemini configuration retained as a fallback/testing provider.
+  # ===========================================================================
+
   custom:
+
     - name: "Google Gemini"
+
       apiKey: "${GEMINI_API_KEY}"
+
       baseURL: "https://generativelanguage.googleapis.com/v1beta/openai/"
+
       models:
-        default: ["gemini-1.5-flash", "gemini-2.0-flash"]
+        default:
+          - "gemini-1.5-flash"
+          - "gemini-2.0-flash"
+
         fetch: false
+
       titleConvo: true
+
       titleModel: "gemini-1.5-flash"
+
       modelDisplayLabel: "Gemini Flash (Scholar Edition)"
 
+
+# =============================================================================
+# CURATED AI SCHOLAR HUB MODEL EXPERIENCES
+#
+# These are the two experiences that should ultimately be assigned through
+# the Admin Panel to the appropriate roles/groups.
+#
+# modelSpecs.enforce=true prevents users from simply selecting arbitrary
+# underlying models when these specs are being enforced.
+# =============================================================================
+
 modelSpecs:
-  enforce: true       # students can only use the two personas below, not raw Gemini
+
+  enforce: false
   prioritize: true
+
   list:
+
+    # -------------------------------------------------------------------------
+    # UNDERGRADUATE SOCRATIC TUTOR
+    # -------------------------------------------------------------------------
+
     - name: "socratic-tutor"
+
       label: "Undergraduate Socratic Tutor"
-      description: "Step-by-step guidance without giving direct homework answers."
+
+      description: >
+        Step-by-step academic guidance using the Socratic method without
+        providing direct answers to homework or assignments.
+
       default: true
       showIconInMenu: true
+
       preset:
-        endpoint: "Google Gemini"      # must exactly match the custom endpoint name above
-        model: "gemini-1.5-flash"
+
+        endpoint: "azureOpenAI"
+
+        model: "gpt-4.1-mini"
+
         modelLabel: "Socratic Tutor"
-        greeting: "Hello! I am your Socratic Study Assistant. What concept are you working on today?"
+
+        greeting: >
+          Hello! I am your Socratic Study Assistant. What concept are you
+          working on today?
+
         promptPrefix: |
-          [SYSTEM RULE: DOMAIN RESTRICTION]
-          You are an academic tutor strictly for coursework and study
-          materials. If the user asks for non-academic help (recipes,
-          video games, entertainment, pop culture, non-educational coding),
-          reply with: "I am an AI Scholar Assistant restricted to academic
-          and coursework inquiries. Please ask a study-related question!"
+          [SYSTEM RULE: ACADEMIC DOMAIN RESTRICTION]
+
+          You are an academic tutor for coursework, learning, and study
+          materials.
+
+          Do not provide assistance for:
+          - social conversation
+          - entertainment
+          - recipes
+          - gaming
+          - pop culture
+          - general consumer advice
+          - unrelated non-academic tasks
+
+          If a request is outside academic learning or coursework, respond:
+
+          "I am an AI Scholar Assistant restricted to academic and
+          coursework inquiries. Please ask a study-related question!"
 
           [PEDAGOGICAL INSTRUCTION: SOCRATIC METHOD]
-          Never give the student direct answers to homework problems,
-          essays, or assignment prompts. Instead:
-          1. Break down the user's question into core sub-concepts.
-          2. Ask leading questions to help the user discover the answer.
-          3. Provide hints, analogies, or explanations of underlying
-             formulas/principles — not the final answer.
+
+          Your primary objective is to help the student learn rather than
+          simply produce an answer.
+
+          1. Break the question into relevant concepts.
+          2. Ask leading questions when appropriate.
+          3. Provide hints, explanations, analogies, and intermediate steps.
+          4. Help the student identify and correct mistakes.
+          5. Do not provide a final answer to an active homework,
+             examination, or assignment question when doing so would
+             substitute for the student's own work.
+          6. You may explain concepts and demonstrate analogous examples.
+          7. Encourage the student to reason independently.
+
+
+    # -------------------------------------------------------------------------
+    # PhD / RESEARCH SYNTHESIZER
+    # -------------------------------------------------------------------------
 
     - name: "research-synthesizer"
+
       label: "PhD & Post-Doc Research Synthesizer"
-      description: "Deep research analysis, LaTeX formatting, and literature critique."
+
+      description: >
+        Advanced research support including literature synthesis,
+        methodology analysis, statistical reasoning, and technical writing.
+
       default: false
       showIconInMenu: true
+
       preset:
-        endpoint: "Google Gemini"
-        model: "gemini-1.5-flash"
+
+        endpoint: "azureOpenAI"
+
+        model: "gpt-5.4-mini"
+
         modelLabel: "Research Synthesizer"
-        greeting: "Ready to assist with methodology, literature review, and statistical synthesis."
+
+        greeting: >
+          Ready to assist with methodology, literature review, research
+          analysis, and statistical synthesis.
+
         promptPrefix: |
-          [SYSTEM RULE: DOMAIN RESTRICTION]
-          Focus strictly on academic research, methodology, literature
-          synthesis, and paper review. Refuse non-academic requests.
+          [SYSTEM RULE: ACADEMIC RESEARCH DOMAIN]
+
+          Focus on:
+          - academic research
+          - literature synthesis
+          - methodology
+          - statistical reasoning
+          - experimental design
+          - technical analysis
+          - scholarly writing
+          - paper review
+          - research planning
+
+          Refuse requests that are unrelated to academic or research work.
 
           [RESEARCH INSTRUCTION]
-          1. Synthesize methodologies, technical assumptions, and
-             theoretical limits critically.
-          2. Format all mathematical representations using precise LaTeX
-             notation (e.g., $E=mc^2$).
-          3. Point out logical gaps, sample biases, or potential
-             confounding variables in provided experimental designs.
-          4. Never invent citations, DOIs, or page numbers — if you lack
-             grounding for a claim, say so explicitly rather than guessing.
+
+          1. Critically synthesize methodologies, assumptions,
+             evidence, and theoretical limitations.
+
+          2. Distinguish established findings from hypotheses,
+             interpretations, and uncertainty.
+
+          3. Identify logical gaps, methodological weaknesses,
+             sampling limitations, biases, confounding variables,
+             and threats to validity.
+
+          4. Use precise LaTeX notation for mathematical expressions
+             when appropriate.
+
+          5. Never invent citations, authors, papers, DOIs,
+             quotations, or page numbers.
+
+          6. If a claim cannot be adequately grounded in the supplied
+             material or available retrieval context, explicitly say
+             that verification is required.
+
+          7. When reviewing literature, distinguish:
+             - what the source actually establishes
+             - what can reasonably be inferred
+             - what remains uncertain.
+
+          8. Favor rigorous analysis over merely producing polished prose.
+
+
+# =============================================================================
+# FILE UPLOADS
+# =============================================================================
 
 fileConfig:
+
   endpoints:
+
     default:
+
       fileLimit: 5
+
       fileSizeLimit: 20
+
       totalSizeLimit: 100
+
       supportedMimeTypes:
         - "application/pdf"
         - "text/plain"

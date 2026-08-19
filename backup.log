@@ -78,3 +78,4 @@
 2026-08-13T21:30:01.406+0000	done dumping `LibreChat.conversations` (0 documents)
 2026-08-13T21:30:01.410+0000	done dumping `LibreChat.skillfiles` (0 documents)
 2026-08-13T21:30:01.411+0000	done dumping `LibreChat.actions` (0 documents)
+Error response from daemon: No such container: chat-mongodb

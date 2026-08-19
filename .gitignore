@@ -1,5 +1,6 @@
 # Secrets — never commit real values, only .env.example
 .env
+setup1.txt
 
 *~
 #*
