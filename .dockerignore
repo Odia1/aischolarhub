@@ -1,17 +1,57 @@
+# ============================================================
+# Git / IDE / OS
+# ============================================================
+**/.git
+**/.git/**
 **/.circleci
 **/.editorconfig
-**/.dockerignore
-**/.git
 **/.DS_Store
 **/.vscode
+
+# ============================================================
+# Dependencies / generated package data
+# ============================================================
 **/node_modules
+**/.npm
+**/.cache
+**/.turbo
+**/.eslintcache
 
-# Specific patterns to ignore
-data-node
-meili_data*
-librechat*
+# ============================================================
+# Runtime databases / indexes
+# NEVER include these in the application image
+# ============================================================
+data-node/
+meili_data*/
+pgvector_data/
+mongo_data/
+ollama_data/
+
+# ============================================================
+# Runtime application data
+# These are bind-mounted by docker-compose
+# ============================================================
+uploads/
+logs/
+backups/
+
+# ============================================================
+# Docker / deployment artifacts
+# ============================================================
 Dockerfile*
-docs
+docker-compose*.yml
+docker-compose*.yaml
+deploy-compose.yml
 
-# Ignore all hidden files
-.*
+# ============================================================
+# Documentation / development-only material
+# ============================================================
+docs/
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Temp/editor files
+**/*~
