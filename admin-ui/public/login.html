@@ -1,0 +1,56 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="icon" href="/favicon.ico" type="image/x-icon">
+<title>AI Scholar Hub — Admin Login</title>
+<style>
+body{font-family:system-ui,sans-serif;margin:0;background:#f6f7f9;display:flex;align-items:center;justify-content:center;height:100vh;color:#222}
+.box{background:white;padding:32px;width:340px;border-radius:10px;box-shadow:0 4px 20px #0001}
+h1{font-size:21px;margin:0 0 24px}
+input,button{width:100%;box-sizing:border-box;padding:11px;margin:7px 0;border:1px solid #ccc;border-radius:6px;font-size:14px}
+button{cursor:pointer;background:#20232a;color:white;border:0;margin-top:14px}
+#error{color:#b00020;margin-top:12px;font-size:14px}
+</style>
+</head>
+<body>
+<div class="box">
+<h1>AI Scholar Hub<br>User Management</h1>
+
+<form id="login">
+<input id="email" type="email" placeholder="Administrator email" required autofocus>
+<input id="password" type="password" placeholder="Password" required>
+<button type="submit">Sign in</button>
+<div id="error"></div>
+</form>
+</div>
+
+<script>
+document.getElementById("login").addEventListener("submit", async e => {
+  e.preventDefault();
+
+  const error = document.getElementById("error");
+  error.textContent = "";
+
+  const r = await fetch("/api/login", {
+    method: "POST",
+    headers: {"Content-Type":"application/json"},
+    body: JSON.stringify({
+      email: document.getElementById("email").value,
+      password: document.getElementById("password").value
+    })
+  });
+
+  const data = await r.json();
+
+  if (!r.ok) {
+    error.textContent = data.error || "Login failed";
+    return;
+  }
+
+  location.href = "/";
+});
+</script>
+</body>
+</html>

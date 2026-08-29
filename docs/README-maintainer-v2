@@ -1,0 +1,186 @@
+# AIScholarHub Maintenance & Operations Guide
+
+This quick reference guide outlines standard maintenance workflows, container management commands, database user management, and troubleshooting steps for the **AIScholarHub** and **Admin Panel** infrastructure.
+
+---
+
+## 🏗️ Architecture Overview
+
+- **Main Platform:** `https://aischolarhub.seedsnet.org` (`AI_Scholar_Hub` container, port `3080`)
+- **Admin Panel:** `https://admin-ai.seedsnet.org` (`aischolarhub-admin-panel` container, port `3081`)
+- **Database:** MongoDB (`chat-mongodb` container, database `LibreChat`)
+- **Reverse Proxy:** Apache2 with SSL terminated via Let's Encrypt / Cloudflare Proxy
+
+---
+
+## 🚀 Core Docker Commands
+
+### Container Operations
+```bash
+# Navigate to project directory
+cd /opt/aischolarhub
+
+# Check status of all containers
+docker compose ps
+
+# View live logs for specific services
+docker logs -f AI_Scholar_Hub            # Main LibreChat API
+docker logs -f aischolarhub-admin-panel   # Admin Panel
+docker logs -f chat-mongodb               # MongoDB
+
+# Restart or force-recreate services after .env or compose updates
+docker compose up -d --force-recreate api admin-panel
+
+# Stop and start full stack
+docker compose down
+docker compose up -d
+```
+
+---
+
+## 👤 User & Admin Management
+
+User accounts live in the `LibreChat` MongoDB database. Standard registrations default to `role: "USER"`.
+
+### 1. Check User Roles
+```bash
+docker exec -it chat-mongodb mongosh LibreChat --eval 'db.users.find({}, {email: 1, role: 1, _id: 0})'
+```
+
+### 2. Grant ADMIN Role
+```bash
+docker exec -it chat-mongodb mongosh LibreChat --eval 'db.users.updateOne({ email: "user@seedsnet.org" }, { $set: { role: "ADMIN" } })'
+```
+
+### 3. Reset User Password
+1. Generate a bcrypt hash using the internal node environment:
+   ```bash
+   docker exec -it AI_Scholar_Hub node -e "console.log(require('bcryptjs').hashSync('NewSecurePassword123!', 10))"
+   ```
+2. Save the generated hash into MongoDB:
+   ```bash
+   docker exec -it chat-mongodb mongosh LibreChat --eval 'db.users.updateOne({ email: "user@seedsnet.org" }, { $set: { password: "<INSERT_HASH_HERE>" } })'
+   ```
+
+---
+
+## 🌐 SSL, Apache & Cloudflare Setup
+
+### SSL Certificate Renewal (Let's Encrypt)
+```bash
+# Check status and test renewal
+sudo certbot renew --dry-run
+
+# Issue/renew certificate for Admin Panel
+sudo certbot certonly --apache -d admin-ai.seedsnet.org
+
+# Reload Apache after renewal
+sudo apachectl configtest
+sudo systemctl reload apache2
+```
+
+### Cloudflare Settings
+- **SSL/TLS Mode:** Must be set to **Full** (or **Full (strict)** if valid Let's Encrypt cert is active on Apache).
+- **Purge Cache:** If login or server functions (`_serverFn`) return `304 Not Modified` or loop unexpectedly, purge edge cache via **Cloudflare Dashboard** -> **Caching** -> **Configuration** -> **Purge Everything**.
+
+---
+
+## 🛠️ Troubleshooting Checklist
+
+| Symptom | Cause | Resolution |
+| :--- | :--- | :--- |
+| **Error 526** on Admin Panel | Cloudflare SSL mismatch | Set Cloudflare SSL to **Full** or update Let's Encrypt cert in Apache. |
+| **"User not found"** on Admin Login | Account missing `ADMIN` role or wrong DB case | Verify `role: "ADMIN"` in `LibreChat` DB using `mongosh` commands above. |
+| **Login loop / Infinite "Signing in"** | CORS or Cross-Subdomain cookie issue | Check `.env` and `docker-compose.yml` for matching `COOKIE_DOMAIN=.seedsnet.org`. |
+| **No logs on Docker container** | Traffic blocked before container | Check Apache VirtualHost proxy rules (`ProxyPass / http://127.0.0.1:3081/`). |
+
+
+========================= AIScholarHub's internal backend pipeline, RAG architecture, and integration with **Ollama** for embeddings and vector storage.
+
+
+## 🧠 AIScholarHub Architecture & Vector Pipeline (RAG)
+
+AIScholarHub utilizes a **Retrieval-Augmented Generation (RAG)** pipeline to process uploaded documents, generate vector embeddings, and perform semantic search.
+
+
+[ User Upload ] ➔ [ Apache Proxy ] ➔ [ LibreChat API ]
+│
+▼
+[ RAG API Service ]
+├── Tokenizer / Chunking
+├── Embeddings ➔ [ Ollama ]
+└── Vector Store ➔ [ Pgvector / ChromaDB ]
+
+```
+
+---
+
+## 🦙 Ollama & Vector Database Integration
+
+Ollama serves as the local LLM and embedding engine, generating vector representations of text without sending data to external APIs.
+
+### 1. Vector Pipeline Components
+- **Embedding Model:** Ollama generates embeddings (typically using `nomic-embed-text` or `mxbai-embed-large`).
+- **Vector Database:** Embeddings are stored in a vector database (Pgvector or ChromaDB) running as a container in the `docker-compose` network.
+- **RAG Engine (`rag_api`):** Accepts file uploads, extracts text, requests embeddings from Ollama, and manages vector collection queries.
+
+### 2. Core Ollama Commands
+```bash
+# Check running Ollama models inside the container
+docker exec -it ollama ollama list
+
+# Pull a required embedding model for vector storage
+docker exec -it ollama ollama pull nomic-embed-text
+
+# Pull an inference model
+docker exec -it ollama ollama pull llama3
+
+# Test model generation directly inside container
+docker exec -it ollama ollama run nomic-embed-text "Test embedding text"
+
+```
+
+---
+
+## ⚙️ Environment Configuration (`.env`)
+
+Ensure your `.env` contains the following routing definitions for internal service-to-service communication:
+
+```env
+# RAG & Vector DB Integration
+RAG_PORT=8000
+RAG_API_URL=http://rag_api:8000
+
+# Ollama Endpoint (Internal Docker Network)
+OLLAMA_BASE_URL=http://ollama:11434
+EMBEDDINGS_PROVIDER=ollama
+EMBEDDINGS_MODEL=nomic-embed-text
+
+# Vector Storage Connection
+VECTOR_DB_TYPE=pgvector # or chromadb
+VECTOR_DB_URL=postgresql://postgres:password@vector-db:5432/vectordb
+
+```
+
+---
+
+## 🔍 Troubleshooting RAG & Vector Issues
+
+### Embeddings Failing or Timing Out
+
+If file uploads fail during vector processing, verify that the embedding model is loaded in Ollama:
+
+```bash
+# Check if Ollama service is reachable from the RAG container
+docker exec -it rag_api curl http://ollama:11434/api/tags
+
+```
+
+### Vector DB Connectivity Issues
+
+```bash
+# Inspect live logs for the RAG container
+docker logs -f rag_api
+
+# Reset/Clear Vector Indexes (if database gets corrupted)
+docker exec -it vector-db psql -U postgres -d vectordb -c "DROP TABLE IF EXISTS langchain_pg_embedding;"

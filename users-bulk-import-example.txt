@@ -1,0 +1,3 @@
+name,username,email,role
+John Smith,john.smith,john@example.com,USER
+Jane Doe,jane.doe,jane@example.com,Instructor

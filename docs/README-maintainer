@@ -1,0 +1,133 @@
+# AI Scholar Hub — Maintainer README
+
+LibreChat + MongoDB + Meilisearch + pgvector/rag_api + Gemini, self-hosted
+on an Ubuntu VM (Azure) behind Apache. Also runs a separate Admin Panel
+service. This file is the fast-reference; full detail lives in
+`INSTRUCTIONS.md`, `docs/RUNBOOK.md`, `docs/SCALING.md`, `deploy/README.md`.
+
+## Architecture, in one line each
+
+| Service | Role | Container name |
+|---|---|---|
+| `api` | LibreChat itself | `AI_Scholar_Hub` |
+| `mongodb` | users, chats, balances | `chat-mongodb` |
+| `meilisearch` | conversation search (NOT RAG) | `chat-meilisearch` |
+| `vectordb` | pgvector store for RAG | `vectordb` |
+| `rag_api` | chunks/embeds uploaded docs | `rag_api` |
+| `admin-panel` | config/role GUI | `aischolarhub-admin-panel` |
+
+Public URLs: `aischolarhub.seedsnet.org` (main), `admin-ai.seedsnet.org` (admin panel).
+All backend ports are `127.0.0.1`-only — Apache is the only public entry point.
+
+## Daily commands
+
+```bash
+cd /opt/aischolarhub
+
+docker compose ps -a              # status of everything
+docker compose logs -f api        # tail one service
+docker compose up -d              # apply compose/env changes (recreates changed containers)
+docker compose restart api        # restart without config changes
+docker compose down               # stop everything — does NOT touch bind-mounted data
+```
+
+## User management — all run via `docker exec`, NOT `npm run`
+
+**`npm run create-user` etc. are broken** on this image (confirmed upstream
+bug, [danny-avila/LibreChat#12616](https://github.com/danny-avila/LibreChat/issues/12616)) —
+always call the script directly:
+
+```bash
+# Create a user — email, name, username, password, in that order
+docker exec AI_Scholar_Hub node /app/config/create-user.js \
+  student@seedsnet.org "Student Name" studentname TempPass123! --email-verified=True
+
+# Promote to admin (create-user has no reliable --admin flag; do it directly)
+docker exec -it chat-mongodb mongosh LibreChat --eval \
+  'db.users.updateOne({email: "student@seedsnet.org"}, {$set: {role: "ADMIN"}})'
+
+# Set/adjust token balance
+docker exec AI_Scholar_Hub node /app/config/set-balance.js student@seedsnet.org 200000
+
+# List all balances
+docker exec -it AI_Scholar_Hub node /app/config/list-balances.js
+
+# Reset a password — INTERACTIVE, needs -it, do not pass args
+docker exec -it AI_Scholar_Hub node /app/config/reset-password.js
+
+# Bulk-provision a roster (email,name,temp_password,role,token_quota)
+python3 scripts/bulk_import.py students.csv --container AI_Scholar_Hub --domain seedsnet.org --dry-run
+python3 scripts/bulk_import.py students.csv --container AI_Scholar_Hub --domain seedsnet.org
+```
+
+`--email-verified=True` on `create-user` is **required**, not optional —
+without it the script hangs forever on an interactive prompt that
+`docker exec` can never answer (confirmed bug [#10202](https://github.com/danny-avila/LibreChat/issues/10202)).
+
+## Gotchas already paid for — don't relearn these
+
+- **`docker-compose.yml` env lists**: `- KEY=${VAR}` — never quote the
+  value (`- KEY="${VAR}"`). List-style entries don't get YAML
+  quote-stripping; you'll bake literal `"` characters into the container
+  and break auth silently.
+- **Mongo major-version changes are not casual.** Never swap `mongo:8.0`
+  for a different major version against existing data without an explicit
+  supported downgrade/upgrade procedure — mismatched WiredTiger files
+  cause a hard crash (`WT_PANIC`), not a graceful failure.
+- **Bind-mount paths (`./mongo_data` etc.) are relative to wherever you run
+  `docker compose` from.** If you ever move the project directory, the
+  data doesn't follow automatically — you're pointing at a fresh empty
+  path unless you move the data too.
+- **containerd and Docker have separate storage configs.** Relocating
+  Docker's `data-root` does NOT relocate `/var/lib/containerd` — that's a
+  different service with its own config (`/etc/containerd/config.toml`).
+- **`getaddrinfo EAI_AGAIN mongodb`** in `api` logs almost always means
+  `mongodb` itself isn't up — check `docker compose ps -a` first, not the
+  network.
+- **RAG embeddings run on Ollama**, not Gemini/OpenAI (cost decision).
+  Ollama must be running on the **host** with `OLLAMA_HOST=0.0.0.0:11434`
+  (default loopback-only binding is unreachable from containers) and
+  `nomic-embed-text` pulled. Verify: `docker exec rag_api curl -s http://host.docker.internal:11434/api/tags`.
+
+## Backups
+
+```bash
+/opt/aischolarhub/backup.sh        # cron'd daily at 3am — confirm it's still firing:
+crontab -l
+ls -la /opt/aischolarhub/backups/
+```
+Covers Mongo + Postgres only. `config/librechat.yaml`, `.env`, and
+`docker-compose.yml` are covered by git instead (below) — `.env` itself is
+gitignored, back it up separately/securely if you touch it.
+
+## Config changes — always through git
+
+```bash
+git diff                                    # see what changed before applying
+docker compose config --quiet               # validate YAML before `up`
+docker compose up -d <service>               # recreate just what changed
+git add docker-compose.yml config/librechat.yaml
+git commit -m "what changed and why"
+```
+
+## Admin Panel notes
+
+Separate app (`ghcr.io/clickhouse/librechat-admin-panel`), not bundled with
+LibreChat itself in this custom compose setup. Needs `ADMIN_PANEL_URL` set
+correctly on the `api` service to match its real public URL, or SSO breaks
+([#13218](https://github.com/danny-avila/LibreChat/issues/13218)). If login
+silently bounces back to `/login`: check `X-Forwarded-Proto` header is set
+on the Apache vhost (session cookie won't persist without it), or fall back
+to `SESSION_COOKIE_SECURE=false` in its environment block.
+
+## If something's on fire
+
+1. `docker compose ps -a` — what's actually down, first
+2. `docker compose logs <service> --tail 100` — the real reason, not a guess
+3. `docker compose down && docker compose up -d` — clean recreate, safe (doesn't touch bind-mounted data)
+4. Check `git log -p docker-compose.yml` — did a recent hand-edit cause this?
+
+Symptom	Turned out to be
+Instant bounce to /login	Missing X-Forwarded-Proto header (Secure cookie never set)
+Delay, then 502	Cloudflare-side setting (the one you fixed by examining Cloudflare directly)
+Delay, then bounce to /login again

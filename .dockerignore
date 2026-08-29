@@ -50,8 +50,11 @@ docs/
 
 # Environment / secrets
 .env
+*.env
 .env.*
 !.env.example
+gemini-proxy/__pycache__
+gemini-proxy/*.pyc
 
 # Temp/editor files
 **/*~

@@ -1,0 +1,301 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="icon" href="/favicon.ico" type="image/x-icon">
+<title>AI Scholar Hub — User Management</title>
+<style>
+body{font-family:system-ui,sans-serif;margin:0;background:#f6f7f9;color:#222}
+header{background:#20232a;color:#fff;padding:16px 25px;display:flex;justify-content:space-between}
+main{padding:24px;max-width:1500px;margin:auto}
+.toolbar{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap}
+input,select,button{padding:9px 11px;border:1px solid #ccc;border-radius:6px;font-size:14px}
+input[type=text],input[type=email],input[type=password]{min-width:180px}
+button{cursor:pointer;background:#fff}
+.primary{background:#20232a;color:#fff}
+.danger{color:#b00020}
+table{width:100%;border-collapse:collapse;background:#fff}
+th,td{text-align:left;padding:10px;border-bottom:1px solid #eee}
+th{background:#f0f1f3}
+#status{margin:10px 0}
+dialog{border:0;border-radius:10px;padding:25px;box-shadow:0 5px 30px #0003}
+form{display:grid;gap:10px;min-width:330px}
+.actions{white-space:nowrap}
+</style>
+</head>
+<body>
+
+<header>
+  <span>AI Scholar Hub — User Management</span>
+  <button onclick="logout()">Logout</button>
+</header>
+
+<main>
+<div class="toolbar">
+<input id="search" placeholder="Search name, username or email">
+<select id="role">
+<option value="">All roles</option>
+<option>USER</option>
+<option>Instructor</option>
+<option>ADMIN</option>
+</select>
+<button onclick="loadUsers()">Search</button>
+<button class="primary" onclick="createDialog.showModal()">+ Create User</button>
+<button onclick="bulkDialog.showModal()">↑ Bulk CSV</button>
+<button onclick="location.href='/api/users/export'">↓ Export CSV</button>
+</div>
+
+<div id="status"></div>
+
+<table>
+<thead><tr>
+<th>Name</th><th>Username</th><th>Email</th><th>Role</th>
+<th>Provider</th><th>Created</th><th>Actions</th>
+</tr></thead>
+<tbody id="users"></tbody>
+</table>
+</main>
+
+<dialog id="createDialog">
+<form id="createForm">
+<h3>Create User</h3>
+<input id="cname" placeholder="Name" required>
+<input id="cusername" placeholder="Username">
+<input id="cemail" type="email" placeholder="Email" required>
+<select id="crole"><option>USER</option><option>Instructor</option><option>ADMIN</option></select>
+<p style="margin:0;color:#555;font-size:13px">
+A one-time password setup link will be emailed to the user.
+</p>
+<button class="primary">Create</button>
+<button type="button" onclick="createDialog.close()">Cancel</button>
+</form>
+</dialog>
+
+<dialog id="editDialog">
+<form id="editForm">
+<h3>Edit User</h3>
+<input id="ename" placeholder="Name" required>
+<input id="eusername" placeholder="Username">
+<select id="erole"><option>USER</option><option>Instructor</option><option>ADMIN</option></select>
+<input id="epassword" type="password" placeholder="New password (optional)">
+<button class="primary">Save</button>
+<button type="button" onclick="editDialog.close()">Cancel</button>
+</form>
+</dialog>
+
+<dialog id="bulkDialog">
+<form id="bulkForm">
+<h3>Bulk User Upload</h3>
+
+<p>
+  CSV format:
+  <code>name,email,role</code>
+</p>
+
+<p>
+  Role is optional and defaults to <b>USER</b>.
+  Setup links will be emailed automatically to newly created users.
+</p>
+
+<input id="csvfile" type="file" accept=".csv" required>
+
+<button class="primary">Validate CSV</button>
+<button type="button" onclick="bulkDialog.close()">Cancel</button>
+</form>
+</dialog>
+
+<script>
+let editingId=null;
+
+const esc=v=>String(v??"")
+.replaceAll("&","&amp;").replaceAll("<","&lt;")
+.replaceAll(">","&gt;").replaceAll('"',"&quot;")
+.replaceAll("'","&#039;");
+
+async function loadUsers(){
+ const q=encodeURIComponent(search.value);
+ const role=encodeURIComponent(document.getElementById("role").value);
+ const r=await fetch(`/api/users?q=${q}&role=${role}`);
+ if(r.status===401){location.href="/login";return}
+ const data=await r.json();
+ if(!r.ok){status.textContent=data.error;return}
+ status.textContent=`${data.length} user(s)`;
+ users.innerHTML="";
+ data.forEach(u=>{
+  const tr=document.createElement("tr");
+  tr.innerHTML=`
+  <td>${esc(u.name)}</td>
+  <td>${esc(u.username||"")}</td>
+  <td>${esc(u.email)}</td>
+  <td>${esc(u.role)}</td>
+  <td>${esc(u.provider||"")}</td>
+  <td>${u.createdAt?new Date(u.createdAt).toLocaleDateString():""}</td>
+  <td class="actions">
+    <button onclick='editUser(${JSON.stringify(u)})'>Edit</button>
+    <button onclick='sendReset("${u._id}","${esc(u.email)}")'>Send Link</button>
+    <button class="danger" onclick='deleteUser("${u._id}","${esc(u.name||u.email)}")'>Delete</button>
+  </td>`;
+  users.appendChild(tr);
+ });
+}
+
+createForm.onsubmit=async e=>{
+ e.preventDefault();
+ const r=await fetch("/api/users",{method:"POST",
+ headers:{"Content-Type":"application/json"},
+ body:JSON.stringify({
+  name:cname.value,username:cusername.value,email:cemail.value,
+  role:crole.value
+ })});
+ const d=await r.json();
+ if(!r.ok){alert(d.error);return}
+ createDialog.close();createForm.reset();loadUsers();
+};
+
+function editUser(u){
+ editingId=u._id;
+ ename.value=u.name||"";
+ eusername.value=u.username||"";
+ erole.value=u.role||"USER";
+ epassword.value="";
+ editDialog.showModal();
+}
+
+editForm.onsubmit=async e=>{
+ e.preventDefault();
+ const body={name:ename.value,username:eusername.value,role:erole.value};
+ if(epassword.value)body.password=epassword.value;
+ const r=await fetch("/api/users/"+editingId,{
+  method:"PATCH",headers:{"Content-Type":"application/json"},
+  body:JSON.stringify(body)
+ });
+ const d=await r.json();
+ if(!r.ok){alert(d.error);return}
+ editDialog.close();loadUsers();
+};
+
+async function sendReset(id,email){
+ if(!confirm(`Send a password setup/reset link to ${email}?`))return;
+ const r=await fetch("/api/users/"+id+"/send-reset",{method:"POST"});
+ const d=await r.json();
+ if(!r.ok){alert(d.error||"Failed to send email");return}
+ alert(d.message||"Password setup/reset email sent.");
+}
+
+async function deleteUser(id,name){
+ if(!confirm(`Delete ${name}? This cannot be undone.`))return;
+ const r=await fetch("/api/users/"+id,{method:"DELETE"});
+ const d=await r.json();
+ if(!r.ok){alert(d.error);return}
+ loadUsers();
+}
+
+bulkForm.onsubmit=async e=>{
+ e.preventDefault();
+
+ const file=csvfile.files[0];
+ if(!file)return;
+
+ const csv=await file.text();
+
+ const r=await fetch("/api/users/bulk",{
+  method:"POST",
+  headers:{"Content-Type":"application/json"},
+  body:JSON.stringify({csv,confirm:false})
+ });
+
+ const d=await r.json();
+
+ if(!r.ok){
+   alert(d.error||"CSV validation failed");
+   return;
+ }
+
+ const newUsers=d.preview.filter(x=>x.status==="new");
+ const skipped=d.preview.filter(x=>x.status==="skipped");
+
+ let message=
+   `CSV validation complete.\n\n`+
+   `New users: ${newUsers.length}\n`+
+   `Existing users (will be skipped): ${skipped.length}\n`+
+   `Errors: ${d.errors.length}`;
+
+ if(d.errors.length)
+   message+=`\n\nErrors:\n${d.errors.join("\n")}`;
+
+ if(!confirm(message+"\n\nProceed with creating the new users?"))
+   return;
+
+ const r2=await fetch("/api/users/bulk",{
+   method:"POST",
+   headers:{"Content-Type":"application/json"},
+   body:JSON.stringify({csv,confirm:true})
+ });
+
+ const result=await r2.json();
+
+ if(!r2.ok){
+   alert(result.error||"Bulk import failed");
+   return;
+ }
+
+ if(!result.created.length){
+   alert(
+     `No new users were created.\n\n`+
+     `Skipped: ${result.skipped.length}\n`+
+     `Errors: ${result.failed.length+result.errors.length}`
+   );
+   bulkDialog.close();
+   bulkForm.reset();
+   loadUsers();
+   return;
+ }
+
+ // Create a one-time credentials CSV for the administrator.
+ const lines=[
+   "name,email,role",
+   ...result.created.map(u=>[
+     csvEscape(u.name),
+     csvEscape(u.email),
+     csvEscape(u.role),
+     ""
+   ].join(","))
+ ];
+
+ const blob=new Blob([lines.join("\n")],{type:"text/csv"});
+ const url=URL.createObjectURL(blob);
+ const a=document.createElement("a");
+
+ a.href=url;
+ a.download="ai-scholar-hub-new-user-credentials.csv";
+ a.click();
+
+ URL.revokeObjectURL(url);
+
+ alert(
+   `Import complete.\n\n`+
+   `Created: ${result.created.length}\n`+
+   `Skipped: ${result.skipped.length}\n`+
+   `Errors: ${result.failed.length+result.errors.length}\n\n`+
+   `The temporary credentials CSV has been downloaded.`
+ );
+
+ bulkDialog.close();
+ bulkForm.reset();
+ loadUsers();
+};
+
+function csvEscape(v){
+ return `"${String(v??"").replaceAll('"','""')}"`;
+}
+
+async function logout(){
+ await fetch("/api/logout",{method:"POST"});
+ location.href="/login";
+}
+
+loadUsers();
+</script>
+</body>
+</html>

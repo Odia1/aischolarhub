@@ -350,7 +350,7 @@ const registerUser = async (user, additionalData = {}) => {
     const appConfig = await getAppConfig(tenantId ? { tenantId } : {});
     if (!isEmailDomainAllowed(email, appConfig?.registration?.allowedDomains)) {
       const errorMessage =
-        'The email address provided cannot be used. Please use a different email address.';
+        'The email address provided cannot be used. Check with your admin if your domain is approved or use a different email address.';
       logger.error(`[registerUser] [Registration not allowed] [Email: ${user.email}]`);
       return { status: 403, message: errorMessage };
     }

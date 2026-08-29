@@ -189,3 +189,22 @@ CLAUDE.md
 .gsd
 codedb.snapshot
 scripts/activity-labels/results/
+
+# AI Scholar Hub local secrets
+.gemini-proxy.env
+.rag-test.env
+
+# AI Scholar Hub runtime / local data
+ollama_data/
+backups/
+save/
+client/public/assets/favicon_io.zip
+
+# Superseded LibreChat configuration snapshots
+librechat.1.yaml
+librechat.works.yaml
+
+# Favicon source archive; production asset is favicon.ico
+
+# Local standalone admin-panel repository
+aishub-admin-panel/
