@@ -1,4 +1,5 @@
 import itertools
+import json
 import os
 import threading
 from typing import Optional
@@ -25,6 +26,11 @@ if len(set(GEMINI_KEYS)) != len(GEMINI_KEYS):
 
 key_cycle = itertools.cycle(range(len(GEMINI_KEYS)))
 cycle_lock = threading.Lock()
+
+# Gemini 3 thought signatures must survive the tool-call round trip.
+# Map the OpenAI-compatible tool-call ID to the signature returned by Gemini.
+thought_signatures = {}
+thought_signatures_lock = threading.Lock()
 
 
 def next_key_index() -> int:
@@ -106,6 +112,49 @@ async def chat_completions(
 
     is_streaming = bool(request_json.get("stream", False))
 
+    # Restore Gemini thought signatures that LibreChat/LangChain omitted.
+    #
+    # Google requires the thought_signature to be returned on the same
+    # assistant tool_call that originally received it.  We key the cache
+    # by tool-call ID so parallel MCP calls remain independent.
+    restored_signatures = 0
+
+    for msg in request_json.get("messages", []):
+        if msg.get("role") != "assistant":
+            continue
+
+        for tool_call in msg.get("tool_calls", []):
+            call_id = tool_call.get("id")
+            if not call_id:
+                continue
+
+            with thought_signatures_lock:
+                signature = thought_signatures.get(call_id)
+
+            if not signature:
+                continue
+
+            extra_content = tool_call.get("extra_content")
+            if not isinstance(extra_content, dict):
+                extra_content = {}
+
+            google_content = extra_content.get("google")
+            if not isinstance(google_content, dict):
+                google_content = {}
+
+            if "thought_signature" not in google_content:
+                google_content["thought_signature"] = signature
+                extra_content["google"] = google_content
+                tool_call["extra_content"] = extra_content
+                restored_signatures += 1
+
+    if restored_signatures:
+        body = json.dumps(request_json).encode("utf-8")
+        print(
+            f"GEMINI THOUGHT SIGNATURE RESTORE count={restored_signatures}",
+            flush=True,
+        )
+
     last_response = None
 
     for key_index in ordered_key_indices():
@@ -150,6 +199,11 @@ async def chat_completions(
                 continue
 
             # Other errors belong to the request itself.
+            print(
+                f"GEMINI UPSTREAM ERROR {response.status_code}: "
+                f"{response.text[:4000]}",
+                flush=True,
+            )
             return Response(
                 content=response.content,
                 status_code=response.status_code,
@@ -253,6 +307,12 @@ async def stream_request(body: bytes, headers: dict, key_index: int):
                 "application/json",
             )
 
+            print(
+                f"GEMINI STREAM UPSTREAM ERROR {status}: "
+                f"{content[:4000]!r}",
+                flush=True,
+            )
+
             await upstream.aclose()
             await client.aclose()
 
@@ -274,9 +334,103 @@ async def stream_request(body: bytes, headers: dict, key_index: int):
 
 
 async def stream_response(upstream, client):
+    # Buffer SSE data because HTTP chunks do not necessarily align with
+    # complete SSE events.
+    sse_buffer = ""
+    tool_call_ids_by_index = {}
+
+    def process_sse_event(data):
+        if not data or data == "[DONE]":
+            return
+
+        try:
+            event = json.loads(data)
+        except json.JSONDecodeError:
+            return
+
+        for choice in event.get("choices", []):
+            delta = choice.get("delta", {})
+
+            for tool_call in delta.get("tool_calls", []):
+                index = tool_call.get("index")
+                call_id = tool_call.get("id")
+
+                if index is not None and call_id:
+                    tool_call_ids_by_index[index] = call_id
+
+                extra_content = tool_call.get("extra_content")
+                if not isinstance(extra_content, dict):
+                    continue
+
+                google_content = extra_content.get("google")
+                if not isinstance(google_content, dict):
+                    continue
+
+                signature = google_content.get("thought_signature")
+                if not signature:
+                    continue
+
+                if not call_id and index is not None:
+                    call_id = tool_call_ids_by_index.get(index)
+
+                if not call_id:
+                    print(
+                        "GEMINI THOUGHT SIGNATURE WITHOUT CALL ID "
+                        f"index={index}",
+                        flush=True,
+                    )
+                    continue
+
+                with thought_signatures_lock:
+                    thought_signatures[call_id] = signature
+
+                print(
+                    "GEMINI THOUGHT SIGNATURE STORED "
+                    f"call_id={call_id} index={index}",
+                    flush=True,
+                )
+
     try:
         async for chunk in upstream.aiter_bytes():
+            try:
+                sse_buffer += chunk.decode("utf-8", errors="ignore")
+
+                # SSE events are separated by a blank line.
+                while "\n\n" in sse_buffer:
+                    event_text, sse_buffer = sse_buffer.split("\n\n", 1)
+
+                    data_lines = []
+
+                    for line in event_text.splitlines():
+                        if line.startswith("data: "):
+                            data_lines.append(line[6:])
+
+                    if data_lines:
+                        process_sse_event("\n".join(data_lines).strip())
+
+            except Exception as e:
+                # Never allow diagnostic parsing to interfere with streaming.
+                print(
+                    f"GEMINI THOUGHT SIGNATURE PARSE ERROR: {type(e).__name__}",
+                    flush=True,
+                )
+
             yield chunk
+
     finally:
+        # Process a final complete event if one remains buffered.
+        try:
+            if sse_buffer.strip():
+                data_lines = []
+
+                for line in sse_buffer.splitlines():
+                    if line.startswith("data: "):
+                        data_lines.append(line[6:])
+
+                if data_lines:
+                    process_sse_event("\n".join(data_lines).strip())
+        except Exception:
+            pass
+
         await upstream.aclose()
         await client.aclose()

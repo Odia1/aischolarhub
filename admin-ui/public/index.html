@@ -3,12 +3,17 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<link rel="icon" href="/favicon.ico" type="image/x-icon">
+<link rel="icon" href="/favicon.ico?v=2" type="image/x-icon">
 <title>AI Scholar Hub — User Management</title>
 <style>
 body{font-family:system-ui,sans-serif;margin:0;background:#f6f7f9;color:#222}
-header{background:#20232a;color:#fff;padding:16px 25px;display:flex;justify-content:space-between}
-main{padding:24px;max-width:1500px;margin:auto}
+header{background:#20232a;color:#fff;padding:16px 25px;display:flex;justify-content:space-between;align-items:center}
+.brand{display:flex;align-items:baseline;gap:12px}
+.brand-name{font-size:20px;font-weight:700;letter-spacing:.2px}
+.brand-section{font-size:14px;color:#cfd3da}
+main{padding:24px;max-width:1500px;margin:auto;min-height:calc(100vh - 150px)}
+footer{border-top:1px solid #ddd;background:#fff;color:#666;padding:16px 25px;text-align:center;font-size:13px;line-height:1.6}
+footer strong{color:#333}
 .toolbar{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap}
 input,select,button{padding:9px 11px;border:1px solid #ccc;border-radius:6px;font-size:14px}
 input[type=text],input[type=email],input[type=password]{min-width:180px}
@@ -22,12 +27,81 @@ th{background:#f0f1f3}
 dialog{border:0;border-radius:10px;padding:25px;box-shadow:0 5px 30px #0003}
 form{display:grid;gap:10px;min-width:330px}
 .actions{white-space:nowrap}
+
+.domain-section{
+  margin-bottom:12px;
+  border:1px solid #ddd;
+  border-radius:8px;
+  background:#fff;
+  overflow:hidden;
+}
+
+.domain-header{
+  width:100%;
+  display:flex;
+  align-items:center;
+  gap:10px;
+  padding:13px 15px;
+  border:0;
+  border-radius:0;
+  background:#f0f1f3;
+  color:#222;
+  text-align:left;
+  cursor:pointer;
+  font-size:15px;
+}
+
+.domain-header:hover{
+  background:#e7e8eb;
+}
+
+.domain-arrow{
+  width:14px;
+  font-size:12px;
+}
+
+.domain-name{
+  font-weight:600;
+}
+
+.domain-count{
+  margin-left:auto;
+  color:#666;
+  font-size:13px;
+}
+
+.domain-content{
+  padding:0;
+}
+
+.domain-content table{
+  border-radius:0;
+}
+
+.domain-pagination{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  padding:10px 14px;
+  border-top:1px solid #eee;
+  background:#fafafa;
+  color:#666;
+  font-size:13px;
+}
+
+.domain-pagination button{
+  margin-left:6px;
+}
+
 </style>
 </head>
 <body>
 
 <header>
-  <span>AI Scholar Hub — User Management</span>
+  <div class="brand">
+    <div class="brand-name">AI Scholar Hub</div>
+    <div class="brand-section">Administrator Portal</div>
+  </div>
   <button onclick="logout()">Logout</button>
 </header>
 
@@ -48,14 +122,12 @@ form{display:grid;gap:10px;min-width:330px}
 
 <div id="status"></div>
 
-<table>
-<thead><tr>
-<th>Name</th><th>Username</th><th>Email</th><th>Role</th>
-<th>Provider</th><th>Created</th><th>Actions</th>
-</tr></thead>
-<tbody id="users"></tbody>
-</table>
+<div id="domainGroups"></div>
 </main>
+
+<footer>
+  <div><strong>AI Scholar Hub User-management Portal</strong> • Created by Prof. Priyadarsan Patra</div>
+</footer>
 
 <dialog id="createDialog">
 <form id="createForm">
@@ -113,31 +185,153 @@ const esc=v=>String(v??"")
 .replaceAll(">","&gt;").replaceAll('"',"&quot;")
 .replaceAll("'","&#039;");
 
+const USERS_PER_PAGE = 25;
+const domainPages = {};
+
+function getDomain(email){
+ const value=String(email||"").trim().toLowerCase();
+ const at=value.lastIndexOf("@");
+ return at>0 ? value.slice(at+1) : "(no domain)";
+}
+
+function renderDomain(domain, data){
+ const page=domainPages[domain]||1;
+ const totalPages=Math.max(1,Math.ceil(data.length/USERS_PER_PAGE));
+ const currentPage=Math.min(page,totalPages);
+ domainPages[domain]=currentPage;
+
+ const start=(currentPage-1)*USERS_PER_PAGE;
+ const rows=data.slice(start,start+USERS_PER_PAGE);
+
+ const section=document.createElement("section");
+ section.className="domain-section";
+
+ const header=document.createElement("button");
+ header.type="button";
+ header.className="domain-header";
+ header.innerHTML=`
+   <span class="domain-arrow">▶</span>
+   <span class="domain-name">${esc(domain)}</span>
+   <span class="domain-count">${data.length} account${data.length===1?"":"s"}</span>
+ `;
+ 
+ const content=document.createElement("div");
+ content.className="domain-content";
+ content.hidden=true;
+
+ header.onclick=()=>{
+   content.hidden=!content.hidden;
+   header.querySelector(".domain-arrow").textContent=
+     content.hidden ? "▶" : "▼";
+ };
+
+ const table=document.createElement("table");
+ table.innerHTML=`
+ <thead><tr>
+ <th>Name</th><th>Username</th><th>Email</th><th>Role</th>
+ <th>Provider</th><th>Created</th><th>Actions</th>
+ </tr></thead>`;
+
+ const tbody=document.createElement("tbody");
+
+ rows.forEach(u=>{
+   const tr=document.createElement("tr");
+   tr.innerHTML=`
+   <td>${esc(u.name)}</td>
+   <td>${esc(u.username||"")}</td>
+   <td>${esc(u.email)}</td>
+   <td>${esc(u.role)}</td>
+   <td>${esc(u.provider||"")}</td>
+   <td>${u.createdAt?new Date(u.createdAt).toLocaleDateString():""}</td>
+   <td class="actions">
+     <button onclick='editUser(${JSON.stringify(u)})'>Edit</button>
+     <button onclick='sendReset("${u._id}","${esc(u.email)}")'>Send Link</button>
+     <button class="danger" onclick='deleteUser("${u._id}","${esc(u.name||u.email)}")'>Delete</button>
+   </td>`;
+   tbody.appendChild(tr);
+ });
+
+ table.appendChild(tbody);
+ content.appendChild(table);
+
+ if(totalPages>1){
+   const pagination=document.createElement("div");
+   pagination.className="domain-pagination";
+
+   const info=document.createElement("span");
+   info.textContent=`Page ${currentPage} of ${totalPages}`;
+
+   const controls=document.createElement("div");
+
+   const prev=document.createElement("button");
+   prev.textContent="‹ Previous";
+   prev.disabled=currentPage===1;
+   prev.onclick=()=>{
+     domainPages[domain]=currentPage-1;
+     renderUsers(currentRenderedUsers);
+   };
+
+   const next=document.createElement("button");
+   next.textContent="Next ›";
+   next.disabled=currentPage===totalPages;
+   next.onclick=()=>{
+     domainPages[domain]=currentPage+1;
+     renderUsers(currentRenderedUsers);
+   };
+
+   controls.append(prev,next);
+   pagination.append(info,controls);
+   content.appendChild(pagination);
+ }
+
+ section.append(header,content);
+ return section;
+}
+
+let currentRenderedUsers=[];
+
+function renderUsers(data){
+ currentRenderedUsers=data;
+
+ const groups={};
+
+ data.forEach(u=>{
+   const domain=getDomain(u.email);
+   if(!groups[domain])groups[domain]=[];
+   groups[domain].push(u);
+ });
+
+ domainGroups.innerHTML="";
+
+ Object.keys(groups)
+   .sort((a,b)=>a.localeCompare(b))
+   .forEach(domain=>{
+     domainGroups.appendChild(renderDomain(domain,groups[domain]));
+   });
+}
+
 async function loadUsers(){
  const q=encodeURIComponent(search.value);
  const role=encodeURIComponent(document.getElementById("role").value);
  const r=await fetch(`/api/users?q=${q}&role=${role}`);
- if(r.status===401){location.href="/login";return}
+
+ if(r.status===401){
+   location.href="/login";
+   return;
+ }
+
  const data=await r.json();
- if(!r.ok){status.textContent=data.error;return}
+
+ if(!r.ok){
+   status.textContent=data.error;
+   return;
+ }
+
  status.textContent=`${data.length} user(s)`;
- users.innerHTML="";
- data.forEach(u=>{
-  const tr=document.createElement("tr");
-  tr.innerHTML=`
-  <td>${esc(u.name)}</td>
-  <td>${esc(u.username||"")}</td>
-  <td>${esc(u.email)}</td>
-  <td>${esc(u.role)}</td>
-  <td>${esc(u.provider||"")}</td>
-  <td>${u.createdAt?new Date(u.createdAt).toLocaleDateString():""}</td>
-  <td class="actions">
-    <button onclick='editUser(${JSON.stringify(u)})'>Edit</button>
-    <button onclick='sendReset("${u._id}","${esc(u.email)}")'>Send Link</button>
-    <button class="danger" onclick='deleteUser("${u._id}","${esc(u.name||u.email)}")'>Delete</button>
-  </td>`;
-  users.appendChild(tr);
- });
+
+ Object.keys(domainPages).forEach(k=>delete domainPages[k]);
+
+ renderUsers(data);
 }
 
 createForm.onsubmit=async e=>{
