@@ -68,7 +68,8 @@ set -Eeuo pipefail
 # Configuration
 # -----------------------------------------------------------------------------
 
-PROJECT_DIR="/opt/aischolarhub"
+source /opt/scholarhub-project-roots.env
+PROJECT_DIR="$DEV_PROJECT_DIR"
 BACKUP_DIR="${PROJECT_DIR}/backups"
 
 # Docker Compose service/container names used by the current project.

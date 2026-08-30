@@ -37,7 +37,8 @@
 
 set -euo pipefail
 
-PROJECT_DIR="/opt/aischolarhub"
+source /opt/scholarhub-project-roots.env
+PROJECT_DIR="$DEV_PROJECT_DIR"
 BACKUP_DIR="${PROJECT_DIR}/backups"
 
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")

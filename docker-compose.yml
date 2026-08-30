@@ -51,7 +51,7 @@ services:
     working_dir: /app
     command: sh -c "npm start"
     ports:
-      - "127.0.0.1:3090:3090"
+      - "127.0.0.1:3091:3090"
     environment:
       MONGO_URI: mongodb://${MONGO_INITDB_ROOT_USERNAME}:${MONGO_INITDB_ROOT_PASSWORD}@mongodb:27017/LibreChat?authSource=admin
     volumes:
