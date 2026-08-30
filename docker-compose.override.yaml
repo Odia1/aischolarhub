@@ -1,0 +1,55 @@
+services:
+  api:
+    container_name: AI_Scholar_Hub
+
+    build:
+      context: /opt/aischolarhub
+      dockerfile: Dockerfile
+
+    image: aischolarhub-custom:latest
+
+    ports: !override
+      - "127.0.0.1:3080:3080"
+
+    volumes:
+      - /opt/aischolarhub/librechat.yaml:/app/librechat.yaml
+      - /opt/aischolarhub/.env:/app/.env
+      - /opt/aischolarhub/images:/app/client/public/images
+      - /opt/aischolarhub/uploads:/app/uploads
+      - /opt/aischolarhub/logs:/app/logs
+      - /opt/aischolarhub/skill:/app/skill
+
+    depends_on:
+      - gemini-proxy
+
+#Gemini-proxy to server keys in roundrobin
+  gemini-proxy:
+    build:
+      context: /opt/aischolarhub/gemini-proxy
+      dockerfile: Dockerfile
+
+    container_name: aischolarhub-gemini-proxy
+
+    restart: always
+
+    env_file:
+      - /opt/aischolarhub/.gemini-proxy.env
+
+    expose:
+      - "8000"
+
+  admin-panel:
+    image: aischolarhub-admin-panel:latest
+    ports: !override
+      - "127.0.0.1:3081:3000"
+      
+  academic-research-mcp:
+    build:
+      context: ./academic-research-mcp
+    container_name: academic-research-mcp
+    restart: unless-stopped
+    env_file:
+      - .env
+    expose:
+      - "8000"
+

@@ -7,6 +7,13 @@
 #   RAG API             -> PostgreSQL/pgvector (vectordb)
 #   RAG embeddings      -> Ollama (aischolarhub-ollama)
 #
+# Persistent storage:
+#   MongoDB             -> ./data-node
+#   PostgreSQL          -> Docker volume (aischolarhub_pgdata2)
+#   Ollama              -> ./ollama_data
+#   Uploaded documents  -> ./uploads
+#   LibreChat /app/data -> Docker volume (aischolarhub_librechat-data)
+#
 # Retention:
 #   3 most recent backups
 #   + 2 additional Sunday snapshots
@@ -16,9 +23,12 @@
 #   - PostgreSQL/pgvector database
 #   - Ollama models/data
 #   - Uploaded documents
-#   - LibreChat configuration
+#   - LibreChat /app/data volume
 #   - .env
 #   - docker-compose.yml
+#   - docker-compose.override.yaml
+#   - librechat.yaml
+#   - config/
 #   - deployment/container metadata
 #
 # IMPORTANT:
@@ -37,6 +47,7 @@ TEMP_TARGET="${BACKUP_DIR}/temp_backup_${TIMESTAMP}"
 MONGO_CONTAINER="chat-mongodb"
 PGVECTOR_CONTAINER="vectordb"
 OLLAMA_CONTAINER="aischolarhub-ollama"
+LIBRECHAT_CONTAINER="LibreChat"
 
 echo "============================================================"
 echo "[$(date)] AI-Scholar-Hub backup starting"
@@ -73,7 +84,12 @@ cd "${PROJECT_DIR}"
 
 echo "[$(date)] Checking containers..."
 
-for container in "${MONGO_CONTAINER}" "${PGVECTOR_CONTAINER}" "${OLLAMA_CONTAINER}"; do
+for container in \
+    "${MONGO_CONTAINER}" \
+    "${PGVECTOR_CONTAINER}" \
+    "${OLLAMA_CONTAINER}" \
+    "${LIBRECHAT_CONTAINER}"
+do
     if ! docker inspect -f '{{.State.Running}}' "${container}" 2>/dev/null | grep -q true; then
         echo "ERROR: Required container is not running: ${container}"
         exit 1
@@ -110,6 +126,7 @@ if [ -z "${MONGO_INITDB_ROOT_PASSWORD}" ]; then
     echo "ERROR: MONGO_INITDB_ROOT_PASSWORD is missing from .env"
     exit 1
 fi
+
 export MONGO_INITDB_ROOT_USERNAME
 export MONGO_INITDB_ROOT_PASSWORD
 
@@ -141,7 +158,7 @@ echo "[$(date)] MongoDB dump complete."
 # 4. Dump PostgreSQL / pgvector
 #
 # Read credentials from the ACTUAL running container rather than sourcing .env.
-# This avoids the shell-environment override problem we encountered.
+# This avoids the shell-environment override problem.
 # -----------------------------------------------------------------------------
 
 echo "[$(date)] Dumping PostgreSQL/pgvector..."
@@ -180,9 +197,9 @@ if [ -d "${PROJECT_DIR}/ollama_data" ]; then
     echo "[$(date)] Backing up Ollama data/models..."
 
     tar -czf "${TEMP_TARGET}/ollama_data.tar.gz" \
-    --exclude='ollama_data/cache/model-recommendations.json' \
-    -C "${PROJECT_DIR}" \
-    ollama_data
+        --exclude='ollama_data/cache/model-recommendations.json' \
+        -C "${PROJECT_DIR}" \
+        ollama_data
 
     echo "[$(date)] Ollama backup complete."
 else
@@ -207,30 +224,89 @@ else
 fi
 
 # -----------------------------------------------------------------------------
-# 7. Back up important configuration
+# 7. Back up LibreChat /app/data Docker volume
+#
+# The volume is discovered from the LIVE LibreChat container.
+#
+# Current discovered volume:
+#   aischolarhub_librechat-data
+#
+# Current contents include:
+#   /data/logs.json
+#   /data/violations.json
+# -----------------------------------------------------------------------------
+
+echo "[$(date)] Locating LibreChat /app/data volume..."
+
+LIBRECHAT_DATA_VOLUME="$(
+    docker inspect "${LIBRECHAT_CONTAINER}" \
+        --format '{{range .Mounts}}{{if eq .Destination "/app/data"}}{{.Name}}{{end}}{{end}}'
+)"
+
+if [ -n "${LIBRECHAT_DATA_VOLUME}" ]; then
+
+    echo "[$(date)] LibreChat data volume: ${LIBRECHAT_DATA_VOLUME}"
+    echo "[$(date)] Backing up LibreChat application data..."
+
+    docker run --rm \
+        -v "${LIBRECHAT_DATA_VOLUME}:/data:ro" \
+        -v "${TEMP_TARGET}:/backup" \
+        alpine \
+        sh -c 'tar -czf /backup/librechat-data.tar.gz -C /data .'
+
+    echo "[$(date)] LibreChat application data backup complete."
+
+else
+    echo "ERROR: Could not locate /app/data volume on ${LIBRECHAT_CONTAINER}"
+    exit 1
+fi
+
+# -----------------------------------------------------------------------------
+# 8. Back up important configuration
 # -----------------------------------------------------------------------------
 
 echo "[$(date)] Copying configuration..."
 
+# Core environment
 cp "${PROJECT_DIR}/.env" \
    "${TEMP_TARGET}/.env"
 
+# Main Compose file
 cp "${PROJECT_DIR}/docker-compose.yml" \
    "${TEMP_TARGET}/docker-compose.yml"
 
+# Active Compose override
+if [ -f "${PROJECT_DIR}/docker-compose.override.yaml" ]; then
+    cp "${PROJECT_DIR}/docker-compose.override.yaml" \
+       "${TEMP_TARGET}/docker-compose.override.yaml"
+fi
+
+# Compose example/template
+if [ -f "${PROJECT_DIR}/docker-compose.override.yml.example" ]; then
+    cp "${PROJECT_DIR}/docker-compose.override.yml.example" \
+       "${TEMP_TARGET}/docker-compose.override.yml.example"
+fi
+
+# LibreChat application configuration
+if [ -f "${PROJECT_DIR}/librechat.yaml" ]; then
+    cp "${PROJECT_DIR}/librechat.yaml" \
+       "${TEMP_TARGET}/librechat.yaml"
+fi
+
+# Custom configuration/scripts
 if [ -d "${PROJECT_DIR}/config" ]; then
     cp -a "${PROJECT_DIR}/config" \
        "${TEMP_TARGET}/config"
 fi
 
-# Keep the backup script itself if it exists
+# Keep the backup script itself
 if [ -f "${PROJECT_DIR}/backup.sh" ]; then
     cp "${PROJECT_DIR}/backup.sh" \
        "${TEMP_TARGET}/backup.sh"
 fi
 
 # -----------------------------------------------------------------------------
-# 8. Record current Docker/project state
+# 9. Record current Docker/project state
 # -----------------------------------------------------------------------------
 
 echo "[$(date)] Recording deployment state..."
@@ -243,7 +319,7 @@ docker images \
     > "${TEMP_TARGET}/docker-images.txt"
 
 docker compose config \
-	   > "${TEMP_TARGET}/docker-compose-effective.yml"
+    > "${TEMP_TARGET}/docker-compose-effective.yml"
 
 # Record versions / useful diagnostic information
 {
@@ -273,20 +349,36 @@ docker compose config \
         -c "SELECT extname, extversion FROM pg_extension WHERE extname='vector';" \
         2>/dev/null || true
     echo
+    echo "PostgreSQL Docker volume:"
+    docker inspect "${PGVECTOR_CONTAINER}" \
+        --format '{{range .Mounts}}{{if eq .Destination "/var/lib/postgresql/data"}}{{.Name}}{{end}}{{end}}'
+    echo
+    echo "LibreChat /app/data Docker volume:"
+    echo "${LIBRECHAT_DATA_VOLUME}"
+    echo
     echo "Ollama models:"
     docker exec "${OLLAMA_CONTAINER}" ollama list 2>/dev/null || true
 } > "${TEMP_TARGET}/backup-manifest.txt"
 
 # -----------------------------------------------------------------------------
-# 9. Change detection
+# 10. Change detection
 #
-# Do NOT include timestamps in the files being hashed.
+# Do NOT include transient information in the state hash.
+#
+# backup-manifest.txt contains a timestamp and is excluded.
+# docker-compose-ps.txt contains runtime state and is excluded.
+#
+# Persistent data and configuration remain part of the hash.
 # -----------------------------------------------------------------------------
 
 echo "[$(date)] Computing state checksum..."
 
 CURRENT_HASH=$(
-    find "${TEMP_TARGET}" -type f -print0 \
+    find "${TEMP_TARGET}" \
+        -type f \
+        ! -name 'backup-manifest.txt' \
+        ! -name 'docker-compose-ps.txt' \
+        -print0 \
         | sort -z \
         | xargs -0 sha256sum \
         | sha256sum \
@@ -311,7 +403,7 @@ if [ -f "${LATEST_HASH_FILE}" ]; then
 fi
 
 # -----------------------------------------------------------------------------
-# 10. Create backup archive
+# 11. Create backup archive
 # -----------------------------------------------------------------------------
 
 ARCHIVE_NAME="aischolar_backup_${TIMESTAMP}.tar.gz"
@@ -339,7 +431,7 @@ trap - EXIT
 echo "[$(date)] Backup archive created successfully."
 
 # -----------------------------------------------------------------------------
-# 11. Retention policy
+# 12. Retention policy
 #
 # Keep:
 #   - 3 newest backups
@@ -399,7 +491,7 @@ for file in "${ALL_BACKUPS[@]}"; do
 done
 
 # -----------------------------------------------------------------------------
-# 12. Final report
+# 13. Final report
 # -----------------------------------------------------------------------------
 
 echo

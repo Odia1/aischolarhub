@@ -77,8 +77,8 @@ api/tsconfig.json
 .flooignore
 
 #config file
-librechat.yaml
-librechat.yml
+#???
+
 
 # Environment
 .npmrc
@@ -112,8 +112,7 @@ junit.xml
 **/venv/
 
 # docker override file
-docker-compose.override.yaml
-docker-compose.override.yml
+
 
 # meilisearch
 meilisearch
@@ -208,3 +207,6 @@ librechat.works.yaml
 
 # Local standalone admin-panel repository
 aishub-admin-panel/
+
+# Recovered Docker image filesystem — not source
+mcp-image-recovery/
