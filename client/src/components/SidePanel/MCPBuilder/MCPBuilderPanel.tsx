@@ -1,3 +1,4 @@
+import { isPrivilegedAdmin, isPlatformAdmin } from '~/utils/rbac';
 import { useState, useRef, useMemo, useEffect } from 'react';
 import { Plus } from 'lucide-react';
 import { useRecoilValue } from 'recoil';
@@ -119,7 +120,7 @@ export default function MCPBuilderPanel() {
       {/* Config Dialog for custom user vars */}
       {configDialogProps && <MCPConfigDialog {...configDialogProps} />}
 
-      {user?.role === SystemRoles.ADMIN && (
+      {isPrivilegedAdmin(user) && (
         <PanelFooter>
           <MCPAdminSettings />
         </PanelFooter>

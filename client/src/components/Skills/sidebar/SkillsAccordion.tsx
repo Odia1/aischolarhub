@@ -1,3 +1,4 @@
+import { isPrivilegedAdmin, isPlatformAdmin } from '~/utils/rbac';
 import { SystemRoles } from 'librechat-data-provider';
 import { AdminSettings } from '~/components/Skills/buttons';
 import SkillsSidePanel from './SkillsSidePanel';
@@ -9,7 +10,7 @@ export default function SkillsAccordion() {
   return (
     <div className="flex h-full w-full flex-col overflow-hidden">
       <SkillsSidePanel className="min-h-0 flex-1 border-r-0" />
-      {user?.role === SystemRoles.ADMIN && (
+      {isPrivilegedAdmin(user) && (
         <PanelFooter>
           <AdminSettings />
         </PanelFooter>

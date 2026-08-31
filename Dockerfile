@@ -4,8 +4,12 @@
 FROM node:24.16.0-alpine AS node
 
 RUN apk upgrade --no-cache
-RUN apk add --no-cache jemalloc
-RUN apk add --no-cache python3 py3-pip uv
+RUN apk add --no-cache \
+    jemalloc \
+    tzdata \
+    python3 \
+    py3-pip \
+    uv
 
 # Set environment variable to use jemalloc
 ENV LD_PRELOAD=/usr/lib/libjemalloc.so.2
@@ -56,9 +60,13 @@ COPY --chown=node:node . .
 
 RUN \
     # React client build with configurable memory
-    NODE_OPTIONS="--max-old-space-size=${NODE_MAX_OLD_SPACE_SIZE}" npm run frontend; \
-    npm prune --production; \
+    NODE_OPTIONS="--max-old-space-size=${NODE_MAX_OLD_SPACE_SIZE}" npm run frontend && \
+    echo "=== VERIFY FRONTEND BUILD ===" && \
+    ls -la /app/client/dist && \
+    test -f /app/client/dist/index.html && \
+    npm prune --production && \
     npm cache clean --force
+
 
 # Optional build metadata surfaced in Settings -> About for support triage.
 # Declared here (after the heavy install/build steps) so that commit/date

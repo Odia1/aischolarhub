@@ -14,6 +14,7 @@ import type { Response } from 'express';
 import type { ServerRequest } from '~/types/http';
 import { parsePagination } from './pagination';
 import { buildAuditContext } from './context';
+import { canAssignRole, isInstitutionAdminRole } from './institutionAuthorization';
 
 const systemRoleValues = new Set<string>(Object.values(SystemRoles));
 
@@ -246,6 +247,9 @@ export function createAdminRolesHandlers(deps: AdminRolesDeps): {
       const nameError = validateRoleName(name, true);
       if (nameError) {
         return res.status(400).json({ error: nameError });
+      }
+      if (isSystemRoleName((name as string).trim())) {
+        return res.status(403).json({ error: 'Cannot create a reserved system role' });
       }
       const descError = validateDescription(description);
       if (descError) {
@@ -519,7 +523,33 @@ export function createAdminRolesHandlers(deps: AdminRolesDeps): {
         return res.status(400).json({ error: 'Invalid user ID format' });
       }
 
-      if (isSystemRoleName(name) && name !== SystemRoles.ADMIN) {
+      const requestedTenantId =
+        typeof (req.body as { institutionId?: unknown }).institutionId === 'string'
+          ? (req.body as { institutionId: string }).institutionId.trim()
+          : undefined;
+      const targetUser = await findUser(
+        isInstitutionAdminRole(req.user?.role)
+          ? { _id: userId, tenantId: req.user?.tenantId }
+          : { _id: userId },
+        'role tenantId',
+      );
+      if (!targetUser) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+      const targetTenantId = requestedTenantId ?? targetUser.tenantId;
+      if (!canAssignRole(
+        { role: req.user?.role, tenantId: req.user?.tenantId, id: req.user?._id?.toString() ?? req.user?.id },
+        name,
+        targetTenantId,
+        userId,
+      )) {
+        return res.status(403).json({ error: 'Role assignment is not permitted' });
+      }
+      if (name === SystemRoles.INSTITUTION_ADMIN && !targetTenantId) {
+        return res.status(400).json({ error: 'institutionId is required for Institution Admin' });
+      }
+
+      if (isSystemRoleName(name) && name !== SystemRoles.ADMIN && name !== SystemRoles.INSTITUTION_ADMIN) {
         return res.status(403).json({ error: 'Cannot directly assign members to a system role' });
       }
 
@@ -528,12 +558,9 @@ export function createAdminRolesHandlers(deps: AdminRolesDeps): {
         return res.status(404).json({ error: 'Role not found' });
       }
 
-      const user = await findUser({ _id: userId });
-      if (!user) {
-        return res.status(404).json({ error: 'User not found' });
-      }
+      const user = targetUser;
 
-      if (user.role === name) {
+      if (user.role === name && (name !== SystemRoles.INSTITUTION_ADMIN || user.tenantId === targetTenantId)) {
         return res.status(200).json({ success: true });
       }
 
@@ -544,7 +571,12 @@ export function createAdminRolesHandlers(deps: AdminRolesDeps): {
         }
       }
 
-      const updated = await updateUser(userId, { role: name });
+      const updated = await updateUser(userId, {
+        role: name,
+        ...(name === SystemRoles.INSTITUTION_ADMIN || requestedTenantId !== undefined
+          ? { tenantId: targetTenantId }
+          : {}),
+      });
       if (!updated) {
         return res.status(404).json({ error: 'User not found' });
       }
@@ -591,9 +623,21 @@ export function createAdminRolesHandlers(deps: AdminRolesDeps): {
         return res.status(404).json({ error: 'Role not found' });
       }
 
-      const user = await findUser({ _id: userId });
+      const user = await findUser(
+        isInstitutionAdminRole(req.user?.role)
+          ? { _id: userId, tenantId: req.user?.tenantId }
+          : { _id: userId },
+      );
       if (!user) {
         return res.status(404).json({ error: 'User not found' });
+      }
+      if (!canAssignRole(
+        { role: req.user?.role, tenantId: req.user?.tenantId, id: req.user?._id?.toString() ?? req.user?.id },
+        SystemRoles.USER,
+        user.tenantId,
+        userId,
+      ) && isInstitutionAdminRole(req.user?.role)) {
+        return res.status(403).json({ error: 'Role assignment is not permitted' });
       }
 
       if (user.role !== name) {

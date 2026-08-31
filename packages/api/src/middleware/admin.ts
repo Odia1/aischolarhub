@@ -3,9 +3,30 @@ import { SystemRoles } from 'librechat-data-provider';
 import type { NextFunction, Response } from 'express';
 import type { ServerRequest } from '~/types/http';
 
+const normalizeRole = (role: unknown): string =>
+  typeof role === 'string' ? role.toUpperCase() : '';
+
+export const isSuperadmin = (req: ServerRequest): boolean =>
+  normalizeRole(req.user?.role) === SystemRoles.SUPERADMIN;
+
+export const isPlatformAdmin = (req: ServerRequest): boolean => {
+  const role = normalizeRole(req.user?.role);
+
+  return (
+    role === SystemRoles.ADMIN ||
+    role === SystemRoles.PLATFORM_ADMIN ||
+    role === SystemRoles.SUPERADMIN
+  );
+};
+
+export const isInstitutionAdmin = (req: ServerRequest): boolean =>
+  normalizeRole(req.user?.role) === SystemRoles.INSTITUTION_ADMIN;
+
 /**
- * Middleware to check if authenticated user has admin role.
- * Should be used AFTER authentication middleware (requireJwtAuth, requireLocalAuth, etc.)
+ * Legacy/general administrator access.
+ *
+ * ADMIN, PLATFORM_ADMIN and INSTITUTION_ADMIN are accepted for backward
+ * compatibility with existing LibreChat admin routes.
  */
 export const requireAdmin = (
   req: ServerRequest,
@@ -14,17 +35,209 @@ export const requireAdmin = (
 ): Response | undefined => {
   if (!req.user) {
     logger.warn('[requireAdmin] No user found in request');
+
     return res.status(401).json({
       error: 'Authentication required',
       error_code: 'AUTHENTICATION_REQUIRED',
     });
   }
 
-  if (!req.user.role || req.user.role !== SystemRoles.ADMIN) {
-    logger.debug(`[requireAdmin] Access denied for non-admin user: ${req.user.email}`);
+  if (!isPlatformAdmin(req) && !isInstitutionAdmin(req)) {
+    logger.debug('[requireAdmin] Access denied', {
+      user: req.user.email,
+      role: req.user.role,
+    });
+
     return res.status(403).json({
-      error: 'Access denied: Admin privileges required',
+      error: 'Access denied: administrator privileges required',
       error_code: 'ADMIN_REQUIRED',
+    });
+  }
+
+  next();
+};
+
+/**
+ * Platform-wide administration.
+ *
+ * ADMIN is retained for backward compatibility.
+ * PLATFORM_ADMIN and SUPERADMIN are platform-scoped.
+ *
+ * This middleware does NOT authorize permanent institution deletion.
+ */
+export const requirePlatformAdmin = (
+  req: ServerRequest,
+  res: Response,
+  next: NextFunction,
+): Response | undefined => {
+  if (!req.user) {
+    return res.status(401).json({
+      error: 'Authentication required',
+      error_code: 'AUTHENTICATION_REQUIRED',
+    });
+  }
+
+  if (!isPlatformAdmin(req)) {
+    logger.debug('[requirePlatformAdmin] Access denied', {
+      user: req.user.email,
+      role: req.user.role,
+    });
+
+    return res.status(403).json({
+      error: 'Platform administrator privileges required',
+      error_code: 'PLATFORM_ADMIN_REQUIRED',
+    });
+  }
+
+  next();
+};
+
+/**
+ * Institution administration.
+ *
+ * INSTITUTION_ADMIN is limited to its own institution.
+ * PLATFORM_ADMIN and SUPERADMIN may administer institutions platform-wide.
+ * ADMIN remains accepted for backward compatibility.
+ */
+export const requireInstitutionAdmin = (
+  req: ServerRequest,
+  res: Response,
+  next: NextFunction,
+): Response | undefined => {
+  if (!req.user) {
+    return res.status(401).json({
+      error: 'Authentication required',
+      error_code: 'AUTHENTICATION_REQUIRED',
+    });
+  }
+
+  if (!isInstitutionAdmin(req) && !isPlatformAdmin(req)) {
+    logger.debug('[requireInstitutionAdmin] Access denied', {
+      user: req.user.email,
+      role: req.user.role,
+    });
+
+    return res.status(403).json({
+      error: 'Institution administrator privileges required',
+      error_code: 'INSTITUTION_ADMIN_REQUIRED',
+    });
+  }
+
+  next();
+};
+
+/**
+ * Require an authenticated user with institution context.
+ *
+ * Platform-scoped administrators may operate without tenantId.
+ */
+export const requireInstitutionContext = (
+  req: ServerRequest,
+  res: Response,
+  next: NextFunction,
+): Response | undefined => {
+  if (!req.user) {
+    return res.status(401).json({
+      error: 'Authentication required',
+      error_code: 'AUTHENTICATION_REQUIRED',
+    });
+  }
+
+  if (isPlatformAdmin(req)) {
+    next();
+    return;
+  }
+
+  if (!req.user.tenantId) {
+    return res.status(403).json({
+      error: 'Institution context required',
+      error_code: 'INSTITUTION_CONTEXT_REQUIRED',
+    });
+  }
+
+  next();
+};
+
+/**
+ * Allows platform administrators to operate across institutions.
+ *
+ * INSTITUTION_ADMIN may operate only against its own tenantId.
+ */
+export const requireInstitutionScope = (
+  req: ServerRequest,
+  res: Response,
+  next: NextFunction,
+): Response | undefined => {
+  if (!req.user) {
+    return res.status(401).json({
+      error: 'Authentication required',
+      error_code: 'AUTHENTICATION_REQUIRED',
+    });
+  }
+
+  if (isPlatformAdmin(req)) {
+    next();
+    return;
+  }
+
+  const userTenantId = req.user.tenantId?.trim();
+
+  const params = req.params as Record<string, string | undefined>;
+
+  // Path parameters are routing metadata and may be used to select the target.
+  // Body tenant identifiers are NEVER trusted to establish authorization scope.
+  const targetTenantId = params.tenantId ?? params.institutionId;
+
+  if (isInstitutionAdmin(req) && userTenantId) {
+    // Routes without an explicit institution parameter operate on the caller's
+    // authenticated tenant. Routes with one must match it exactly.
+    if (!targetTenantId || targetTenantId === userTenantId) {
+      next();
+      return;
+    }
+  }
+
+  logger.warn('[requireInstitutionScope] Access denied', {
+    user: req.user.email,
+    role: req.user.role,
+    userTenantId,
+    targetTenantId,
+  });
+
+  return res.status(403).json({
+    error: 'Institution scope violation',
+    error_code: 'INSTITUTION_SCOPE_REQUIRED',
+  });
+};
+
+/**
+ * Permanent institution/data deletion.
+ *
+ * SUPERADMIN ONLY.
+ *
+ * PLATFORM_ADMIN must never be allowed through this middleware.
+ */
+export const requireInstitutionDeletion = (
+  req: ServerRequest,
+  res: Response,
+  next: NextFunction,
+): Response | undefined => {
+  if (!req.user) {
+    return res.status(401).json({
+      error: 'Authentication required',
+      error_code: 'AUTHENTICATION_REQUIRED',
+    });
+  }
+
+  if (!isSuperadmin(req)) {
+    logger.warn('[requireInstitutionDeletion] Access denied', {
+      user: req.user.email,
+      role: req.user.role,
+    });
+
+    return res.status(403).json({
+      error: 'Superadmin privileges required',
+      error_code: 'SUPERADMIN_REQUIRED',
     });
   }
 

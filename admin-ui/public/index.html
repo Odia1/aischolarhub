@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <link rel="icon" href="/favicon.ico?v=2" type="image/x-icon">
-<title>AI Scholar Hub — User Management</title>
+<title>AI Scholar Hub — Administration</title>
 <style>
 body{font-family:system-ui,sans-serif;margin:0;background:#f6f7f9;color:#222}
 header{background:#20232a;color:#fff;padding:16px 25px;display:flex;justify-content:space-between;align-items:center}
@@ -27,6 +27,13 @@ th{background:#f0f1f3}
 dialog{border:0;border-radius:10px;padding:25px;box-shadow:0 5px 30px #0003}
 form{display:grid;gap:10px;min-width:330px}
 .actions{white-space:nowrap}
+.badge{display:inline-block;padding:3px 8px;border-radius:999px;font-size:12px;font-weight:600;background:#e9eaed}
+.badge.enabled{background:#e6f5ea;color:#176b2c}.badge.disabled{background:#fce8e8;color:#9b1c1c}
+.panel{background:#fff;border:1px solid #ddd;border-radius:10px;padding:16px;margin-bottom:18px}
+.panel h2{margin:0 0 12px;font-size:18px}.muted{color:#666;font-size:13px}
+.institution-grid{display:grid;gap:10px}.institution-row{display:grid;grid-template-columns:1.2fr 1fr .7fr 2fr auto;gap:12px;align-items:center;border-top:1px solid #eee;padding:12px 0}.institution-row:first-child{border-top:0}.institution-actions{display:flex;gap:6px;justify-content:flex-end}.empty{padding:18px;text-align:center;color:#777}
+.hidden{display:none!important}
+
 
 .domain-section{
   margin-bottom:12px;
@@ -102,26 +109,29 @@ form{display:grid;gap:10px;min-width:330px}
     <div class="brand-name">AI Scholar Hub</div>
     <div class="brand-section">Administrator Portal</div>
   </div>
-  <button onclick="logout()">Logout</button>
+  <div style="display:flex;align-items:center;gap:10px"><span id="identity" class="muted" style="color:#d7d9de"></span><button onclick="logout()">Logout</button></div>
 </header>
 
 <main>
+<section id="institutionPanel" class="panel hidden">
+  <div style="display:flex;justify-content:space-between;align-items:center;gap:12px">
+    <div><h2>Institutions</h2><div class="muted">Manage institutional tenants and their Institution Administrators.</div></div>
+    <button id="addInstitutionButton" class="primary" onclick="institutionDialog.showModal()">+ Add Institution</button>
+  </div>
+  <div id="institutionList" class="institution-grid"></div>
+</section>
+
 <div class="toolbar">
 <input id="search" placeholder="Search name, username or email">
-<select id="role">
-<option value="">All roles</option>
-<option>USER</option>
-<option>Instructor</option>
-<option>ADMIN</option>
-</select>
+<select id="role"><option value="">All roles</option><option>USER</option><option>Instructor</option><option>INSTITUTION_ADMIN</option><option>PLATFORM_ADMIN</option><option>ADMIN</option></select>
 <button onclick="loadUsers()">Search</button>
-<button class="primary" onclick="createDialog.showModal()">+ Create User</button>
+<button class="primary" onclick="openCreateDialog()">+ Create User</button>
 <button onclick="bulkDialog.showModal()">↑ Bulk CSV</button>
 <button onclick="location.href='/api/users/export'">↓ Export CSV</button>
 </div>
 
+<div id="scopeNotice" class="muted" style="margin:-6px 0 12px"></div>
 <div id="status"></div>
-
 <div id="domainGroups"></div>
 </main>
 
@@ -135,7 +145,7 @@ form{display:grid;gap:10px;min-width:330px}
 <input id="cname" placeholder="Name" required>
 <input id="cusername" placeholder="Username">
 <input id="cemail" type="email" placeholder="Email" required>
-<select id="crole"><option>USER</option><option>Instructor</option><option>ADMIN</option></select>
+<select id="crole"></select><select id="ctenant" class="hidden"></select>
 <p style="margin:0;color:#555;font-size:13px">
 A one-time password setup link will be emailed to the user.
 </p>
@@ -149,10 +159,30 @@ A one-time password setup link will be emailed to the user.
 <h3>Edit User</h3>
 <input id="ename" placeholder="Name" required>
 <input id="eusername" placeholder="Username">
-<select id="erole"><option>USER</option><option>Instructor</option><option>ADMIN</option></select>
+<select id="erole"></select><select id="etenant" class="hidden"></select>
 <input id="epassword" type="password" placeholder="New password (optional)">
 <button class="primary">Save</button>
 <button type="button" onclick="editDialog.close()">Cancel</button>
+</form>
+</dialog>
+
+<dialog id="institutionDialog">
+<form id="institutionForm">
+<h3>Add Institution</h3>
+<input id="iid" placeholder="Institution ID (e.g. nist)" required pattern="[-a-zA-Z0-9_.]{1,128}">
+<input id="iname" placeholder="Institution name" required maxlength="200">
+<button class="primary">Create Institution</button>
+<button type="button" onclick="institutionDialog.close()">Cancel</button>
+</form>
+</dialog>
+
+<dialog id="assignDialog">
+<form id="assignForm">
+<h3>Assign Institution Admin</h3>
+<div id="assignInstitutionLabel" class="muted"></div>
+<select id="assignUser" required></select>
+<button class="primary">Assign Institution Admin</button>
+<button type="button" onclick="assignDialog.close()">Cancel</button>
 </form>
 </dialog>
 
@@ -162,11 +192,11 @@ A one-time password setup link will be emailed to the user.
 
 <p>
   CSV format:
-  <code>name,email,role</code>
+  <code>name,email,role,institutionId</code>
 </p>
 
 <p>
-  Role is optional and defaults to <b>USER</b>.
+  Role is optional and defaults to <b>USER</b>. For <b>INSTITUTION_ADMIN</b>, <b>institutionId</b> is required.
   Setup links will be emailed automatically to newly created users.
 </p>
 
@@ -177,319 +207,140 @@ A one-time password setup link will be emailed to the user.
 </form>
 </dialog>
 
-<script>
-let editingId=null;
-
-const esc=v=>String(v??"")
-.replaceAll("&","&amp;").replaceAll("<","&lt;")
-.replaceAll(">","&gt;").replaceAll('"',"&quot;")
-.replaceAll("'","&#039;");
-
-const USERS_PER_PAGE = 25;
-const domainPages = {};
-
-function getDomain(email){
- const value=String(email||"").trim().toLowerCase();
- const at=value.lastIndexOf("@");
- return at>0 ? value.slice(at+1) : "(no domain)";
-}
-
-function renderDomain(domain, data){
- const page=domainPages[domain]||1;
- const totalPages=Math.max(1,Math.ceil(data.length/USERS_PER_PAGE));
- const currentPage=Math.min(page,totalPages);
- domainPages[domain]=currentPage;
-
- const start=(currentPage-1)*USERS_PER_PAGE;
- const rows=data.slice(start,start+USERS_PER_PAGE);
-
- const section=document.createElement("section");
- section.className="domain-section";
-
- const header=document.createElement("button");
- header.type="button";
- header.className="domain-header";
- header.innerHTML=`
-   <span class="domain-arrow">▶</span>
-   <span class="domain-name">${esc(domain)}</span>
-   <span class="domain-count">${data.length} account${data.length===1?"":"s"}</span>
- `;
- 
- const content=document.createElement("div");
- content.className="domain-content";
- content.hidden=true;
-
- header.onclick=()=>{
-   content.hidden=!content.hidden;
-   header.querySelector(".domain-arrow").textContent=
-     content.hidden ? "▶" : "▼";
- };
-
- const table=document.createElement("table");
- table.innerHTML=`
- <thead><tr>
- <th>Name</th><th>Username</th><th>Email</th><th>Role</th>
- <th>Provider</th><th>Created</th><th>Actions</th>
- </tr></thead>`;
-
- const tbody=document.createElement("tbody");
-
- rows.forEach(u=>{
-   const tr=document.createElement("tr");
-   tr.innerHTML=`
-   <td>${esc(u.name)}</td>
-   <td>${esc(u.username||"")}</td>
-   <td>${esc(u.email)}</td>
-   <td>${esc(u.role)}</td>
-   <td>${esc(u.provider||"")}</td>
-   <td>${u.createdAt?new Date(u.createdAt).toLocaleDateString():""}</td>
-   <td class="actions">
-     <button onclick='editUser(${JSON.stringify(u)})'>Edit</button>
-     <button onclick='sendReset("${u._id}","${esc(u.email)}")'>Send Link</button>
-     <button class="danger" onclick='deleteUser("${u._id}","${esc(u.name||u.email)}")'>Delete</button>
-   </td>`;
-   tbody.appendChild(tr);
- });
-
- table.appendChild(tbody);
- content.appendChild(table);
-
- if(totalPages>1){
-   const pagination=document.createElement("div");
-   pagination.className="domain-pagination";
-
-   const info=document.createElement("span");
-   info.textContent=`Page ${currentPage} of ${totalPages}`;
-
-   const controls=document.createElement("div");
-
-   const prev=document.createElement("button");
-   prev.textContent="‹ Previous";
-   prev.disabled=currentPage===1;
-   prev.onclick=()=>{
-     domainPages[domain]=currentPage-1;
-     renderUsers(currentRenderedUsers);
-   };
-
-   const next=document.createElement("button");
-   next.textContent="Next ›";
-   next.disabled=currentPage===totalPages;
-   next.onclick=()=>{
-     domainPages[domain]=currentPage+1;
-     renderUsers(currentRenderedUsers);
-   };
-
-   controls.append(prev,next);
-   pagination.append(info,controls);
-   content.appendChild(pagination);
- }
-
- section.append(header,content);
- return section;
-}
-
+<script>let editingId=null;
+let currentMe=null;
+let institutionsCache=[];
 let currentRenderedUsers=[];
+const domainPages={};
+const USERS_PER_PAGE=25;
 
-function renderUsers(data){
- currentRenderedUsers=data;
+const esc=v=>String(v??"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#039;");
+function role(u=currentMe){return String(u?.role||"").toUpperCase()}
+function isSuperadmin(){return currentMe?.superAdmin===true || role()==="SUPERADMIN"}
+function isPlatformAdmin(){return isSuperadmin() || role()==="PLATFORM_ADMIN"}
+function isInstitutionAdmin(){return role()==="INSTITUTION_ADMIN"}
+function ownTenant(){return String(currentMe?.tenantId||"").trim()}
+function getDomain(email){const v=String(email||"").trim().toLowerCase(),at=v.lastIndexOf("@");return at>0?v.slice(at+1):"(no domain)"}
+function roleOptions(select, includeCurrent){
+  let options;
 
- const groups={};
+  if(isInstitutionAdmin()){
+    options=[
+      ["USER","User/Student"],
+      ["Instructor","Instructor"]
+    ];
+  } else if(isSuperadmin()){
+    options=[
+      ["USER","User/Student"],
+      ["Instructor","Instructor"],
+      ["INSTITUTION_ADMIN","Institution Admin"],
+      ["PLATFORM_ADMIN","Platform Admin"],
+      ["ADMIN","Legacy Admin"]
+    ];
+  } else if(role()==="PLATFORM_ADMIN"){
+    options=[
+      ["USER","User/Student"],
+      ["Instructor","Instructor"],
+      ["INSTITUTION_ADMIN","Institution Admin"]
+    ];
+  } else {
+    options=[
+      ["USER","User/Student"],
+      ["Instructor","Instructor"],
+      ["INSTITUTION_ADMIN","Institution Admin"],
+      ["ADMIN","Legacy Admin"]
+    ];
+  }
 
- data.forEach(u=>{
-   const domain=getDomain(u.email);
-   if(!groups[domain])groups[domain]=[];
-   groups[domain].push(u);
- });
+  select.innerHTML="";
+  for(const [value,label] of options){
+    const o=document.createElement("option");
+    o.value=value;
+    o.textContent=label;
+    select.appendChild(o);
+  }
 
- domainGroups.innerHTML="";
-
- Object.keys(groups)
-   .sort((a,b)=>a.localeCompare(b))
-   .forEach(domain=>{
-     domainGroups.appendChild(renderDomain(domain,groups[domain]));
-   });
+  if(includeCurrent && !options.some(x=>x[0]===includeCurrent)){
+    const o=document.createElement("option");
+    o.value=includeCurrent;
+    o.textContent=includeCurrent;
+    select.appendChild(o);
+  }
 }
-
-async function loadUsers(){
- const q=encodeURIComponent(search.value);
- const role=encodeURIComponent(document.getElementById("role").value);
- const r=await fetch(`/api/users?q=${q}&role=${role}`);
-
- if(r.status===401){
-   location.href="/login";
-   return;
+function tenantOptions(select, selected=""){
+ select.innerHTML=institutionsCache.map(i=>`<option value="${esc(i._id)}">${esc(i.name)} (${esc(i._id)})</option>`).join("");
+ if(selected)select.value=selected;
+}
+function refreshTenantControls(){
+ const createTenant=document.getElementById("ctenant"),editTenant=document.getElementById("etenant");
+ if(isInstitutionAdmin()){
+   createTenant.classList.add("hidden");editTenant.classList.add("hidden");
+ }else{
+   tenantOptions(createTenant);tenantOptions(editTenant);createTenant.classList.remove("hidden");editTenant.classList.remove("hidden");
  }
-
- const data=await r.json();
-
- if(!r.ok){
-   status.textContent=data.error;
-   return;
+}
+async function api(url,options={}){const r=await fetch(url,options);if(r.status===401){location.href="/login";throw new Error("Authentication required")}const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||"Request failed");return d}
+async function loadMe(){currentMe=await api("/api/me");identity.textContent=`${currentMe.name||currentMe.email} • ${role()}${currentMe.tenantId?` • ${currentMe.tenantId}`:""}`;scopeNotice.textContent=isInstitutionAdmin()?`Institution scope: ${ownTenant()}`:"Platform-wide administration";document.getElementById("institutionPanel").classList.toggle("hidden",isInstitutionAdmin());roleOptions(crole);roleOptions(erole);refreshTenantControls()}
+async function loadInstitutions(){
+ if(isInstitutionAdmin())return;
+ const d=await api("/api/institutions");institutionsCache=d.institutions||[];renderInstitutions();refreshTenantControls();
+}
+function renderInstitutions(){
+ institutionList.innerHTML="";
+ if(!institutionsCache.length){institutionList.innerHTML='<div class="empty">No institutions have been created yet.</div>';return}
+ for(const i of institutionsCache){
+   const row=document.createElement("div");row.className="institution-row";
+   const admins=(i.admins||[]).map(a=>`${esc(a.name||"")} &lt;${esc(a.email||"")}&gt;`).join("<br>")||'<span class="muted">None assigned</span>';
+   row.innerHTML=`<div><strong>${esc(i.name)}</strong><div class="muted">${esc(i._id)}</div></div><div>${esc(i.status||"enabled")}</div><div><span class="badge ${(i.status||"enabled")==="enabled"?"enabled":"disabled"}">${esc(i.status||"enabled")}</span></div><div>${admins}</div><div class="institution-actions"></div>`;
+   const actions=row.querySelector(".institution-actions");
+   const toggle=document.createElement("button");toggle.textContent=i.status==="disabled"?"Enable":"Disable";toggle.onclick=()=>toggleInstitution(i);
+   actions.appendChild(toggle);
+   const assign=document.createElement("button");assign.textContent="Assign Admin";assign.onclick=()=>openAssignDialog(i);actions.appendChild(assign);
+   if(isSuperadmin()){const del=document.createElement("button");del.className="danger";del.textContent="Delete permanently";del.onclick=()=>deleteInstitution(i);actions.appendChild(del)}
+   institutionList.appendChild(row);
  }
-
- status.textContent=`${data.length} user(s)`;
-
- Object.keys(domainPages).forEach(k=>delete domainPages[k]);
-
- renderUsers(data);
 }
-
-createForm.onsubmit=async e=>{
- e.preventDefault();
- const r=await fetch("/api/users",{method:"POST",
- headers:{"Content-Type":"application/json"},
- body:JSON.stringify({
-  name:cname.value,username:cusername.value,email:cemail.value,
-  role:crole.value
- })});
- const d=await r.json();
- if(!r.ok){alert(d.error);return}
- createDialog.close();createForm.reset();loadUsers();
-};
-
-function editUser(u){
- editingId=u._id;
- ename.value=u.name||"";
- eusername.value=u.username||"";
- erole.value=u.role||"USER";
- epassword.value="";
- editDialog.showModal();
+async function toggleInstitution(i){try{await api(`/api/institutions/${encodeURIComponent(i._id)}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({status:i.status==="disabled"?"enabled":"disabled"})});await loadInstitutions();}catch(e){alert(e.message)}}
+async function deleteInstitution(i){
+ if(!isSuperadmin())return alert("Superadmin access required");
+ if(!confirm(`PERMANENTLY delete ${i.name} (${i._id})? This must purge the institution's tenant data and cannot be undone.`))return;
+ try{await api(`/api/institutions/${encodeURIComponent(i._id)}`,{method:"DELETE"});await loadInstitutions();await loadUsers();}catch(e){alert(e.message+"\n\nIf the main API owns the destructive purge endpoint, verify that the admin portal's authenticated proxy is configured.")}
 }
-
-editForm.onsubmit=async e=>{
- e.preventDefault();
- const body={name:ename.value,username:eusername.value,role:erole.value};
- if(epassword.value)body.password=epassword.value;
- const r=await fetch("/api/users/"+editingId,{
-  method:"PATCH",headers:{"Content-Type":"application/json"},
-  body:JSON.stringify(body)
- });
- const d=await r.json();
- if(!r.ok){alert(d.error);return}
- editDialog.close();loadUsers();
-};
-
-async function sendReset(id,email){
- if(!confirm(`Send a password setup/reset link to ${email}?`))return;
- const r=await fetch("/api/users/"+id+"/send-reset",{method:"POST"});
- const d=await r.json();
- if(!r.ok){alert(d.error||"Failed to send email");return}
- alert(d.message||"Password setup/reset email sent.");
+async function openAssignDialog(i){
+ assignInstitutionLabel.textContent=`Institution: ${i.name} (${i._id})`;
+ try{
+   const users=await api(`/api/users?q=&role=USER`);const instructors=await api(`/api/users?q=&role=Instructor`);
+   const all=[...users,...instructors].filter((u,x,a)=>a.findIndex(v=>v._id===u._id)===x);
+   assignUser.innerHTML=all.map(u=>`<option value="${esc(u._id)}">${esc(u.name||"")} — ${esc(u.email)}</option>`).join("");
+   if(!all.length)assignUser.innerHTML='<option value="">No eligible users found</option>';
+   assignDialog.dataset.institution=i._id;assignDialog.showModal();
+ }catch(e){alert(e.message)}
 }
-
-async function deleteUser(id,name){
- if(!confirm(`Delete ${name}? This cannot be undone.`))return;
- const r=await fetch("/api/users/"+id,{method:"DELETE"});
- const d=await r.json();
- if(!r.ok){alert(d.error);return}
- loadUsers();
+assignForm.onsubmit=async e=>{e.preventDefault();try{await api(`/api/institutions/${encodeURIComponent(assignDialog.dataset.institution)}/admin`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({userId:assignUser.value})});assignDialog.close();await loadInstitutions();await loadUsers()}catch(e){alert(e.message)}};
+institutionForm.onsubmit=async e=>{e.preventDefault();try{await api("/api/institutions",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({id:iid.value,name:iname.value})});institutionDialog.close();institutionForm.reset();await loadInstitutions()}catch(e){alert(e.message)}};
+function renderDomain(domain,data){
+ const page=domainPages[domain]||1,totalPages=Math.max(1,Math.ceil(data.length/USERS_PER_PAGE)),currentPage=Math.min(page,totalPages);domainPages[domain]=currentPage;const rows=data.slice((currentPage-1)*USERS_PER_PAGE,currentPage*USERS_PER_PAGE);
+ const section=document.createElement("section");section.className="domain-section";const header=document.createElement("button");header.type="button";header.className="domain-header";header.innerHTML=`<span class="domain-arrow">▶</span><span class="domain-name">${esc(domain)}</span><span class="domain-count">${data.length} account${data.length===1?"":"s"}</span>`;
+ const content=document.createElement("div");content.className="domain-content";content.hidden=true;header.onclick=()=>{content.hidden=!content.hidden;header.querySelector(".domain-arrow").textContent=content.hidden?"▶":"▼"};
+ const table=document.createElement("table");table.innerHTML=`<thead><tr><th>Name</th><th>Username</th><th>Email</th><th>Role</th><th>Institution</th><th>Provider</th><th>Created</th><th>Actions</th></tr></thead>`;const tbody=document.createElement("tbody");
+ rows.forEach(u=>{const tr=document.createElement("tr");const canEdit=!isInstitutionAdmin()||String(u.tenantId||"")===ownTenant();tr.innerHTML=`<td>${esc(u.name)}</td><td>${esc(u.username||"")}</td><td>${esc(u.email)}</td><td>${esc(u.role)}</td><td>${esc(u.tenantId||"—")}</td><td>${esc(u.provider||"")}</td><td>${u.createdAt?new Date(u.createdAt).toLocaleDateString():""}</td><td class="actions"></td>`;const a=tr.querySelector(".actions");if(canEdit){const eb=document.createElement("button");eb.textContent="Edit";eb.onclick=()=>editUser(u);a.appendChild(eb);const rb=document.createElement("button");rb.textContent="Send Link";rb.onclick=()=>sendReset(u._id,u.email);a.appendChild(rb);const db=document.createElement("button");db.className="danger";db.textContent="Delete";db.onclick=()=>deleteUser(u._id,u.name||u.email);a.appendChild(db)}tbody.appendChild(tr)});table.appendChild(tbody);content.appendChild(table);
+ if(totalPages>1){const pg=document.createElement("div");pg.className="domain-pagination";const info=document.createElement("span");info.textContent=`Page ${currentPage} of ${totalPages}`;const controls=document.createElement("div");const prev=document.createElement("button");prev.textContent="‹ Previous";prev.disabled=currentPage===1;prev.onclick=()=>{domainPages[domain]=currentPage-1;renderUsers(currentRenderedUsers)};const next=document.createElement("button");next.textContent="Next ›";next.disabled=currentPage===totalPages;next.onclick=()=>{domainPages[domain]=currentPage+1;renderUsers(currentRenderedUsers)};controls.append(prev,next);pg.append(info,controls);content.appendChild(pg)}
+ section.append(header,content);return section;
 }
+function renderUsers(data){currentRenderedUsers=data;const groups={};data.forEach(u=>{const d=getDomain(u.email);(groups[d]||(groups[d]=[])).push(u)});domainGroups.innerHTML="";Object.keys(groups).sort((a,b)=>a.localeCompare(b)).forEach(d=>domainGroups.appendChild(renderDomain(d,groups[d])))}
+async function loadUsers(){try{const q=encodeURIComponent(search.value),r=encodeURIComponent(document.getElementById("role").value);const data=await api(`/api/users?q=${q}&role=${r}`);status.textContent=`${data.length} user(s)`;Object.keys(domainPages).forEach(k=>delete domainPages[k]);renderUsers(data)}catch(e){status.textContent=e.message}}
+function openCreateDialog(){roleOptions(crole);refreshTenantControls();createDialog.showModal()}
+createForm.onsubmit=async e=>{e.preventDefault();try{const body={name:cname.value,username:cusername.value,email:cemail.value,role:crole.value};if(crole.value==="PLATFORM_ADMIN"){if(!isSuperadmin())throw new Error("Only the Superadmin may create Platform Admins");body.tenantId=null;}else if(crole.value==="INSTITUTION_ADMIN"){body.tenantId=isInstitutionAdmin()?ownTenant():ctenant.value;}await api("/api/users",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});createDialog.close();createForm.reset();await loadUsers();await loadInstitutions()}catch(e){alert(e.message)}};
+function editUser(u){editingId=u._id;ename.value=u.name||"";eusername.value=u.username||"";roleOptions(erole,u.role);refreshTenantControls();etenant.value=u.tenantId||"";epassword.value="";editDialog.showModal()}
+editForm.onsubmit=async e=>{e.preventDefault();try{const body={name:ename.value,username:eusername.value,role:erole.value};if(erole.value==="INSTITUTION_ADMIN")body.tenantId=isInstitutionAdmin()?ownTenant():etenant.value;
+if(erole.value==="PLATFORM_ADMIN")body.tenantId=null;if(epassword.value)body.password=epassword.value;await api(`/api/users/${editingId}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});editDialog.close();await loadUsers();await loadInstitutions()}catch(e){alert(e.message)}};
+async function sendReset(id,email){if(!confirm(`Send a password setup/reset link to ${email}?`))return;try{const d=await api(`/api/users/${id}/send-reset`,{method:"POST"});alert(d.message||"Password setup/reset email sent.")}catch(e){alert(e.message)}}
+async function deleteUser(id,name){if(!confirm(`Delete ${name}? This cannot be undone.`))return;try{await api(`/api/users/${id}`,{method:"DELETE"});await loadUsers();await loadInstitutions()}catch(e){alert(e.message)}}
 
-bulkForm.onsubmit=async e=>{
- e.preventDefault();
-
- const file=csvfile.files[0];
- if(!file)return;
-
- const csv=await file.text();
-
- const r=await fetch("/api/users/bulk",{
-  method:"POST",
-  headers:{"Content-Type":"application/json"},
-  body:JSON.stringify({csv,confirm:false})
- });
-
- const d=await r.json();
-
- if(!r.ok){
-   alert(d.error||"CSV validation failed");
-   return;
- }
-
- const newUsers=d.preview.filter(x=>x.status==="new");
- const skipped=d.preview.filter(x=>x.status==="skipped");
-
- let message=
-   `CSV validation complete.\n\n`+
-   `New users: ${newUsers.length}\n`+
-   `Existing users (will be skipped): ${skipped.length}\n`+
-   `Errors: ${d.errors.length}`;
-
- if(d.errors.length)
-   message+=`\n\nErrors:\n${d.errors.join("\n")}`;
-
- if(!confirm(message+"\n\nProceed with creating the new users?"))
-   return;
-
- const r2=await fetch("/api/users/bulk",{
-   method:"POST",
-   headers:{"Content-Type":"application/json"},
-   body:JSON.stringify({csv,confirm:true})
- });
-
- const result=await r2.json();
-
- if(!r2.ok){
-   alert(result.error||"Bulk import failed");
-   return;
- }
-
- if(!result.created.length){
-   alert(
-     `No new users were created.\n\n`+
-     `Skipped: ${result.skipped.length}\n`+
-     `Errors: ${result.failed.length+result.errors.length}`
-   );
-   bulkDialog.close();
-   bulkForm.reset();
-   loadUsers();
-   return;
- }
-
- // Create a one-time credentials CSV for the administrator.
- const lines=[
-   "name,email,role",
-   ...result.created.map(u=>[
-     csvEscape(u.name),
-     csvEscape(u.email),
-     csvEscape(u.role),
-     ""
-   ].join(","))
- ];
-
- const blob=new Blob([lines.join("\n")],{type:"text/csv"});
- const url=URL.createObjectURL(blob);
- const a=document.createElement("a");
-
- a.href=url;
- a.download="ai-scholar-hub-new-user-credentials.csv";
- a.click();
-
- URL.revokeObjectURL(url);
-
- alert(
-   `Import complete.\n\n`+
-   `Created: ${result.created.length}\n`+
-   `Skipped: ${result.skipped.length}\n`+
-   `Errors: ${result.failed.length+result.errors.length}\n\n`+
-   `The temporary credentials CSV has been downloaded.`
- );
-
- bulkDialog.close();
- bulkForm.reset();
- loadUsers();
-};
-
-function csvEscape(v){
- return `"${String(v??"").replaceAll('"','""')}"`;
-}
-
-async function logout(){
- await fetch("/api/logout",{method:"POST"});
- location.href="/login";
-}
-
-loadUsers();
+bulkForm.onsubmit=async e=>{e.preventDefault();const file=csvfile.files[0];if(!file)return;const csv=await file.text();try{const d=await api("/api/users/bulk",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({csv,confirm:false})});const newUsers=d.preview.filter(x=>x.status==="new"),skipped=d.preview.filter(x=>x.status==="skipped");let message=`CSV validation complete.\n\nNew users: ${newUsers.length}\nExisting users (will be skipped): ${skipped.length}\nErrors: ${d.errors.length}`;if(d.errors.length)message+=`\n\nErrors:\n${d.errors.join("\n")}`;if(!confirm(message+"\n\nProceed with creating the new users?"))return;const result=await api("/api/users/bulk",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({csv,confirm:true})});alert(`Import complete.\n\nCreated: ${result.created.length}\nSkipped: ${result.skipped.length}\nErrors: ${result.failed.length+result.errors.length}`);bulkDialog.close();bulkForm.reset();await loadUsers();await loadInstitutions()}catch(e){alert(e.message)}};
+function csvEscape(v){return `"${String(v??"").replaceAll('"','""')}"`}
+async function logout(){await fetch("/api/logout",{method:"POST"});location.href="/login"}
+(async()=>{try{await loadMe();await loadInstitutions();await loadUsers()}catch(e){console.error(e)}})();
 </script>
 </body>
 </html>

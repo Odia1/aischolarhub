@@ -1538,30 +1538,30 @@ describe('updateInterfacePermissions - permissions', () => {
     // Check that PEOPLE_PICKER uses role-specific defaults from roleDefaults
     expect(userCall[1][PermissionTypes.PEOPLE_PICKER]).toEqual({
       [Permissions.VIEW_USERS]:
-        roleDefaults[SystemRoles.USER].permissions[PermissionTypes.PEOPLE_PICKER][
+        roleDefaults[SystemRoles.USER]!.permissions[PermissionTypes.PEOPLE_PICKER][
           Permissions.VIEW_USERS
         ],
       [Permissions.VIEW_GROUPS]:
-        roleDefaults[SystemRoles.USER].permissions[PermissionTypes.PEOPLE_PICKER][
+        roleDefaults[SystemRoles.USER]!.permissions[PermissionTypes.PEOPLE_PICKER][
           Permissions.VIEW_GROUPS
         ],
       [Permissions.VIEW_ROLES]:
-        roleDefaults[SystemRoles.USER].permissions[PermissionTypes.PEOPLE_PICKER][
+        roleDefaults[SystemRoles.USER]!.permissions[PermissionTypes.PEOPLE_PICKER][
           Permissions.VIEW_ROLES
         ],
     });
 
     expect(adminCall[1][PermissionTypes.PEOPLE_PICKER]).toEqual({
       [Permissions.VIEW_USERS]:
-        roleDefaults[SystemRoles.ADMIN].permissions[PermissionTypes.PEOPLE_PICKER][
+        roleDefaults[SystemRoles.ADMIN]!.permissions[PermissionTypes.PEOPLE_PICKER][
           Permissions.VIEW_USERS
         ],
       [Permissions.VIEW_GROUPS]:
-        roleDefaults[SystemRoles.ADMIN].permissions[PermissionTypes.PEOPLE_PICKER][
+        roleDefaults[SystemRoles.ADMIN]!.permissions[PermissionTypes.PEOPLE_PICKER][
           Permissions.VIEW_GROUPS
         ],
       [Permissions.VIEW_ROLES]:
-        roleDefaults[SystemRoles.ADMIN].permissions[PermissionTypes.PEOPLE_PICKER][
+        roleDefaults[SystemRoles.ADMIN]!.permissions[PermissionTypes.PEOPLE_PICKER][
           Permissions.VIEW_ROLES
         ],
     });
@@ -1569,12 +1569,12 @@ describe('updateInterfacePermissions - permissions', () => {
     // Check that MARKETPLACE uses role-specific defaults from roleDefaults
     expect(userCall[1][PermissionTypes.MARKETPLACE]).toEqual({
       [Permissions.USE]:
-        roleDefaults[SystemRoles.USER].permissions[PermissionTypes.MARKETPLACE][Permissions.USE],
+        roleDefaults[SystemRoles.USER]!.permissions[PermissionTypes.MARKETPLACE][Permissions.USE],
     });
 
     expect(adminCall[1][PermissionTypes.MARKETPLACE]).toEqual({
       [Permissions.USE]:
-        roleDefaults[SystemRoles.ADMIN].permissions[PermissionTypes.MARKETPLACE][Permissions.USE],
+        roleDefaults[SystemRoles.ADMIN]!.permissions[PermissionTypes.MARKETPLACE][Permissions.USE],
     });
   });
 
@@ -1807,11 +1807,11 @@ describe('updateInterfacePermissions - permissions', () => {
     expect(userCall[1][PermissionTypes.MEMORIES]).toEqual({
       [Permissions.USE]: true,
       [Permissions.CREATE]:
-        roleDefaults[SystemRoles.USER].permissions[PermissionTypes.MEMORIES]?.[Permissions.CREATE],
+        roleDefaults[SystemRoles.USER]!.permissions[PermissionTypes.MEMORIES]?.[Permissions.CREATE],
       [Permissions.READ]:
-        roleDefaults[SystemRoles.USER].permissions[PermissionTypes.MEMORIES]?.[Permissions.READ],
+        roleDefaults[SystemRoles.USER]!.permissions[PermissionTypes.MEMORIES]?.[Permissions.READ],
       [Permissions.UPDATE]:
-        roleDefaults[SystemRoles.USER].permissions[PermissionTypes.MEMORIES]?.[Permissions.UPDATE],
+        roleDefaults[SystemRoles.USER]!.permissions[PermissionTypes.MEMORIES]?.[Permissions.UPDATE],
       [Permissions.OPT_OUT]: true, // Should be true when personalize is enabled
     });
 
@@ -1822,11 +1822,11 @@ describe('updateInterfacePermissions - permissions', () => {
     expect(adminCall[1][PermissionTypes.MEMORIES]).toEqual({
       [Permissions.USE]: true,
       [Permissions.CREATE]:
-        roleDefaults[SystemRoles.ADMIN].permissions[PermissionTypes.MEMORIES]?.[Permissions.CREATE],
+        roleDefaults[SystemRoles.ADMIN]!.permissions[PermissionTypes.MEMORIES]?.[Permissions.CREATE],
       [Permissions.READ]:
-        roleDefaults[SystemRoles.ADMIN].permissions[PermissionTypes.MEMORIES]?.[Permissions.READ],
+        roleDefaults[SystemRoles.ADMIN]!.permissions[PermissionTypes.MEMORIES]?.[Permissions.READ],
       [Permissions.UPDATE]:
-        roleDefaults[SystemRoles.ADMIN].permissions[PermissionTypes.MEMORIES]?.[Permissions.UPDATE],
+        roleDefaults[SystemRoles.ADMIN]!.permissions[PermissionTypes.MEMORIES]?.[Permissions.UPDATE],
       [Permissions.OPT_OUT]: true, // Should be true when personalize is enabled
     });
   });
@@ -1886,11 +1886,11 @@ describe('updateInterfacePermissions - permissions', () => {
     expect(userCall[1][PermissionTypes.MEMORIES]).toEqual({
       [Permissions.USE]: true,
       [Permissions.CREATE]:
-        roleDefaults[SystemRoles.USER].permissions[PermissionTypes.MEMORIES]?.[Permissions.CREATE],
+        roleDefaults[SystemRoles.USER]!.permissions[PermissionTypes.MEMORIES]?.[Permissions.CREATE],
       [Permissions.READ]:
-        roleDefaults[SystemRoles.USER].permissions[PermissionTypes.MEMORIES]?.[Permissions.READ],
+        roleDefaults[SystemRoles.USER]!.permissions[PermissionTypes.MEMORIES]?.[Permissions.READ],
       [Permissions.UPDATE]:
-        roleDefaults[SystemRoles.USER].permissions[PermissionTypes.MEMORIES]?.[Permissions.UPDATE],
+        roleDefaults[SystemRoles.USER]!.permissions[PermissionTypes.MEMORIES]?.[Permissions.UPDATE],
       [Permissions.OPT_OUT]: true, // Should be true when personalize is enabled
     });
 
@@ -1901,11 +1901,11 @@ describe('updateInterfacePermissions - permissions', () => {
     expect(adminCall[1][PermissionTypes.MEMORIES]).toEqual({
       [Permissions.USE]: true,
       [Permissions.CREATE]:
-        roleDefaults[SystemRoles.ADMIN].permissions[PermissionTypes.MEMORIES]?.[Permissions.CREATE],
+        roleDefaults[SystemRoles.ADMIN]!.permissions[PermissionTypes.MEMORIES]?.[Permissions.CREATE],
       [Permissions.READ]:
-        roleDefaults[SystemRoles.ADMIN].permissions[PermissionTypes.MEMORIES]?.[Permissions.READ],
+        roleDefaults[SystemRoles.ADMIN]!.permissions[PermissionTypes.MEMORIES]?.[Permissions.READ],
       [Permissions.UPDATE]:
-        roleDefaults[SystemRoles.ADMIN].permissions[PermissionTypes.MEMORIES]?.[Permissions.UPDATE],
+        roleDefaults[SystemRoles.ADMIN]!.permissions[PermissionTypes.MEMORIES]?.[Permissions.UPDATE],
       [Permissions.OPT_OUT]: true, // Should be true when personalize is enabled
     });
 
@@ -1953,11 +1953,11 @@ describe('updateInterfacePermissions - permissions', () => {
     expect(userCall[1][PermissionTypes.MEMORIES]).toEqual({
       [Permissions.USE]: true,
       [Permissions.CREATE]:
-        roleDefaults[SystemRoles.USER].permissions[PermissionTypes.MEMORIES]?.[Permissions.CREATE],
+        roleDefaults[SystemRoles.USER]!.permissions[PermissionTypes.MEMORIES]?.[Permissions.CREATE],
       [Permissions.READ]:
-        roleDefaults[SystemRoles.USER].permissions[PermissionTypes.MEMORIES]?.[Permissions.READ],
+        roleDefaults[SystemRoles.USER]!.permissions[PermissionTypes.MEMORIES]?.[Permissions.READ],
       [Permissions.UPDATE]:
-        roleDefaults[SystemRoles.USER].permissions[PermissionTypes.MEMORIES]?.[Permissions.UPDATE],
+        roleDefaults[SystemRoles.USER]!.permissions[PermissionTypes.MEMORIES]?.[Permissions.UPDATE],
       [Permissions.OPT_OUT]: undefined, // Should be undefined when personalize is false
     });
   });

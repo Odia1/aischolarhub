@@ -4,6 +4,14 @@ import { isEnabled } from '~/utils';
 
 export type OpenIdRoleSyncClaimSource = 'access' | 'id' | 'userinfo';
 
+/** Roles that an untrusted external identity claim must never be able to grant. */
+const PRIVILEGED_SYSTEM_ROLE_KEYS = new Set([
+  SystemRoles.ADMIN.toLowerCase(),
+  SystemRoles.PLATFORM_ADMIN.toLowerCase(),
+  SystemRoles.SUPERADMIN.toLowerCase(),
+  SystemRoles.INSTITUTION_ADMIN.toLowerCase(),
+]);
+
 export type OpenIdRoleSyncOptions = {
   enabled: boolean;
   apiEnabled: boolean;
@@ -97,12 +105,20 @@ export function getOpenIdRoleSyncOptions(
     );
   }
 
-  if (rolePriority.some((role) => role.toLowerCase() === SystemRoles.ADMIN.toLowerCase())) {
-    throw new Error('[openidRoleSync] OPENID_ROLE_SYNC_ROLE_PRIORITY cannot include ADMIN');
+  const externallyAssignableAdminRoles = PRIVILEGED_SYSTEM_ROLE_KEYS;
+  const forbiddenPriorityRole = rolePriority.find((role) =>
+    externallyAssignableAdminRoles.has(role.toLowerCase()),
+  );
+  if (forbiddenPriorityRole) {
+    throw new Error(
+      `[openidRoleSync] OPENID_ROLE_SYNC_ROLE_PRIORITY cannot include privileged role ${forbiddenPriorityRole}`,
+    );
   }
 
-  if (fallbackRole?.toLowerCase() === SystemRoles.ADMIN.toLowerCase()) {
-    throw new Error('[openidRoleSync] OPENID_ROLE_SYNC_FALLBACK_ROLE cannot be ADMIN');
+  if (fallbackRole && externallyAssignableAdminRoles.has(fallbackRole.toLowerCase())) {
+    throw new Error(
+      `[openidRoleSync] OPENID_ROLE_SYNC_FALLBACK_ROLE cannot include privileged role ${fallbackRole}`,
+    );
   }
 
   return { enabled, apiEnabled, claimSource, claim, rolePriority, fallbackRole };
@@ -257,7 +273,11 @@ export function selectOpenIdRole(
   const assignableRoleKeys = new Set(
     assignableRoles
       .map((role) => role.trim().toLowerCase())
-      .filter((role) => role && role !== SystemRoles.ADMIN.toLowerCase()),
+      .filter(
+        (role) =>
+          role &&
+          !PRIVILEGED_SYSTEM_ROLE_KEYS.has(role),
+      ),
   );
   const openIdRoleKeys = new Set<string>();
 
@@ -272,7 +292,7 @@ export function selectOpenIdRole(
 
     if (
       !trimmed ||
-      key === SystemRoles.ADMIN.toLowerCase() ||
+      PRIVILEGED_SYSTEM_ROLE_KEYS.has(key) ||
       (assignableRoleKeys.size > 0 && !assignableRoleKeys.has(key))
     ) {
       continue;
@@ -286,7 +306,7 @@ export function selectOpenIdRole(
 
     if (
       trimmed &&
-      trimmed.toLowerCase() !== SystemRoles.ADMIN.toLowerCase() &&
+      !PRIVILEGED_SYSTEM_ROLE_KEYS.has(trimmed.toLowerCase()) &&
       openIdRoleKeys.has(trimmed.toLowerCase())
     ) {
       return { selectedRole: trimmed, reason: 'matched_priority' };
@@ -305,7 +325,10 @@ export function selectOpenIdRole(
   if (input.fallbackRole) {
     const trimmed = input.fallbackRole.trim();
 
-    if (trimmed && trimmed.toLowerCase() !== SystemRoles.ADMIN.toLowerCase()) {
+    if (
+      trimmed &&
+      !PRIVILEGED_SYSTEM_ROLE_KEYS.has(trimmed.toLowerCase())
+    ) {
       return { selectedRole: trimmed, reason: 'fallback' };
     }
   }

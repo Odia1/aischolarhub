@@ -1,3 +1,4 @@
+import { isPrivilegedAdmin, isPlatformAdmin } from '~/utils/rbac';
 import React from 'react';
 import { Share2Icon } from 'lucide-react';
 import { Button, TooltipAnchor } from '@librechat/client';
@@ -39,7 +40,7 @@ const SharePrompt = React.memo(
     const canShareThisPrompt = hasPermission(PermissionBits.SHARE);
 
     const shouldShowShareButton =
-      (group.author === user?.id || user?.role === SystemRoles.ADMIN || canShareThisPrompt) &&
+      (group.author === user?.id || isPrivilegedAdmin(user) || canShareThisPrompt) &&
       hasAccessToSharePrompts &&
       !permissionsLoading;
 

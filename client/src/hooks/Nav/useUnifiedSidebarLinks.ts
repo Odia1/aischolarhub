@@ -1,3 +1,4 @@
+import { isPrivilegedAdmin, isPlatformAdmin } from '~/utils/rbac';
 import { useMemo } from 'react';
 import { useRecoilValue } from 'recoil';
 import { BarChart3, MessagesSquare } from 'lucide-react';
@@ -30,7 +31,7 @@ export default function useUnifiedSidebarLinks() {
   );
   const insightsFeatureEnabled = startupConfig?.insightsEnabled === true;
   const { data: insightsAccess } = useInsightsAccessQuery(user?.id, {
-    enabled: user?.role === SystemRoles.ADMIN && insightsFeatureEnabled,
+    enabled: isPlatformAdmin(user) && insightsFeatureEnabled,
   });
 
   const endpointType = useMemo(

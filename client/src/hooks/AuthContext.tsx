@@ -59,7 +59,12 @@ const AuthContextProvider = ({
     enabled: !!(isAuthenticated && (user?.role ?? '')),
   });
   const { data: adminRole = null } = useGetRole(SystemRoles.ADMIN, {
-    enabled: !!(isAuthenticated && user?.role === SystemRoles.ADMIN),
+    enabled: !!(
+      isAuthenticated &&
+      ['ADMIN', 'PLATFORM_ADMIN', 'SUPERADMIN', 'INSTITUTION_ADMIN'].includes(
+        user?.role?.toUpperCase?.() ?? '',
+      )
+    ),
   });
   const { data: customRole = null } = useGetRole(isCustomRole ? userRoleName : '_', {
     enabled: isCustomRole,

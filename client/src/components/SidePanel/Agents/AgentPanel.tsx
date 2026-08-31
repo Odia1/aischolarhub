@@ -1,3 +1,4 @@
+import { isPrivilegedAdmin, isPlatformAdmin } from '~/utils/rbac';
 import React, { useMemo, useCallback, useRef, useState } from 'react';
 import { Plus } from 'lucide-react';
 import isEqual from 'lodash/isEqual';
@@ -566,7 +567,7 @@ export default function AgentPanel() {
       return true;
     }
 
-    if (user?.role === SystemRoles.ADMIN) {
+    if (isPrivilegedAdmin(user)) {
       return true;
     }
 

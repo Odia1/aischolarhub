@@ -1,6 +1,7 @@
 import type { RoleMethods, RoleDeps } from './role';
 import { createSessionMethods, DEFAULT_REFRESH_TOKEN_EXPIRY, type SessionMethods } from './session';
 import { createUserMethods, DEFAULT_SESSION_EXPIRY, type UserMethods } from './user';
+import { createInstitutionMethods, type InstitutionMethods } from './institution';
 import { createFileMethods, type FileMethods, type FileOwnerScope } from './file';
 import { createTokenMethods, type TokenMethods } from './token';
 import { createRoleMethods, RoleConflictError } from './role';
@@ -301,6 +302,7 @@ export function createMethods(
 
   return {
     ...createUserMethods(mongoose, { getCache: deps.getCache }),
+    ...createInstitutionMethods(mongoose),
     ...createSessionMethods(mongoose),
     ...createTokenMethods(mongoose),
     ...roleMethods,
@@ -352,6 +354,7 @@ export function createMethods(
 
 export type {
   UserMethods,
+  InstitutionMethods,
   SessionMethods,
   TokenMethods,
   RoleMethods,

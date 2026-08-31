@@ -16,6 +16,7 @@ import {
   OGDialogTrigger,
   OGDialogDescription,
 } from '@librechat/client';
+import { canUseAdminSettings } from '~/utils/rbac';
 import type { PermissionTypes } from 'librechat-data-provider';
 import type { Control } from 'react-hook-form';
 import type { TranslationKeys } from '~/hooks/useLocalize';
@@ -166,7 +167,7 @@ const AdminSettingsDialog: React.FC<AdminSettingsDialogProps> = ({
     }
   }
 
-  if (user?.role !== SystemRoles.ADMIN) {
+  if (!canUseAdminSettings(user)) {
     return null;
   }
 

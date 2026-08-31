@@ -36,6 +36,7 @@ import { createAgentModel } from './agent';
 import { createSkillModel } from './skill';
 import { createGroupModel } from './group';
 import { createUserModel } from './user';
+import { createInstitutionModel } from './institution';
 import { createRoleModel } from './role';
 import { createFileModel } from './file';
 import { createKeyModel } from './key';
@@ -46,6 +47,7 @@ import logger from '~/config/winston';
  */
 export function createModels(mongoose: typeof import('mongoose')): {
   User: ReturnType<typeof createUserModel>;
+  Institution: ReturnType<typeof createInstitutionModel>;
   Token: ReturnType<typeof createTokenModel>;
   Session: ReturnType<typeof createSessionModel>;
   Balance: ReturnType<typeof createBalanceModel>;
@@ -90,6 +92,7 @@ export function createModels(mongoose: typeof import('mongoose')): {
 } {
   const models = {
     User: createUserModel(mongoose),
+    Institution: createInstitutionModel(mongoose),
     Token: createTokenModel(mongoose),
     Session: createSessionModel(mongoose),
     Balance: createBalanceModel(mongoose),

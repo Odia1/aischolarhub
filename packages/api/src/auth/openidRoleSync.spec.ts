@@ -396,3 +396,38 @@ describe('selectOpenIdRole', () => {
     });
   });
 });
+
+describe('privileged role protection', () => {
+  const privileged = ['ADMIN', 'PLATFORM_ADMIN', 'SUPERADMIN', 'INSTITUTION_ADMIN'];
+
+  it.each(privileged)('rejects %s from role-priority configuration', (role) => {
+    expect(() =>
+      getOpenIdRoleSyncOptions({
+        OPENID_ROLE_SYNC_ENABLED: 'true',
+        OPENID_ROLE_SYNC_CLAIM: 'roles',
+        OPENID_ROLE_SYNC_ROLE_PRIORITY: role,
+      }),
+    ).toThrow(/privileged role/);
+  });
+
+  it.each(privileged)('rejects %s from fallback configuration', (role) => {
+    expect(() =>
+      getOpenIdRoleSyncOptions({
+        OPENID_ROLE_SYNC_ENABLED: 'true',
+        OPENID_ROLE_SYNC_CLAIM: 'roles',
+        OPENID_ROLE_SYNC_FALLBACK_ROLE: role,
+      }),
+    ).toThrow(/privileged role/);
+  });
+
+  it('filters privileged claims even if a caller constructs selection input directly', () => {
+    expect(
+      selectOpenIdRole({
+        currentRole: 'USER',
+        openIdRoleValues: ['SUPERADMIN', 'INSTITUTION_ADMIN', 'INSTRUCTOR'],
+        rolePriority: ['INSTRUCTOR'],
+        fallbackRole: 'INSTRUCTOR',
+      }),
+    ).toEqual({ selectedRole: 'INSTRUCTOR', reason: 'matched_priority' });
+  });
+});

@@ -9,7 +9,11 @@ export function useRoleSelector(permissionType: PermissionTypes) {
   const [selectedRole, setSelectedRole] = useState<string>(SystemRoles.USER);
 
   const { data: roleList } = useListRoles({
-    enabled: user?.role === SystemRoles.ADMIN,
+    enabled:
+      user?.role === SystemRoles.ADMIN ||
+      user?.role === SystemRoles.PLATFORM_ADMIN ||
+      user?.role === SystemRoles.SUPERADMIN ||
+      user?.role === SystemRoles.INSTITUTION_ADMIN,
   });
 
   const isSelectedCustomRole = !isSystemRoleName(selectedRole);
@@ -44,7 +48,15 @@ export function useRoleSelector(permissionType: PermissionTypes) {
 
   const availableRoleNames = useMemo(() => {
     const names = roleList?.roles?.map((r) => r.name);
-    return names?.length ? names : [SystemRoles.USER, SystemRoles.ADMIN];
+    return names?.length
+      ? names
+      : [
+          SystemRoles.USER,
+          SystemRoles.ADMIN,
+          SystemRoles.PLATFORM_ADMIN,
+          SystemRoles.INSTITUTION_ADMIN,
+          SystemRoles.SUPERADMIN,
+        ];
   }, [roleList]);
 
   const roleDropdownItems = useMemo(

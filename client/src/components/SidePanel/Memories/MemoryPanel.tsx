@@ -1,3 +1,4 @@
+import { isPrivilegedAdmin, isPlatformAdmin } from '~/utils/rbac';
 import { useMemo, useState, useEffect } from 'react';
 import { Plus } from 'lucide-react';
 import { matchSorter } from 'match-sorter';
@@ -248,7 +249,7 @@ export default function MemoryPanel() {
         />
       </PanelContent>
 
-      {user?.role === SystemRoles.ADMIN && (
+      {isPrivilegedAdmin(user) && (
         <PanelFooter>
           <AdminSettings />
         </PanelFooter>

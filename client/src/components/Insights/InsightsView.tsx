@@ -1,3 +1,4 @@
+import { isPrivilegedAdmin, isPlatformAdmin } from '~/utils/rbac';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
@@ -537,7 +538,7 @@ export default function InsightsView() {
   const dateRangeSelectionTimeout = useRef<number>();
   const isSmallScreen = useMediaQuery('(max-width: 768px)');
   const insightsFeatureEnabled = startupConfig?.insightsEnabled === true;
-  const shouldCheckAccess = user?.role === SystemRoles.ADMIN && insightsFeatureEnabled;
+  const shouldCheckAccess = isPrivilegedAdmin(user) && insightsFeatureEnabled;
   const access = useInsightsAccessQuery(user?.id, {
     enabled: shouldCheckAccess,
   });

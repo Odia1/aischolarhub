@@ -1,6 +1,6 @@
 import { Types } from 'mongoose';
 import { PrincipalType, SystemRoles } from 'librechat-data-provider';
-import { logger, isValidObjectIdString } from '@librechat/data-schemas';
+import { logger, isValidObjectIdString, runAsSystem } from '@librechat/data-schemas';
 import type {
   IUser,
   IConfig,
@@ -12,10 +12,20 @@ import type { FilterQuery } from 'mongoose';
 import type { Response } from 'express';
 import type { ServerRequest } from '~/types/http';
 import { parsePagination } from './pagination';
+import { canManageUser, isInstitutionAdminRole } from './institutionAuthorization';
 
 const MAX_SEARCH_LENGTH = 200;
 
-const USER_LIST_FIELDS = '_id name username email avatar role provider createdAt updatedAt';
+const USER_LIST_FIELDS = '_id name username email avatar role provider tenantId createdAt updatedAt';
+
+function isPlatformScoped(req: ServerRequest): boolean {
+  const role = req.user?.role?.toUpperCase();
+  return role === SystemRoles.ADMIN || role === SystemRoles.PLATFORM_ADMIN || role === SystemRoles.SUPERADMIN;
+}
+
+function runUserScope<T>(req: ServerRequest, fn: () => Promise<T>): Promise<T> {
+  return isPlatformScoped(req) ? runAsSystem(fn) : fn();
+}
 
 export interface AdminUsersDeps {
   findUsers: (
@@ -78,9 +88,14 @@ export function createAdminUsersHandlers(deps: AdminUsersDeps): {
   async function listUsersHandler(req: ServerRequest, res: Response) {
     try {
       const { limit, offset } = parsePagination(req.query);
+      const callerTenantId = req.user?.tenantId?.trim();
+      const scopeFilter = isInstitutionAdminRole(req.user?.role) ? { tenantId: callerTenantId } : {};
+      if (isInstitutionAdminRole(req.user?.role) && !callerTenantId) {
+        return res.status(403).json({ error: 'Institution context required' });
+      }
       const [users, total] = await Promise.all([
-        findUsers({}, USER_LIST_FIELDS, { limit, offset, sort: { createdAt: -1 } }),
-        countUsers(),
+        runUserScope(req, () => findUsers(scopeFilter, USER_LIST_FIELDS, { limit, offset, sort: { createdAt: -1 } })),
+        runUserScope(req, () => countUsers(scopeFilter)),
       ]);
 
       const mapped: AdminUserListItem[] = users.map((u) => ({
@@ -128,11 +143,18 @@ export function createAdminUsersHandlers(deps: AdminUsersDeps): {
       const escaped = trimmed.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       const regex = new RegExp(`^${escaped}`, 'i');
 
-      const users = await findUsers(
-        { $or: [{ name: regex }, { email: regex }, { username: regex }] },
+      const scopeFilter = isInstitutionAdminRole(req.user?.role)
+        ? { tenantId: req.user?.tenantId, $or: [{ name: regex }, { email: regex }, { username: regex }] }
+        : { $or: [{ name: regex }, { email: regex }, { username: regex }] };
+      if (isInstitutionAdminRole(req.user?.role) && !req.user?.tenantId) {
+        return res.status(403).json({ error: 'Institution context required' });
+      }
+
+      const users = await runUserScope(req, () => findUsers(
+        scopeFilter,
         '_id name email username avatar',
         { limit: searchLimit, sort: { name: 1 } },
-      );
+      ));
 
       const results: AdminUserSearchResult[] = users.map((u) => ({
         id: u._id?.toString() ?? '',
@@ -169,16 +191,33 @@ export function createAdminUsersHandlers(deps: AdminUsersDeps): {
         return res.status(403).json({ error: 'Cannot delete your own account' });
       }
 
-      const [targetUser] = await findUsers({ _id: id }, 'role tenantId', { limit: 1 });
+      const isInstitutionAdmin = isInstitutionAdminRole(req.user?.role);
+      const callerTenantId = req.user?.tenantId?.trim();
+      if (isInstitutionAdmin && !callerTenantId) {
+        return res.status(403).json({ error: 'Institution context required' });
+      }
+      const targetFilter = isInstitutionAdmin
+        ? { _id: id, tenantId: callerTenantId }
+        : { _id: id };
+      const [targetUser] = await runUserScope(req, () => findUsers(targetFilter, 'role tenantId', { limit: 1 }));
+      if (!targetUser && isInstitutionAdmin) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+      if (targetUser && !canManageUser(
+        { role: req.user?.role, tenantId: req.user?.tenantId, id: callerId },
+        { tenantId: targetUser.tenantId, role: targetUser.role, id },
+      )) {
+        return res.status(403).json({ error: 'User administration is not permitted' });
+      }
       if (targetUser?.role === SystemRoles.ADMIN) {
-        const adminCount = await countUsers({ role: SystemRoles.ADMIN });
+        const adminCount = await runUserScope(req, () => countUsers({ role: SystemRoles.ADMIN }));
         if (adminCount <= 1) {
           return res.status(400).json({ error: 'Cannot delete the last admin user' });
         }
       }
 
       triggerDeletionFence = new Date();
-      const fenceState = await beginAgentTriggerUserDeletion(id, triggerDeletionFence);
+      const fenceState = await runUserScope(req, () => beginAgentTriggerUserDeletion(id, triggerDeletionFence!));
       if (fenceState === 'in_progress') {
         triggerDeletionFence = undefined;
         return res.status(409).json({ error: 'User deletion is already in progress' });
@@ -187,10 +226,10 @@ export function createAdminUsersHandlers(deps: AdminUsersDeps): {
         triggerDeletionFence = undefined;
         return res.status(404).json({ error: 'User not found' });
       }
-      await prepareAgentTriggerUserPurge(id, triggerDeletionFence, targetUser?.tenantId);
-      await drainAgentTriggerDeliveriesForUser(id);
+      await runUserScope(req, () => prepareAgentTriggerUserPurge(id, triggerDeletionFence!, targetUser?.tenantId));
+      await runUserScope(req, () => drainAgentTriggerDeliveriesForUser(id));
 
-      const result = await deleteUserById(id);
+      const result = await runUserScope(req, () => deleteUserById(id));
 
       if (result.deletedCount === 0) {
         await cancelAgentTriggerUserPurge(id, triggerDeletionFence);
@@ -199,10 +238,10 @@ export function createAdminUsersHandlers(deps: AdminUsersDeps): {
         return res.status(404).json({ error: 'User not found' });
       }
       userDeleted = true;
-      await purgeAgentTriggerDeliveriesForUser(id);
+      await runUserScope(req, () => purgeAgentTriggerDeliveriesForUser(id));
 
       if (targetUser?.role === SystemRoles.ADMIN) {
-        const remaining = await countUsers({ role: SystemRoles.ADMIN });
+        const remaining = await runUserScope(req, () => countUsers({ role: SystemRoles.ADMIN }));
         if (remaining === 0) {
           logger.error(
             `[adminUsers] CRITICAL: last admin deleted via race condition, user: ${id}. ` +
@@ -213,8 +252,8 @@ export function createAdminUsersHandlers(deps: AdminUsersDeps): {
 
       const objectId = new Types.ObjectId(id);
       const cleanupResults = await Promise.allSettled([
-        deleteConfig(PrincipalType.USER, id),
-        deleteAclEntries({ principalType: PrincipalType.USER, principalId: objectId }),
+        runUserScope(req, () => deleteConfig(PrincipalType.USER, id)),
+        runUserScope(req, () => deleteAclEntries({ principalType: PrincipalType.USER, principalId: objectId })),
       ]);
       for (const r of cleanupResults) {
         if (r.status === 'rejected') {

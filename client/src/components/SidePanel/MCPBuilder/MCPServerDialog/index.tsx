@@ -1,3 +1,4 @@
+import { isPrivilegedAdmin, isPlatformAdmin } from '~/utils/rbac';
 import React, { useState, useEffect } from 'react';
 import { Copy, CopyCheck } from 'lucide-react';
 import {
@@ -98,7 +99,7 @@ export default function MCPServerDialog({
 
   const shouldShowShareButton =
     server &&
-    (user?.role === SystemRoles.ADMIN || canShareThisServer) &&
+    (isPrivilegedAdmin(user) || canShareThisServer) &&
     hasAccessToShareMcpServers &&
     !permissionsLoading;
 

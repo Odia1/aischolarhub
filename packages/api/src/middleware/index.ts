@@ -21,3 +21,16 @@ export * from './share';
 export * from './messageFilterPii';
 export * from './messageValidation';
 export * from './feedback';
+
+export {
+  isSuperadmin,
+  isPlatformAdmin,
+  isInstitutionAdmin,
+  requirePlatformAdmin,
+  requireInstitutionAdmin,
+  requireInstitutionContext,
+  requireInstitutionScope,
+  requireInstitutionDeletion,
+} from './admin';
+
+export * from './institution';

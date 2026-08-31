@@ -1,0 +1,159 @@
+import { SystemRoles } from 'librechat-data-provider';
+import { logger, runAsSystem } from '@librechat/data-schemas';
+import type { IInstitution, IUser } from '@librechat/data-schemas';
+import type { Response } from 'express';
+import type { ServerRequest } from '~/types/http';
+import {
+  canAssignRole,
+  canDeleteInstitution,
+  canManageInstitution,
+  isInstitutionAdminRole,
+} from './institutionAuthorization';
+
+const ID_RE = /^[-a-zA-Z0-9_.]{1,128}$/;
+const NAME_MAX = 200;
+
+export interface AdminInstitutionsDeps {
+  listInstitutions: (options?: { limit?: number; offset?: number }) => Promise<IInstitution[]>;
+  countInstitutions: () => Promise<number>;
+  getInstitutionById: (id: string) => Promise<IInstitution | null>;
+  createInstitution: (data: { id: string; name: string }) => Promise<IInstitution>;
+  updateInstitution: (
+    id: string,
+    update: { name?: string; status?: 'enabled' | 'disabled' },
+  ) => Promise<IInstitution | null>;
+  deleteInstitution: (id: string) => Promise<{ deletedCount?: number }>;
+  /** Must purge all tenant-owned collections/files before the registry record is removed. */
+  purgeTenantData: (tenantId: string) => Promise<void>;
+  findUser: (criteria: Record<string, unknown>) => Promise<IUser | null>;
+  updateUser: (userId: string, data: Partial<IUser>) => Promise<IUser | null>;
+}
+
+function actor(req: ServerRequest) {
+  return {
+    role: req.user?.role,
+    tenantId: req.user?.tenantId,
+    id: req.user?._id?.toString() ?? req.user?.id,
+  };
+}
+
+function withPlatformContext<T>(req: ServerRequest, fn: () => Promise<T>): Promise<T> {
+  // Institution registry operations are global. Platform administrators must
+  // never inherit an incidental tenant ALS scope from another middleware.
+  return canManageInstitution(actor(req)) ? runAsSystem(fn) : fn();
+}
+
+function validateId(id: unknown): id is string {
+  return typeof id === 'string' && ID_RE.test(id.trim());
+}
+
+function validateName(name: unknown): name is string {
+  return typeof name === 'string' && name.trim().length > 0 && name.trim().length <= NAME_MAX;
+}
+
+export function createAdminInstitutionsHandlers(deps: AdminInstitutionsDeps) {
+  async function listInstitutions(req: ServerRequest, res: Response) {
+    try {
+      const institutions = await withPlatformContext(req, () => deps.listInstitutions());
+      return res.status(200).json({ institutions });
+    } catch (error) {
+      logger.error('[adminInstitutions] list failed', error);
+      return res.status(500).json({ error: 'Failed to list institutions' });
+    }
+  }
+
+  async function createInstitution(req: ServerRequest, res: Response) {
+    if (!canManageInstitution(actor(req))) return res.status(403).json({ error: 'Platform administrator privileges required' });
+    const body = req.body as unknown as { id?: unknown; name?: unknown };
+    if (!validateId(body.id) || !validateName(body.name)) {
+      return res.status(400).json({ error: 'id and name are required and valid' });
+    }
+    try {
+      const institution = await runAsSystem(() =>
+        deps.createInstitution({ id: body.id.trim(), name: body.name.trim() }),
+      );
+      return res.status(201).json({ institution });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '';
+      if (message.includes('duplicate') || message.includes('E11000')) {
+        return res.status(409).json({ error: 'Institution already exists' });
+      }
+      logger.error('[adminInstitutions] create failed', error);
+      return res.status(500).json({ error: 'Failed to create institution' });
+    }
+  }
+
+  async function updateInstitution(req: ServerRequest, res: Response) {
+    if (!canManageInstitution(actor(req))) return res.status(403).json({ error: 'Platform administrator privileges required' });
+    const { id } = req.params as { id?: string };
+    const body = req.body as unknown as { name?: unknown; status?: unknown };
+    if (!validateId(id)) return res.status(400).json({ error: 'Invalid institution id' });
+    if (body.name !== undefined && !validateName(body.name)) return res.status(400).json({ error: 'Invalid institution name' });
+    if (body.status !== undefined && body.status !== 'enabled' && body.status !== 'disabled') {
+      return res.status(400).json({ error: 'Invalid institution status' });
+    }
+    try {
+      const institution = await runAsSystem(() => deps.updateInstitution(id.trim(), {
+        ...(body.name !== undefined ? { name: (body.name as string).trim() } : {}),
+        ...(body.status !== undefined ? { status: body.status as 'enabled' | 'disabled' } : {}),
+      }));
+      if (!institution) return res.status(404).json({ error: 'Institution not found' });
+      return res.status(200).json({ institution });
+    } catch (error) {
+      logger.error('[adminInstitutions] update failed', error);
+      return res.status(500).json({ error: 'Failed to update institution' });
+    }
+  }
+
+  async function deleteInstitution(req: ServerRequest, res: Response) {
+    if (!canDeleteInstitution(actor(req))) return res.status(403).json({ error: 'Superadmin privileges required' });
+    const { id } = req.params as { id?: string };
+    if (!validateId(id)) return res.status(400).json({ error: 'Invalid institution id' });
+    try {
+      const tenantId = id.trim();
+      // Purge all tenant-owned data first. The registry record is deleted only
+      // after the purge succeeds, so a failed purge cannot silently orphan the
+      // institution while falsely reporting a successful permanent deletion.
+      await runAsSystem(() => deps.purgeTenantData(tenantId));
+      const result = await runAsSystem(() => deps.deleteInstitution(tenantId));
+      if ((result.deletedCount ?? 0) !== 1) return res.status(404).json({ error: 'Institution not found' });
+      return res.status(200).json({ success: true });
+    } catch (error) {
+      logger.error('[adminInstitutions] delete failed', error);
+      return res.status(500).json({ error: 'Failed to delete institution' });
+    }
+  }
+
+  async function assignAdmin(req: ServerRequest, res: Response) {
+    const a = actor(req);
+    if (!canManageInstitution(a)) return res.status(403).json({ error: 'Platform administrator privileges required' });
+    const { id } = req.params as { id?: string };
+    const body = req.body as unknown as { userId?: unknown; role?: unknown };
+    const role = typeof body.role === 'string' ? body.role : SystemRoles.INSTITUTION_ADMIN;
+    if (!validateId(id) || typeof body.userId !== 'string' || !body.userId.trim()) {
+      return res.status(400).json({ error: 'institution id and userId are required' });
+    }
+    if (!canAssignRole(a, role, id, body.userId)) {
+      return res.status(403).json({ error: 'Role assignment is not permitted' });
+    }
+    try {
+      const institution = await runAsSystem(() => deps.getInstitutionById(id));
+      if (!institution) return res.status(404).json({ error: 'Institution not found' });
+      const user = await runAsSystem(() => deps.findUser({ _id: body.userId as string }));
+      if (!user) return res.status(404).json({ error: 'User not found' });
+      if (isInstitutionAdminRole(user.role) && user.tenantId !== id) {
+        return res.status(409).json({ error: 'User is already an Institution Admin for another institution' });
+      }
+      const updated = await runAsSystem(() =>
+        deps.updateUser(body.userId as string, { role, tenantId: id }),
+      );
+      if (!updated) return res.status(404).json({ error: 'User not found' });
+      return res.status(200).json({ user: updated });
+    } catch (error) {
+      logger.error('[adminInstitutions] assign admin failed', error);
+      return res.status(500).json({ error: 'Failed to assign institution admin' });
+    }
+  }
+
+  return { listInstitutions, createInstitution, updateInstitution, deleteInstitution, assignAdmin };
+}

@@ -1,0 +1,64 @@
+import type { FilterQuery } from 'mongoose';
+import type { IInstitution, InstitutionStatus } from '~/types/institution';
+
+const INSTITUTION_ID_RE = /^[-a-zA-Z0-9_.]{1,128}$/;
+
+export function createInstitutionMethods(mongoose: typeof import('mongoose')) {
+  const Institution = () => mongoose.models.Institution as mongoose.Model<IInstitution>;
+
+  async function listInstitutions(options?: { limit?: number; offset?: number }) {
+    return Institution()
+      .find({})
+      .sort({ name: 1 })
+      .skip(options?.offset ?? 0)
+      .limit(options?.limit ?? 100)
+      .lean<IInstitution[]>()
+      .exec();
+  }
+
+  async function countInstitutions() {
+    return Institution().countDocuments({});
+  }
+
+  async function getInstitutionById(id: string) {
+    return Institution().findById(id).lean<IInstitution>().exec();
+  }
+
+  async function createInstitution(data: { id: string; name: string }) {
+    if (!INSTITUTION_ID_RE.test(data.id)) throw new Error('Invalid institution id');
+    return Institution().create({ _id: data.id, name: data.name.trim(), status: 'enabled' });
+  }
+
+  async function updateInstitution(id: string, update: { name?: string; status?: InstitutionStatus }) {
+    const set: Record<string, unknown> = {};
+    if (update.name !== undefined) set.name = update.name.trim();
+    if (update.status !== undefined) set.status = update.status;
+    return Institution().findByIdAndUpdate(id, { $set: set }, { new: true, runValidators: true })
+      .lean<IInstitution>()
+      .exec();
+  }
+
+  async function deleteInstitution(id: string) {
+    return Institution().deleteOne({ _id: id } satisfies FilterQuery<IInstitution>);
+  }
+
+  async function ensureInitialInstitution() {
+    await Institution().updateOne(
+      { _id: 'SEEDS' },
+      { $setOnInsert: { _id: 'SEEDS', name: 'SEEDS', status: 'enabled' } },
+      { upsert: true },
+    );
+  }
+
+  return {
+    listInstitutions,
+    countInstitutions,
+    getInstitutionById,
+    createInstitution,
+    updateInstitution,
+    deleteInstitution,
+    ensureInitialInstitution,
+  };
+}
+
+export type InstitutionMethods = ReturnType<typeof createInstitutionMethods>;

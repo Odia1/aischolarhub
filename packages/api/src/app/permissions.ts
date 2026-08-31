@@ -130,7 +130,10 @@ export async function updateInterfacePermissions({
   // 2. Role-specific defaults (from roleDefaults)
   // 3. Interface schema defaults (from interfaceSchema.default())
   for (const roleName of [SystemRoles.USER, SystemRoles.ADMIN]) {
-    const defaultPerms = roleDefaults[roleName]?.permissions;
+    const defaultPerms =
+      (roleDefaults as Partial<Record<SystemRoles, { permissions?: Record<string, Record<string, boolean>> }>>)[
+        roleName
+      ]?.permissions ?? {};
 
     const existingRole = await getRoleByName(roleName);
     const existingPermissions = existingRole?.permissions as

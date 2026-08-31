@@ -183,7 +183,9 @@ export function createRoleMethods(
       const role = await query.lean().exec();
 
       if (!role && systemRoleValues.has(roleName)) {
-        const newRole = await new Role(roleDefaults[roleName as keyof typeof roleDefaults]).save();
+        const defaults = roleDefaults[roleName as keyof typeof roleDefaults];
+        const systemRole = defaults ?? { name: roleName, permissions: {} };
+        const newRole = await new Role(systemRole).save();
         if (cache) {
           await cache.set(scopedCacheKey(roleName), newRole);
         }

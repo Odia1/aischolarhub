@@ -1,3 +1,4 @@
+import { isPrivilegedAdmin, isPlatformAdmin } from '~/utils/rbac';
 import { SystemRoles } from 'librechat-data-provider';
 import AutoSendPrompt from '../buttons/AutoSendPrompt';
 import { AdminSettings } from '~/components/Prompts';
@@ -12,7 +13,7 @@ export default function PromptsAccordion() {
     <PromptSidePanel
       className="space-y-2 pt-2"
       footer={
-        user?.role === SystemRoles.ADMIN ? (
+        isPrivilegedAdmin(user) ? (
           <PanelFooter>
             <AdminSettings />
           </PanelFooter>

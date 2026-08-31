@@ -19,6 +19,7 @@ await client.connect();
 
 const db = client.db("LibreChat");
 const users = db.collection("users");
+const institutions = db.collection("institutions");
 const adminAudit = db.collection("adminAudit");
 const sessions = new Map();
 
@@ -80,12 +81,21 @@ async function requireAdmin(req, res, next) {
 
     const admin = await users.findOne(
       { _id: new ObjectId(session.userId) },
-      { projection: { name: 1, email: 1, role: 1, superAdmin: 1 } }
+      { projection: { name: 1, email: 1, role: 1, superAdmin: 1, tenantId: 1 } }
     );
 
-    if (!admin || admin.role !== "ADMIN") {
+    const role = String(admin?.role || "").toUpperCase();
+    const allowed = role === "ADMIN" || role === "PLATFORM_ADMIN" ||
+      role === "SUPERADMIN" || role === "INSTITUTION_ADMIN";
+
+    if (!admin || !allowed) {
       sessions.delete(token);
       return res.status(403).json({ error: "Administrator access required" });
+    }
+
+    if (role === "INSTITUTION_ADMIN" && !String(admin.tenantId || "").trim()) {
+      sessions.delete(token);
+      return res.status(403).json({ error: "Institution context required" });
     }
 
     req.admin = admin;
@@ -94,6 +104,68 @@ async function requireAdmin(req, res, next) {
     console.error(e);
     res.status(500).json({ error: "Authentication error" });
   }
+}
+
+function normalizedRole(user) {
+  return String(user?.role || "").trim().toUpperCase();
+}
+
+function isSuperAdmin(user) {
+  return user?.superAdmin === true || normalizedRole(user) === "SUPERADMIN";
+}
+
+function isPlatformAdmin(user) {
+  return isSuperAdmin(user) || normalizedRole(user) === "PLATFORM_ADMIN" ||
+    (normalizedRole(user) === "ADMIN" && user?.superAdmin === true);
+}
+
+function isInstitutionAdmin(user) {
+  return normalizedRole(user) === "INSTITUTION_ADMIN";
+}
+
+function actorTenant(req) {
+  return String(req.admin?.tenantId || "").trim() || null;
+}
+
+function userScope(req, extra = {}) {
+  return isInstitutionAdmin(req.admin)
+    ? { tenantId: actorTenant(req), ...extra }
+    : extra;
+}
+
+function canTargetUser(req, user) {
+  return !isInstitutionAdmin(req.admin) || String(user?.tenantId || "").trim() === actorTenant(req);
+}
+
+function allowedUserRole(req, role) {
+  const r = String(role || "").trim();
+
+  // Institution Admins may only create ordinary users/instructors.
+  if (isInstitutionAdmin(req.admin)) {
+    return r === "USER" || r === "Instructor";
+  }
+
+  // Only the immutable Superadmin may create a Platform Admin.
+  if (isSuperAdmin(req.admin)) {
+    return r === "USER" ||
+      r === "Instructor" ||
+      r === "INSTITUTION_ADMIN" ||
+      r === "PLATFORM_ADMIN";
+  }
+
+  // Platform Admins have platform-wide management privileges,
+  // but cannot create another Platform Admin.
+  if (normalizedRole(req.admin) === "PLATFORM_ADMIN") {
+    return r === "USER" ||
+      r === "Instructor" ||
+      r === "INSTITUTION_ADMIN";
+  }
+
+  // Preserve legacy ADMIN behavior.
+  return r === "USER" ||
+    r === "Instructor" ||
+    r === "INSTITUTION_ADMIN" ||
+    r === "ADMIN";
 }
 
 app.get("/health", (_req, res) =>
@@ -109,7 +181,7 @@ app.post("/api/login", async (req, res) => {
 
     const user = await users.findOne({ email });
 
-    if (!user || user.role !== "ADMIN" || !user.password ||
+    if (!user || !(isPlatformAdmin(user) || isInstitutionAdmin(user)) || !user.password ||
         !(await bcrypt.compare(password, user.password))) {
 
       await audit("LOGIN_FAILED", req, {
@@ -150,7 +222,7 @@ app.post("/api/login", async (req, res) => {
 
     res.json({
       ok: true,
-      user: { name: user.name, email: user.email, role: user.role }
+      user: { name: user.name, email: user.email, role: user.role, tenantId: user.tenantId || null, superAdmin: user.superAdmin === true }
     });
   } catch (e) {
     console.error(e);
@@ -284,7 +356,7 @@ app.get("/api/users", async (req, res) => {
   try {
     const q = String(req.query.q || "").trim();
     const role = String(req.query.role || "").trim();
-    const filter = {};
+    const filter = userScope(req);
 
     if (q) {
       filter.$or = [
@@ -306,6 +378,124 @@ app.get("/api/users", async (req, res) => {
   }
 });
 
+app.get("/api/institutions", async (req, res) => {
+  try {
+    if (isInstitutionAdmin(req.admin)) {
+      const id = actorTenant(req);
+      const institution = await institutions.findOne({ _id: id });
+      if (!institution) return res.status(404).json({ error: "Institution not found" });
+      return res.json({ institutions: [institution] });
+    }
+    const list = await institutions.find({}).sort({ name: 1 }).toArray();
+    const admins = await users.find(
+      { role: "INSTITUTION_ADMIN", tenantId: { $exists: true, $ne: null } },
+      { projection: { name: 1, email: 1, tenantId: 1 } }
+    ).toArray();
+    const byTenant = new Map();
+    for (const admin of admins) {
+      const key = String(admin.tenantId || "");
+      if (!byTenant.has(key)) byTenant.set(key, []);
+      byTenant.get(key).push({ _id: admin._id, name: admin.name, email: admin.email });
+    }
+    res.json({
+      institutions: list.map(x => ({ ...x, admins: byTenant.get(String(x._id)) || [] }))
+    });
+  } catch (e) {
+    console.error("[institutions-list]", e);
+    res.status(500).json({ error: "Failed to retrieve institutions" });
+  }
+});
+
+app.post("/api/institutions", async (req, res) => {
+  if (!isPlatformAdmin(req.admin)) return res.status(403).json({ error: "Platform administrator privileges required" });
+  const id = String(req.body.id || "").trim();
+  const name = String(req.body.name || "").trim();
+  if (!/^[-a-zA-Z0-9_.]{1,128}$/.test(id) || !name || name.length > 200)
+    return res.status(400).json({ error: "Valid institution id and name are required" });
+  try {
+    const now = new Date();
+    const doc = { _id: id, name, status: "enabled", createdAt: now, updatedAt: now };
+    await institutions.insertOne(doc);
+    await audit("INSTITUTION_CREATED", req, { safeDetails: { institutionId: id, name } });
+    res.status(201).json({ institution: doc });
+  } catch (e) {
+    if (e?.code === 11000) return res.status(409).json({ error: "Institution already exists" });
+    console.error("[institution-create]", e);
+    res.status(500).json({ error: "Failed to create institution" });
+  }
+});
+
+app.patch("/api/institutions/:id", async (req, res) => {
+  if (!isPlatformAdmin(req.admin)) return res.status(403).json({ error: "Platform administrator privileges required" });
+  const id = String(req.params.id || "").trim();
+  if (!/^[-a-zA-Z0-9_.]{1,128}$/.test(id)) return res.status(400).json({ error: "Invalid institution id" });
+  const update = { updatedAt: new Date() };
+  if (req.body.name !== undefined) {
+    const name = String(req.body.name).trim();
+    if (!name || name.length > 200) return res.status(400).json({ error: "Invalid institution name" });
+    update.name = name;
+  }
+  if (req.body.status !== undefined) {
+    if (!['enabled', 'disabled'].includes(req.body.status)) return res.status(400).json({ error: "Invalid institution status" });
+    update.status = req.body.status;
+  }
+  try {
+    const result = await institutions.findOneAndUpdate({ _id: id }, { $set: update }, { returnDocument: "after" });
+    if (!result) return res.status(404).json({ error: "Institution not found" });
+    await audit("INSTITUTION_UPDATED", req, { safeDetails: { institutionId: id, fields: Object.keys(update).filter(k => k !== "updatedAt") } });
+    res.json({ institution: result });
+  } catch (e) {
+    console.error("[institution-update]", e);
+    res.status(500).json({ error: "Failed to update institution" });
+  }
+});
+
+app.delete("/api/institutions/:id", requireSuperAdmin, async (req, res) => {
+  const id = String(req.params.id || "").trim();
+  if (!/^[-a-zA-Z0-9_.]{1,128}$/.test(id)) return res.status(400).json({ error: "Invalid institution id" });
+  try {
+    // The main API owns the canonical purge implementation. The admin UI deliberately
+    // does not attempt to reimplement tenant-data deletion here.
+    const librechatUrl = process.env.LIBRECHAT_INTERNAL_URL || "http://api:3080";
+    const response = await fetch(`${librechatUrl}/api/admin/institutions/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+      headers: { "X-AI-Scholar-Hub-Admin-Proxy": "1" }
+    });
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      return res.status(response.status).json({ error: data.error || "Failed to permanently delete institution" });
+    }
+    await audit("INSTITUTION_DELETED", req, { safeDetails: { institutionId: id } });
+    res.json({ ok: true });
+  } catch (e) {
+    console.error("[institution-delete]", e);
+    res.status(500).json({ error: "Failed to permanently delete institution" });
+  }
+});
+
+app.post("/api/institutions/:id/admin", async (req, res) => {
+  if (!isPlatformAdmin(req.admin)) return res.status(403).json({ error: "Platform administrator privileges required" });
+  const institutionId = String(req.params.id || "").trim();
+  const userId = String(req.body.userId || "").trim();
+  if (!/^[-a-zA-Z0-9_.]{1,128}$/.test(institutionId) || !userId)
+    return res.status(400).json({ error: "institution id and userId are required" });
+  try {
+    const institution = await institutions.findOne({ _id: institutionId });
+    if (!institution) return res.status(404).json({ error: "Institution not found" });
+    if (!ObjectId.isValid(userId)) return res.status(400).json({ error: "Invalid user ID" });
+    const user = await users.findOne({ _id: new ObjectId(userId) });
+    if (!user) return res.status(404).json({ error: "User not found" });
+    if (user.role === "INSTITUTION_ADMIN" && String(user.tenantId || "") !== institutionId)
+      return res.status(409).json({ error: "User is already an Institution Admin for another institution" });
+    await users.updateOne({ _id: user._id }, { $set: { role: "INSTITUTION_ADMIN", tenantId: institutionId, updatedAt: new Date() } });
+    await audit("INSTITUTION_ADMIN_ASSIGNED", req, { targetUserId: user._id, targetEmail: user.email, targetRole: "INSTITUTION_ADMIN", safeDetails: { institutionId } });
+    res.json({ ok: true });
+  } catch (e) {
+    console.error("[institution-admin]", e);
+    res.status(500).json({ error: "Failed to assign institution admin" });
+  }
+});
+
 app.post("/api/users", async (req, res) => {
   try {
     const name = String(req.body.name || "").trim();
@@ -316,11 +506,19 @@ app.post("/api/users", async (req, res) => {
     if (!name || !email)
       return res.status(400).json({ error: "Name and email are required" });
 
-    if (!["USER", "Instructor", "ADMIN"].includes(role))
-      return res.status(400).json({ error: "Invalid role" });
+    if (!allowedUserRole(req, role))
+      return res.status(400).json({ error: "Invalid or unauthorized role" });
+
+    // PLATFORM_ADMIN is strictly platform-wide and may only
+    // be created by the immutable Superadmin.
+    if (role === "PLATFORM_ADMIN" && !isSuperAdmin(req.admin)) {
+      return res.status(403).json({
+        error: "Only Superadmin may create Platform Admins"
+      });
+    }
 
     // Only the designated Superadmin may create administrator accounts.
-    if (role === "ADMIN" && req.admin.superAdmin !== true) {
+    if (role === "ADMIN" && !isSuperAdmin(req.admin)) {
       return res.status(403).json({
         error: "Only the AI Scholar Hub Superadmin may create administrator accounts"
       });
@@ -350,6 +548,9 @@ app.post("/api/users", async (req, res) => {
       avatar: null,
       provider: "local",
       role,
+      ...(isInstitutionAdmin(req.admin) || role === "INSTITUTION_ADMIN"
+        ? { tenantId: actorTenant(req) || String(req.body.tenantId || "").trim() || null }
+        : {}),
       plugins: [],
       twoFactorEnabled: false,
       termsAccepted: false,
@@ -387,7 +588,7 @@ app.post("/api/users", async (req, res) => {
      */
     const librechatUrl =
       process.env.LIBRECHAT_INTERNAL_URL ||
-      "http://AI_Scholar_Hub:3080";
+      "http://api:3080";
 
     const resetResponse = await fetch(
       `${librechatUrl}/api/auth/requestPasswordReset`,
@@ -438,7 +639,7 @@ app.patch("/api/users/:id", async (req, res) => {
       return res.status(400).json({ error: "Invalid user ID" });
 
     const id = new ObjectId(req.params.id);
-    const user = await users.findOne({ _id: id });
+    const user = await users.findOne(userScope(req, { _id: id }));
 
     if (!user) return res.status(404).json({ error: "User not found" });
 
@@ -482,13 +683,14 @@ app.patch("/api/users/:id", async (req, res) => {
 
     if (req.body.role !== undefined) {
       const role = String(req.body.role);
-      if (!["USER", "Instructor", "ADMIN"].includes(role))
-        return res.status(400).json({ error: "Invalid role" });
+      if (!allowedUserRole(req, role))
+        return res.status(400).json({ error: "Invalid or unauthorized role" });
 
       // ADMIN is a privileged role controlled only by the Superadmin.
-      if (role === "ADMIN" &&
-          user.role !== "ADMIN" &&
-          req.admin.superAdmin !== true) {
+      if ((role === "ADMIN" || role === "INSTITUTION_ADMIN") &&
+          user.role !== role &&
+          !isSuperAdmin(req.admin) &&
+          !(role === "INSTITUTION_ADMIN" && isPlatformAdmin(req.admin))) {
         return res.status(403).json({
           error: "Only the AI Scholar Hub Superadmin may promote users to ADMIN"
         });
@@ -509,6 +711,17 @@ app.patch("/api/users/:id", async (req, res) => {
       }
 
       update.role = role;
+      if (role === "PLATFORM_ADMIN") {
+        // Platform Admins are platform-wide.
+        update.tenantId = null;
+      } else if (role === "INSTITUTION_ADMIN") update.tenantId = isInstitutionAdmin(req.admin) ? actorTenant(req) : String(req.body.tenantId || user.tenantId || "").trim() || null;
+      else if (isInstitutionAdmin(req.admin)) update.tenantId = actorTenant(req);
+    }
+
+    if (req.body.tenantId !== undefined && !isInstitutionAdmin(req.admin)) {
+      const tenantId = String(req.body.tenantId || "").trim();
+      if (tenantId) update.tenantId = tenantId;
+      else delete update.tenantId;
     }
 
     if (req.body.password) {
@@ -542,8 +755,8 @@ app.post("/api/users/:id/send-reset", async (req, res) => {
       return res.status(400).json({ error: "Invalid user ID" });
 
     const user = await users.findOne(
-      { _id: new ObjectId(req.params.id) },
-      { projection: { email: 1, name: 1 } }
+      userScope(req, { _id: new ObjectId(req.params.id) }),
+      { projection: { email: 1, name: 1, tenantId: 1 } }
     );
 
     if (!user)
@@ -551,7 +764,7 @@ app.post("/api/users/:id/send-reset", async (req, res) => {
 
     const librechatUrl =
       process.env.LIBRECHAT_INTERNAL_URL ||
-      "http://AI_Scholar_Hub:3080";
+      "http://api:3080";
 
     const response = await fetch(
       `${librechatUrl}/api/auth/requestPasswordReset`,
@@ -602,7 +815,7 @@ app.delete("/api/users/:id", async (req, res) => {
     if (id.equals(req.admin._id))
       return res.status(400).json({ error: "You cannot delete your own account" });
 
-    const user = await users.findOne({ _id: id });
+    const user = await users.findOne(userScope(req, { _id: id }));
     if (!user) return res.status(404).json({ error: "User not found" });
 
     if (user.role === "ADMIN") {
@@ -661,10 +874,14 @@ app.post("/api/users/bulk", async (req, res) => {
     if (!rows.length)
       return res.status(400).json({ error: "CSV is empty" });
 
-    const allowedRoles = ["USER", "Instructor", "ADMIN"];
+    const allowedRoles = isInstitutionAdmin(req.admin)
+      ? ["USER", "Instructor"]
+      : isPlatformAdmin(req.admin)
+        ? ["USER", "Instructor", "INSTITUTION_ADMIN"]
+        : ["USER", "Instructor", "INSTITUTION_ADMIN", "ADMIN"];
 
     // Bulk creation of ADMIN accounts is restricted to the Superadmin.
-    if (req.admin.superAdmin !== true) {
+    if (!isSuperAdmin(req.admin)) {
       const containsAdmin = rows.some(
         r => String(r.role || "USER").trim() === "ADMIN"
       );
@@ -687,6 +904,7 @@ app.post("/api/users/bulk", async (req, res) => {
       const username = String(r.username || "").trim() || null;
       const email = String(r.email || "").trim().toLowerCase();
       const role = String(r.role || "USER").trim();
+      const institutionId = String(r.institutionId || r.tenantId || "").trim();
 
       if (!name || !email) {
         errors.push(`Row ${rowNo}: name and email are required`);
@@ -699,8 +917,24 @@ app.post("/api/users/bulk", async (req, res) => {
       }
 
       if (!allowedRoles.includes(role)) {
-        errors.push(`Row ${rowNo}: invalid role "${role}"`);
+        errors.push(`Row ${rowNo}: invalid or unauthorized role "${role}"`);
         continue;
+      }
+
+      if (role === "INSTITUTION_ADMIN") {
+        if (!institutionId || !/^[-a-zA-Z0-9_.]{1,128}$/.test(institutionId)) {
+          errors.push(`Row ${rowNo}: institutionId is required for Institution Admin`);
+          continue;
+        }
+        if (isInstitutionAdmin(req.admin) && institutionId !== actorTenant(req)) {
+          errors.push(`Row ${rowNo}: Institution Admin may only use their own institution`);
+          continue;
+        }
+        const institution = await institutions.findOne({ _id: institutionId });
+        if (!institution) {
+          errors.push(`Row ${rowNo}: institutionId "${institutionId}" was not found`);
+          continue;
+        }
       }
 
       if (seen.has(email)) {
@@ -719,6 +953,7 @@ app.post("/api/users/bulk", async (req, res) => {
           username,
           email,
           role,
+          institutionId,
           status: "skipped",
           reason: "Email already exists"
         });
@@ -729,6 +964,7 @@ app.post("/api/users/bulk", async (req, res) => {
           username,
           email,
           role,
+          institutionId,
           status: "new"
         });
       }
@@ -771,6 +1007,9 @@ app.post("/api/users/bulk", async (req, res) => {
           avatar: null,
           provider: "local",
           role: item.role,
+          ...(isInstitutionAdmin(req.admin) || item.role === "INSTITUTION_ADMIN"
+            ? { tenantId: actorTenant(req) || String(item.institutionId || "").trim() || null }
+            : {}),
           plugins: [],
           twoFactorEnabled: false,
           termsAccepted: false,
@@ -796,7 +1035,7 @@ app.post("/api/users/bulk", async (req, res) => {
         try {
           const librechatUrl =
             process.env.LIBRECHAT_INTERNAL_URL ||
-            "http://AI_Scholar_Hub:3080";
+            "http://api:3080";
 
           const resetResponse = await fetch(
             `${librechatUrl}/api/auth/requestPasswordReset`,
@@ -863,7 +1102,7 @@ app.post("/api/users/bulk", async (req, res) => {
 });
 
 app.get("/api/users/export", async (_req, res) => {
-  const rows = await users.find({}, {
+  const rows = await users.find(userScope(_req), {
     projection: { name: 1, username: 1, email: 1, role: 1, provider: 1, createdAt: 1 }
   }).sort({ createdAt: -1 }).toArray();
 

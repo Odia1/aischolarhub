@@ -1,3 +1,4 @@
+import { isPrivilegedAdmin, isPlatformAdmin } from '~/utils/rbac';
 import { Globe } from 'lucide-react';
 import { Button, Spinner } from '@librechat/client';
 import { useWatch, useFormContext } from 'react-hook-form';
@@ -83,10 +84,10 @@ export default function AgentFooter({
           {!!agent_id && <VersionButton setActivePanel={setActivePanel} />}
         </div>
       )}
-      {user?.role === SystemRoles.ADMIN && showButtons && <AdminSettings />}
+      {isPrivilegedAdmin(user) && showButtons && <AdminSettings />}
       {/* Context Button */}
       <div className="flex items-center justify-end gap-2">
-        {(agent?.author === user?.id || user?.role === SystemRoles.ADMIN || canDeleteThisAgent) &&
+        {(agent?.author === user?.id || isPrivilegedAdmin(user) || canDeleteThisAgent) &&
           !permissionsLoading && (
             <DeleteButton
               agent_id={agent_id}
@@ -94,7 +95,7 @@ export default function AgentFooter({
               createMutation={createMutation}
             />
           )}
-        {(agent?.author === user?.id || user?.role === SystemRoles.ADMIN || canShareThisAgent) &&
+        {(agent?.author === user?.id || isPrivilegedAdmin(user) || canShareThisAgent) &&
           hasAccessToShareAgents &&
           !permissionsLoading && (
             <GenericGrantAccessDialog
@@ -104,7 +105,7 @@ export default function AgentFooter({
               resourceType={ResourceType.AGENT}
             />
           )}
-        {(agent?.author === user?.id || user?.role === SystemRoles.ADMIN || canShareRemoteAgent) &&
+        {(agent?.author === user?.id || isPrivilegedAdmin(user) || canShareRemoteAgent) &&
           hasAccessToShareRemoteAgents &&
           !remotePermissionsLoading &&
           agent?._id && (
@@ -125,7 +126,7 @@ export default function AgentFooter({
               </Button>
             </GenericGrantAccessDialog>
           )}
-        {(agent?.author === user?.id || user?.role === SystemRoles.ADMIN || canEditThisAgent) &&
+        {(agent?.author === user?.id || isPrivilegedAdmin(user) || canEditThisAgent) &&
           !permissionsLoading && <DuplicateAgent agent_id={agent_id} />}
         {/* Submit Button */}
         <Button
