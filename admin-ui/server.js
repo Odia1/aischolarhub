@@ -8,7 +8,7 @@ const PORT = process.env.PORT || 3090;
 
 // Immutable AI Scholar Hub Superadmin.
 // This is the creator/owner account and must never be deleted or demoted.
-const SUPERADMIN_ID = "6a8a864f661ef34368083454";
+const SUPERADMIN_EMAIL = "ppatra@seedsnet.org";
 
 app.use(express.json({ limit: "5mb" }));
 app.use(express.urlencoded({ extended: false }));
@@ -93,9 +93,24 @@ async function requireAdmin(req, res, next) {
       return res.status(403).json({ error: "Administrator access required" });
     }
 
-    if (role === "INSTITUTION_ADMIN" && !String(admin.tenantId || "").trim()) {
-      sessions.delete(token);
-      return res.status(403).json({ error: "Institution context required" });
+    if (role === "INSTITUTION_ADMIN") {
+      const tenantId = String(admin.tenantId || "").trim();
+      if (!tenantId) {
+        sessions.delete(token);
+        return res.status(403).json({ error: "Institution context required" });
+      }
+      const institution = await institutions.findOne(
+        { _id: tenantId },
+        { projection: { _id: 1, status: 1 } }
+      );
+      if (!institution) {
+        sessions.delete(token);
+        return res.status(403).json({ error: "Institution not found" });
+      }
+      if (institution.status === "disabled") {
+        sessions.delete(token);
+        return res.status(403).json({ error: "This institution is disabled" });
+      }
     }
 
     req.admin = admin;
@@ -111,7 +126,24 @@ function normalizedRole(user) {
 }
 
 function isSuperAdmin(user) {
-  return user?.superAdmin === true || normalizedRole(user) === "SUPERADMIN";
+  return String(user?.email || "").trim().toLowerCase() === SUPERADMIN_EMAIL &&
+    user?.superAdmin === true;
+}
+
+function isHigherAdmin(user) {
+  return isSuperAdmin(user) || normalizedRole(user) === "PLATFORM_ADMIN" ||
+    normalizedRole(user) === "ADMIN";
+}
+
+async function institutionExists(tenantId) {
+  const id = String(tenantId || "").trim();
+  if (!id) return false;
+  return !!(await institutions.findOne({ _id: id }, { projection: { _id: 1 } }));
+}
+
+function targetTenantForRequest(req, requestedTenantId) {
+  if (isInstitutionAdmin(req.admin)) return actorTenant(req);
+  return String(requestedTenantId || "").trim() || null;
 }
 
 function isPlatformAdmin(user) {
@@ -134,7 +166,43 @@ function userScope(req, extra = {}) {
 }
 
 function canTargetUser(req, user) {
-  return !isInstitutionAdmin(req.admin) || String(user?.tenantId || "").trim() === actorTenant(req);
+  const actor = req.admin;
+  const targetRole = normalizedRole(user);
+
+  // Superadmin has absolute authority, including over other privileged accounts.
+  if (isSuperAdmin(actor)) return true;
+
+  // Platform Admins may manage Institution Admins and all lower roles,
+  // but may never manage another Platform Admin, legacy ADMIN, or Superadmin.
+  if (normalizedRole(actor) === "PLATFORM_ADMIN") {
+    return targetRole !== "SUPERADMIN" &&
+      targetRole !== "PLATFORM_ADMIN" &&
+      targetRole !== "ADMIN";
+  }
+
+  // Institution Admins are restricted to their own institution and
+  // may manage only ordinary users and instructors.
+  if (isInstitutionAdmin(actor)) {
+    return String(user?.tenantId || "").trim() === actorTenant(req) &&
+      (targetRole === "USER" || targetRole === "INSTRUCTOR");
+  }
+
+  return false;
+}
+
+function canAssignRoleToUser(req, role) {
+  const r = String(role || "").trim().toUpperCase();
+
+  if (r === "SUPERADMIN" || r === "PLATFORM_ADMIN" || r === "ADMIN") {
+    return isSuperAdmin(req.admin);
+  }
+
+  if (isSuperAdmin(req.admin) || normalizedRole(req.admin) === "PLATFORM_ADMIN") {
+    return r === "USER" || r === "INSTRUCTOR" || r === "INSTITUTION_ADMIN";
+  }
+
+  return isInstitutionAdmin(req.admin) &&
+    (r === "USER" || r === "INSTRUCTOR");
 }
 
 function allowedUserRole(req, role) {
@@ -391,14 +459,32 @@ app.get("/api/institutions", async (req, res) => {
       { role: "INSTITUTION_ADMIN", tenantId: { $exists: true, $ne: null } },
       { projection: { name: 1, email: 1, tenantId: 1 } }
     ).toArray();
+    const allTenantUsers = await users.find(
+      { tenantId: { $exists: true, $nin: [null, ""] } },
+      { projection: { email: 1, tenantId: 1 } }
+    ).toArray();
     const byTenant = new Map();
+    const domainsByTenant = new Map();
     for (const admin of admins) {
       const key = String(admin.tenantId || "");
       if (!byTenant.has(key)) byTenant.set(key, []);
       byTenant.get(key).push({ _id: admin._id, name: admin.name, email: admin.email });
     }
+    for (const user of allTenantUsers) {
+      const tenantId = String(user.tenantId || "").trim();
+      const email = String(user.email || "").trim().toLowerCase();
+      const at = email.lastIndexOf("@");
+      if (!tenantId || at <= 0) continue;
+      const domain = email.slice(at + 1);
+      if (!domainsByTenant.has(tenantId)) domainsByTenant.set(tenantId, new Set());
+      domainsByTenant.get(tenantId).add(domain);
+    }
     res.json({
-      institutions: list.map(x => ({ ...x, admins: byTenant.get(String(x._id)) || [] }))
+      institutions: list.map(x => ({
+        ...x,
+        admins: byTenant.get(String(x._id)) || [],
+        domains: [...(domainsByTenant.get(String(x._id)) || new Set())].sort()
+      }))
     });
   } catch (e) {
     console.error("[institutions-list]", e);
@@ -482,11 +568,22 @@ app.post("/api/institutions/:id/admin", async (req, res) => {
   try {
     const institution = await institutions.findOne({ _id: institutionId });
     if (!institution) return res.status(404).json({ error: "Institution not found" });
+    if (institution.status === "disabled") return res.status(400).json({ error: "Cannot assign an admin to a disabled institution" });
     if (!ObjectId.isValid(userId)) return res.status(400).json({ error: "Invalid user ID" });
     const user = await users.findOne({ _id: new ObjectId(userId) });
     if (!user) return res.status(404).json({ error: "User not found" });
-    if (user.role === "INSTITUTION_ADMIN" && String(user.tenantId || "") !== institutionId)
+
+    const targetRole = normalizedRole(user);
+    if (targetRole !== "USER" && targetRole !== "INSTRUCTOR" &&
+        !(targetRole === "INSTITUTION_ADMIN" && String(user.tenantId || "") === institutionId)) {
+      return res.status(403).json({
+        error: "Only users and instructors may be assigned as Institution Admins"
+      });
+    }
+
+    if (targetRole === "INSTITUTION_ADMIN" && String(user.tenantId || "") !== institutionId)
       return res.status(409).json({ error: "User is already an Institution Admin for another institution" });
+
     await users.updateOne({ _id: user._id }, { $set: { role: "INSTITUTION_ADMIN", tenantId: institutionId, updatedAt: new Date() } });
     await audit("INSTITUTION_ADMIN_ASSIGNED", req, { targetUserId: user._id, targetEmail: user.email, targetRole: "INSTITUTION_ADMIN", safeDetails: { institutionId } });
     res.json({ ok: true });
@@ -506,29 +603,29 @@ app.post("/api/users", async (req, res) => {
     if (!name || !email)
       return res.status(400).json({ error: "Name and email are required" });
 
-    if (!allowedUserRole(req, role))
+    if (!allowedUserRole(req, role) || !canAssignRoleToUser(req, role))
       return res.status(400).json({ error: "Invalid or unauthorized role" });
 
-    // PLATFORM_ADMIN is strictly platform-wide and may only
-    // be created by the immutable Superadmin.
-    if (role === "PLATFORM_ADMIN" && !isSuperAdmin(req.admin)) {
-      return res.status(403).json({
-        error: "Only Superadmin may create Platform Admins"
-      });
-    }
-
-    // Only the designated Superadmin may create administrator accounts.
-    if (role === "ADMIN" && !isSuperAdmin(req.admin)) {
-      return res.status(403).json({
-        error: "Only the AI Scholar Hub Superadmin may create administrator accounts"
-      });
-    }
+    // PLATFORM_ADMIN and SUPERADMIN/legacy ADMIN are privileged roles
+    // that only the designated Superadmin may create.
 
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
       return res.status(400).json({ error: "Invalid email address" });
 
     if (await users.findOne({ email }))
       return res.status(409).json({ error: "A user with this email already exists" });
+
+    const requestedTenantId = String(req.body.tenantId || "").trim();
+    const tenantId = isInstitutionAdmin(req.admin)
+      ? actorTenant(req)
+      : (role === "PLATFORM_ADMIN" ? null : requestedTenantId);
+
+    if (role === "USER" || role === "Instructor" || role === "INSTITUTION_ADMIN") {
+      if (!tenantId)
+        return res.status(400).json({ error: "Institution is required for institution-scoped users" });
+      if (!(await institutionExists(tenantId)))
+        return res.status(400).json({ error: "Selected institution does not exist" });
+    }
 
     /*
      * The administrator never creates or receives a usable password.
@@ -548,9 +645,7 @@ app.post("/api/users", async (req, res) => {
       avatar: null,
       provider: "local",
       role,
-      ...(isInstitutionAdmin(req.admin) || role === "INSTITUTION_ADMIN"
-        ? { tenantId: actorTenant(req) || String(req.body.tenantId || "").trim() || null }
-        : {}),
+      ...(tenantId ? { tenantId } : {}),
       plugins: [],
       twoFactorEnabled: false,
       termsAccepted: false,
@@ -643,18 +738,30 @@ app.patch("/api/users/:id", async (req, res) => {
 
     if (!user) return res.status(404).json({ error: "User not found" });
 
-    const isSuperadmin = req.params.id === SUPERADMIN_ID;
+    if (id.equals(req.admin._id)) {
+      return res.status(400).json({ error: "You cannot modify your own administrative account" });
+    }
 
-    if (isSuperadmin && user.superAdmin !== true) {
+    if (!canTargetUser(req, user)) {
+      return res.status(403).json({ error: "User administration is not permitted" });
+    }
+
+    const isSuperadmin = isSuperAdmin(user);
+
+    // The designated account is the only account allowed to carry the
+    // Superadmin designation, and that account can never be demoted.
+    if (user?.superAdmin === true && !isSuperadmin) {
       return res.status(403).json({
-        error: "Protected Superadmin account integrity check failed"
+        error: "Only the designated AI Scholar Hub Superadmin account may have the Superadmin designation"
       });
     }
+
 
     const update = { updatedAt: new Date() };
 
     if (isSuperadmin && req.body.role !== undefined &&
-        String(req.body.role) !== "ADMIN") {
+        String(req.body.role).trim().toUpperCase() !== "ADMIN" &&
+        String(req.body.role).trim().toUpperCase() !== "SUPERADMIN") {
       return res.status(403).json({
         error: "The Superadmin account cannot be demoted"
       });
@@ -682,25 +789,16 @@ app.patch("/api/users/:id", async (req, res) => {
       update.username = String(req.body.username).trim() || null;
 
     if (req.body.role !== undefined) {
-      const role = String(req.body.role);
-      if (!allowedUserRole(req, role))
+      const role = String(req.body.role).trim();
+      if (!allowedUserRole(req, role) || !canAssignRoleToUser(req, role))
         return res.status(400).json({ error: "Invalid or unauthorized role" });
 
-      // ADMIN is a privileged role controlled only by the Superadmin.
-      if ((role === "ADMIN" || role === "INSTITUTION_ADMIN") &&
-          user.role !== role &&
-          !isSuperAdmin(req.admin) &&
-          !(role === "INSTITUTION_ADMIN" && isPlatformAdmin(req.admin))) {
+      // A Superadmin may change privileged roles. Platform Admins may
+      // promote/demote within the lower tiers, including Institution Admin.
+      // Institution Admins may only manage USER/INSTRUCTOR.
+      if (normalizedRole(user) === "ADMIN" && !isSuperAdmin(req.admin)) {
         return res.status(403).json({
-          error: "Only the AI Scholar Hub Superadmin may promote users to ADMIN"
-        });
-      }
-
-      if (user.role === "ADMIN" &&
-          role !== "ADMIN" &&
-          req.admin.superAdmin !== true) {
-        return res.status(403).json({
-          error: "Only the AI Scholar Hub Superadmin may demote administrators"
+          error: "Only the AI Scholar Hub Superadmin may modify a legacy ADMIN account"
         });
       }
 
@@ -714,12 +812,29 @@ app.patch("/api/users/:id", async (req, res) => {
       if (role === "PLATFORM_ADMIN") {
         // Platform Admins are platform-wide.
         update.tenantId = null;
-      } else if (role === "INSTITUTION_ADMIN") update.tenantId = isInstitutionAdmin(req.admin) ? actorTenant(req) : String(req.body.tenantId || user.tenantId || "").trim() || null;
-      else if (isInstitutionAdmin(req.admin)) update.tenantId = actorTenant(req);
+      } else if (role === "INSTITUTION_ADMIN") {
+        const tenantId = isInstitutionAdmin(req.admin)
+          ? actorTenant(req)
+          : String(req.body.tenantId || user.tenantId || "").trim();
+        if (!tenantId || !(await institutionExists(tenantId)))
+          return res.status(400).json({ error: "A valid institution is required for Institution Admin" });
+        update.tenantId = tenantId;
+      } else if (role === "USER" || role === "Instructor") {
+        const tenantId = isInstitutionAdmin(req.admin)
+          ? actorTenant(req)
+          : (req.body.tenantId !== undefined
+            ? String(req.body.tenantId || "").trim()
+            : String(user.tenantId || "").trim());
+        if (!tenantId || !(await institutionExists(tenantId)))
+          return res.status(400).json({ error: "A valid institution is required for institution-scoped users" });
+        update.tenantId = tenantId;
+      }
     }
 
-    if (req.body.tenantId !== undefined && !isInstitutionAdmin(req.admin)) {
+    if (req.body.tenantId !== undefined && !isInstitutionAdmin(req.admin) && req.body.role === undefined) {
       const tenantId = String(req.body.tenantId || "").trim();
+      if (tenantId && !(await institutionExists(tenantId)))
+        return res.status(400).json({ error: "Selected institution does not exist" });
       if (tenantId) update.tenantId = tenantId;
       else delete update.tenantId;
     }
@@ -761,6 +876,12 @@ app.post("/api/users/:id/send-reset", async (req, res) => {
 
     if (!user)
       return res.status(404).json({ error: "User not found" });
+
+    if (id.equals(req.admin._id))
+      return res.status(400).json({ error: "You cannot reset your own administrative account from this portal" });
+
+    if (!canTargetUser(req, user))
+      return res.status(403).json({ error: "User administration is not permitted" });
 
     const librechatUrl =
       process.env.LIBRECHAT_INTERNAL_URL ||
@@ -807,18 +928,23 @@ app.delete("/api/users/:id", async (req, res) => {
 
     const id = new ObjectId(req.params.id);
 
-    if (req.params.id === SUPERADMIN_ID)
-      return res.status(403).json({
-        error: "The AI Scholar Hub Superadmin account is protected and cannot be deleted"
-      });
-
     if (id.equals(req.admin._id))
       return res.status(400).json({ error: "You cannot delete your own account" });
 
     const user = await users.findOne(userScope(req, { _id: id }));
     if (!user) return res.status(404).json({ error: "User not found" });
 
-    if (user.role === "ADMIN") {
+    if (isSuperAdmin(user) && !isSuperAdmin(req.admin)) {
+      return res.status(403).json({
+        error: "The AI Scholar Hub Superadmin account is protected and cannot be deleted"
+      });
+    }
+
+    if (!canTargetUser(req, user)) {
+      return res.status(403).json({ error: "User administration is not permitted" });
+    }
+
+    if (normalizedRole(user) === "ADMIN") {
       const count = await users.countDocuments({ role: "ADMIN" });
       if (count <= 1)
         return res.status(400).json({ error: "Cannot delete the last admin" });
@@ -921,18 +1047,23 @@ app.post("/api/users/bulk", async (req, res) => {
         continue;
       }
 
-      if (role === "INSTITUTION_ADMIN") {
-        if (!institutionId || !/^[-a-zA-Z0-9_.]{1,128}$/.test(institutionId)) {
-          errors.push(`Row ${rowNo}: institutionId is required for Institution Admin`);
+      if (["USER", "Instructor", "INSTITUTION_ADMIN"].includes(role)) {
+        const effectiveTenantId = isInstitutionAdmin(req.admin) ? actorTenant(req) : institutionId;
+        if (!effectiveTenantId || !/^[-a-zA-Z0-9_.]{1,128}$/.test(effectiveTenantId)) {
+          errors.push(`Row ${rowNo}: institutionId is required for institution-scoped users`);
           continue;
         }
-        if (isInstitutionAdmin(req.admin) && institutionId !== actorTenant(req)) {
+        if (isInstitutionAdmin(req.admin) && institutionId && institutionId !== actorTenant(req)) {
           errors.push(`Row ${rowNo}: Institution Admin may only use their own institution`);
           continue;
         }
-        const institution = await institutions.findOne({ _id: institutionId });
+        const institution = await institutions.findOne({ _id: effectiveTenantId });
         if (!institution) {
-          errors.push(`Row ${rowNo}: institutionId "${institutionId}" was not found`);
+          errors.push(`Row ${rowNo}: institutionId "${effectiveTenantId}" was not found`);
+          continue;
+        }
+        if (institution.status === "disabled") {
+          errors.push(`Row ${rowNo}: institution "${effectiveTenantId}" is disabled`);
           continue;
         }
       }
@@ -1007,8 +1138,8 @@ app.post("/api/users/bulk", async (req, res) => {
           avatar: null,
           provider: "local",
           role: item.role,
-          ...(isInstitutionAdmin(req.admin) || item.role === "INSTITUTION_ADMIN"
-            ? { tenantId: actorTenant(req) || String(item.institutionId || "").trim() || null }
+          ...(["USER", "Instructor", "INSTITUTION_ADMIN"].includes(item.role)
+            ? { tenantId: isInstitutionAdmin(req.admin) ? actorTenant(req) : String(item.institutionId || "").trim() || null }
             : {}),
           plugins: [],
           twoFactorEnabled: false,
