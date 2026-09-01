@@ -5,7 +5,7 @@ services:
   api:
     container_name: LibreChat
     ports:
-      - "${PORT}:${PORT}"
+      - "127.0.0.1:3080:3080"
     depends_on:
       - mongodb
       - rag_api
@@ -23,8 +23,8 @@ services:
       #- MONGO_URI=mongodb://mongodb:27017/LibreChat
       - MEILI_HOST=http://meilisearch:7700
       - LIBRECHAT_TEMP_CREDENTIALS_PATH=/app/data/.env.temp
-      - RAG_PORT=${RAG_PORT:-8000}
-      - RAG_API_URL=http://rag_api:${RAG_PORT:-8000}
+      - RAG_PORT=8000
+      - RAG_API_URL=http://rag_api:8000
       - ALLOW_REGISTRATION=${ALLOW_REGISTRATION}
       - ALLOW_EMAIL_LOGIN=${ALLOW_EMAIL_LOGIN}
       - ALLOW_SOCIAL_REGISTRATION=${ALLOW_SOCIAL_REGISTRATION}
@@ -72,7 +72,7 @@ services:
       # Plain expansion (not :?) so `docker compose down`/`pull` still run when this is unset.
       # The panel itself refuses to start without it; set ADMIN_PANEL_SESSION_SECRET in .env.
       - SESSION_SECRET=${ADMIN_PANEL_SESSION_SECRET}
-      - API_SERVER_URL=http://api:${PORT:-3080}
+      - API_SERVER_URL=http://api:3080
       - VITE_API_BASE_URL=${DOMAIN_CLIENT:-http://localhost:3080}
       - SESSION_COOKIE_SECURE=${ADMIN_PANEL_SESSION_COOKIE_SECURE:-false}
   mongodb:
@@ -121,7 +121,7 @@ services:
       - DB_NAME=${POSTGRES_DB}
       - DB_USER=${POSTGRES_USER}
       - DB_PASSWORD=${POSTGRES_PASSWORD}
-      - RAG_PORT=${RAG_PORT:-8000}
+      - RAG_PORT=8000
     restart: always
     depends_on:
       - vectordb
