@@ -24,8 +24,8 @@ export const useGetRole = (
   return useQuery<t.TRole>([QueryKeys.roles, roleName], () => dataService.getRole(roleName), {
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
-    refetchOnMount: false,
-    retry: false,
+    refetchOnMount: true,
+    retry: 2,
     ...config,
   });
 };

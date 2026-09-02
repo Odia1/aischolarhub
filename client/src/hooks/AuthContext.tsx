@@ -14,7 +14,6 @@ import {
   apiBaseUrl,
   SystemRoles,
   setTokenHeader,
-  isSystemRoleName,
   buildLoginRedirectUrl,
 } from 'librechat-data-provider';
 import type * as t from 'librechat-data-provider';
@@ -53,22 +52,28 @@ const AuthContextProvider = ({
   const setQueriesEnabled = useSetRecoilState<boolean>(store.queriesEnabled);
 
   const userRoleName = user?.role ?? '';
-  const isCustomRole = isAuthenticated && !!user?.role && !isSystemRoleName(user.role);
+  const normalizedUserRole = userRoleName.toUpperCase();
+
+  const isPrivilegedAdminRole =
+    normalizedUserRole === 'ADMIN' ||
+    normalizedUserRole === 'PLATFORM_ADMIN' ||
+    normalizedUserRole === 'SUPERADMIN' ||
+    normalizedUserRole === 'INSTITUTION_ADMIN';
 
   const { data: userRole = null } = useGetRole(SystemRoles.USER, {
-    enabled: !!(isAuthenticated && (user?.role ?? '')),
+    enabled: !!(isAuthenticated && userRoleName),
   });
+
   const { data: adminRole = null } = useGetRole(SystemRoles.ADMIN, {
-    enabled: !!(
-      isAuthenticated &&
-      ['ADMIN', 'PLATFORM_ADMIN', 'SUPERADMIN', 'INSTITUTION_ADMIN'].includes(
-        user?.role?.toUpperCase?.() ?? '',
-      )
-    ),
+    enabled: !!(isAuthenticated && isPrivilegedAdminRole),
   });
-  const { data: customRole = null } = useGetRole(isCustomRole ? userRoleName : '_', {
-    enabled: isCustomRole,
-  });
+
+  const { data: effectiveRole = null } = useGetRole(
+    isPrivilegedAdminRole ? SystemRoles.ADMIN : userRoleName || '_',
+    {
+      enabled: !!(isAuthenticated && userRoleName) && !isPrivilegedAdminRole,
+    },
+  );
 
   const navigate = useNavigate();
 
@@ -283,7 +288,14 @@ const AuthContextProvider = ({
       roles: {
         [SystemRoles.USER]: userRole,
         [SystemRoles.ADMIN]: adminRole,
-        ...(isCustomRole && customRole ? { [userRoleName]: customRole } : {}),
+        ...(userRoleName &&
+        (isPrivilegedAdminRole ? adminRole : effectiveRole)
+          ? {
+              [userRoleName]: isPrivilegedAdminRole
+                ? adminRole
+                : effectiveRole,
+            }
+          : {}),
       },
       isAuthenticated,
     }),
@@ -295,9 +307,9 @@ const AuthContextProvider = ({
       token,
       userRole,
       adminRole,
-      isCustomRole,
       userRoleName,
-      customRole,
+      isPrivilegedAdminRole,
+      effectiveRole,
     ],
   );
 

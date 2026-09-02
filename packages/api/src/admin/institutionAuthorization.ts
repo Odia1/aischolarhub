@@ -102,3 +102,26 @@ export function resolveRequiredTenant(actor: InstitutionAdminActor): string | nu
   if (isInstitutionAdminRole(actor.role)) return actor.tenantId?.trim() || null;
   return null;
 }
+
+/**
+ * Determines whether an actor may access RAG resources belonging to a tenant.
+ *
+ * RAG access is tenant-isolated:
+ * - SUPERADMIN may access any tenant.
+ * - PLATFORM_ADMIN may access any tenant at the platform layer.
+ * - Institution-scoped users may access only their own tenant.
+ * - An institution-scoped actor without a tenant is denied.
+ */
+export function canAccessRag(
+  actor: InstitutionAdminActor,
+  resourceTenantId?: string | null,
+): boolean {
+  if (isSuperadminRole(actor.role) || isPlatformAdminRole(actor.role)) return true;
+
+  if (!isInstitutionScopedRole(actor.role)) return false;
+
+  const actorTenantId = actor.tenantId?.trim();
+  const tenantId = resourceTenantId?.trim();
+
+  return Boolean(actorTenantId && tenantId && actorTenantId === tenantId);
+}

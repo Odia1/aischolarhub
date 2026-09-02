@@ -9,6 +9,8 @@ interface:
   endpointsMenu: false
   modelSelect: false
   agents: true
+  fileSearch: true
+  fileCitations: true
   
 mcpSettings:
   allowedDomains:
@@ -114,7 +116,7 @@ endpoints:
     - name: "Gemini Academic Assistant"
       apiKey: "${GEMINI_PROXY_API_KEY}"
       baseURL: "http://gemini-proxy:8000/v1/"
-      iconURL: "/images/aischolarhub-icon-100x55.png"
+      iconURL: "/images/favicon-16x16.png"
       actions: true
       models:
         default:
@@ -155,7 +157,7 @@ modelSpecs:
 
       default: true
       showIconInMenu: true
-      iconURL: "/images/AI-Scholar-Hub.png"
+      #iconURL: "/images/AI-Scholar-Hub.png"
       showIconInHeader: true
       
       preset:

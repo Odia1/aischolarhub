@@ -5,41 +5,227 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <link rel="icon" href="/favicon.ico?v=2" type="image/x-icon">
 <title>AI Scholar Hub — Administration</title>
+
 <style>
-body{font-family:system-ui,sans-serif;margin:0;background:#f6f7f9;color:#222}
-header{background:#20232a;color:#fff;padding:16px 25px;display:flex;justify-content:space-between;align-items:center}
-.brand{display:flex;align-items:baseline;gap:12px}
-.brand-name{font-size:20px;font-weight:700;letter-spacing:.2px}
-.brand-section{font-size:14px;color:#cfd3da}
-main{padding:24px;max-width:1500px;margin:auto;min-height:calc(100vh - 150px)}
-footer{border-top:1px solid #ddd;background:#fff;color:#666;padding:16px 25px;text-align:center;font-size:13px;line-height:1.6}
-footer strong{color:#333}
-.toolbar{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap}
-input,select,button{padding:9px 11px;border:1px solid #ccc;border-radius:6px;font-size:14px}
-input[type=text],input[type=email],input[type=password]{min-width:180px}
-button{cursor:pointer;background:#fff}
-.primary{background:#20232a;color:#fff}
-.danger{color:#b00020}
-table{width:100%;border-collapse:collapse;background:#fff}
-th,td{text-align:left;padding:10px;border-bottom:1px solid #eee}
-th{background:#f0f1f3}
-#status{margin:10px 0}
-dialog{border:0;border-radius:10px;padding:25px;box-shadow:0 5px 30px #0003}
-form{display:grid;gap:10px;min-width:330px}
-.actions{white-space:nowrap}
-.badge{display:inline-block;padding:3px 8px;border-radius:999px;font-size:12px;font-weight:600;background:#e9eaed}
-.badge.enabled{background:#e6f5ea;color:#176b2c}.badge.disabled{background:#fce8e8;color:#9b1c1c}
-.panel{background:#fff;border:1px solid #ddd;border-radius:10px;padding:16px;margin-bottom:18px}
-.panel h2{margin:0 0 12px;font-size:18px}.muted{color:#666;font-size:13px}
-.institution-grid{display:grid;gap:10px}.institution-row{display:grid;grid-template-columns:1.2fr 1fr .7fr 2fr auto;gap:12px;align-items:center;border-top:1px solid #eee;padding:12px 0}.institution-row:first-child{border-top:0}.institution-actions{display:flex;gap:6px;justify-content:flex-end}.empty{padding:18px;text-align:center;color:#777}
-.hidden{display:none!important}
+body{
+  font-family:system-ui,sans-serif;
+  margin:0;
+  background:#f6f7f9;
+  color:#222
+}
+
+header{
+  background:#20232a;
+  color:#fff;
+  padding:16px 25px;
+  display:flex;
+  justify-content:space-between;
+  align-items:center
+}
+
+.brand{
+  display:flex;
+  align-items:baseline;
+  gap:12px
+}
+
+.brand-name{
+  font-size:20px;
+  font-weight:700;
+  letter-spacing:.2px
+}
+
+.brand-section{
+  font-size:14px;
+  color:#cfd3da
+}
+
+main{
+  padding:24px;
+  max-width:1500px;
+  margin:auto;
+  min-height:calc(100vh - 150px)
+}
+
+footer{
+  border-top:1px solid #ddd;
+  background:#fff;
+  color:#666;
+  padding:16px 25px;
+  text-align:center;
+  font-size:13px;
+  line-height:1.6
+}
+
+footer strong{
+  color:#333
+}
+
+.toolbar{
+  display:flex;
+  gap:8px;
+  margin-bottom:14px;
+  flex-wrap:wrap
+}
+
+input,select,button{
+  padding:9px 11px;
+  border:1px solid #ccc;
+  border-radius:6px;
+  font-size:14px
+}
+
+input[type=text],
+input[type=email],
+input[type=password]{
+  min-width:180px
+}
+
+button{
+  cursor:pointer;
+  background:#fff
+}
+
+button:disabled{
+  opacity:.55;
+  cursor:not-allowed
+}
+
+.primary{
+  background:#20232a;
+  color:#fff
+}
+
+.danger{
+  color:#b00020
+}
+
+table{
+  width:100%;
+  border-collapse:collapse;
+  background:#fff
+}
+
+th,td{
+  text-align:left;
+  padding:10px;
+  border-bottom:1px solid #eee
+}
+
+th{
+  background:#f0f1f3
+}
+
+#status{
+  margin:10px 0
+}
+
+dialog{
+  border:0;
+  border-radius:10px;
+  padding:25px;
+  box-shadow:0 5px 30px #0003
+}
+
+form{
+  display:grid;
+  gap:10px;
+  min-width:360px
+}
+
+.actions{
+  white-space:nowrap
+}
+
+.badge{
+  display:inline-block;
+  padding:3px 8px;
+  border-radius:999px;
+  font-size:12px;
+  font-weight:600;
+  background:#e9eaed
+}
+
+.badge.enabled{
+  background:#e6f5ea;
+  color:#176b2c
+}
+
+.badge.disabled{
+  background:#fce8e8;
+  color:#9b1c1c
+}
+
+.badge.rag-enabled{
+  background:#e5f2ff;
+  color:#145a91
+}
+
+.badge.rag-disabled{
+  background:#eeeeee;
+  color:#666
+}
+
+.panel{
+  background:#fff;
+  border:1px solid #ddd;
+  border-radius:10px;
+  padding:16px;
+  margin-bottom:18px
+}
+
+.panel h2{
+  margin:0 0 12px;
+  font-size:18px
+}
+
+.muted{
+  color:#666;
+  font-size:13px
+}
+
+.institution-grid{
+  display:grid;
+  gap:10px
+}
+
+.institution-row{
+  display:grid;
+  grid-template-columns:1.2fr 1fr .7fr 2fr auto;
+  gap:12px;
+  align-items:center;
+  border-top:1px solid #eee;
+  padding:12px 0
+}
+
+.institution-row:first-child{
+  border-top:0
+}
+
+.institution-actions{
+  display:flex;
+  gap:6px;
+  justify-content:flex-end
+}
+
+.empty{
+  padding:18px;
+  text-align:center;
+  color:#777
+}
+
+.hidden{
+  display:none!important
+}
+
 .user-institution-section{
   margin-bottom:14px;
   border:1px solid #d7d9dd;
   border-radius:10px;
   background:#fff;
-  overflow:hidden;
+  overflow:hidden
 }
+
 .institution-user-header{
   width:100%;
   display:flex;
@@ -53,23 +239,44 @@ form{display:grid;gap:10px;min-width:330px}
   text-align:left;
   cursor:pointer;
   font-size:16px;
-  font-weight:600;
+  font-weight:600
 }
-.institution-user-header:hover{background:#e1e2e5}
-.institution-user-arrow{width:14px;font-size:12px}
-.institution-user-name{font-weight:700}
-.institution-user-count{margin-left:auto;font-size:13px;font-weight:400;color:#666}
-.institution-user-content{padding:10px 12px 2px;background:#f8f8f9}
-.institution-user-content .domain-section{margin-bottom:10px}
 
+.institution-user-header:hover{
+  background:#e1e2e5
+}
 
+.institution-user-arrow{
+  width:14px;
+  font-size:12px
+}
+
+.institution-user-name{
+  font-weight:700
+}
+
+.institution-user-count{
+  margin-left:auto;
+  font-size:13px;
+  font-weight:400;
+  color:#666
+}
+
+.institution-user-content{
+  padding:10px 12px 2px;
+  background:#f8f8f9
+}
+
+.institution-user-content .domain-section{
+  margin-bottom:10px
+}
 
 .domain-section{
   margin-bottom:12px;
   border:1px solid #ddd;
   border-radius:8px;
   background:#fff;
-  overflow:hidden;
+  overflow:hidden
 }
 
 .domain-header{
@@ -84,41 +291,76 @@ form{display:grid;gap:10px;min-width:330px}
   color:#222;
   text-align:left;
   cursor:pointer;
-  font-size:15px;
+  font-size:15px
 }
 
 .domain-header:hover{
-  background:#e7e8eb;
+  background:#e7e8eb
 }
 
 .domain-arrow{
   width:14px;
-  font-size:12px;
+  font-size:12px
 }
 
 .domain-name{
-  font-weight:600;
+  font-weight:600
 }
 
 .domain-count{
   margin-left:auto;
   color:#666;
-  font-size:13px;
+  font-size:13px
 }
 
 .domain-content{
-  padding:0;
+  padding:0
 }
-.institution-domains{padding:0 14px 12px;background:#f8f8f9}
-.institution-domain-list{display:flex;flex-wrap:wrap;gap:7px;margin-top:8px}
-.domain-chip{display:inline-flex;align-items:center;padding:5px 9px;border:1px solid #d7d9dd;border-radius:999px;background:#fff;font-size:12px;color:#444}
-.admin-section{margin-top:18px}
-.section-caption{font-size:13px;color:#666;margin:0 0 8px}
-.scope-pill{display:inline-block;padding:3px 8px;border-radius:999px;background:#eef0f3;font-size:12px;font-weight:600}
 
+.institution-domains{
+  padding:0 14px 12px;
+  background:#f8f8f9
+}
+
+.institution-domain-list{
+  display:flex;
+  flex-wrap:wrap;
+  gap:7px;
+  margin-top:8px
+}
+
+.domain-chip{
+  display:inline-flex;
+  align-items:center;
+  padding:5px 9px;
+  border:1px solid #d7d9dd;
+  border-radius:999px;
+  background:#fff;
+  font-size:12px;
+  color:#444
+}
+
+.admin-section{
+  margin-top:18px
+}
+
+.section-caption{
+  font-size:13px;
+  color:#666;
+  margin:0 0 8px
+}
+
+.scope-pill{
+  display:inline-block;
+  padding:3px 8px;
+  border-radius:999px;
+  background:#eef0f3;
+  font-size:12px;
+  font-weight:600
+}
 
 .domain-content table{
-  border-radius:0;
+  border-radius:0
 }
 
 .domain-pagination{
@@ -129,347 +371,3221 @@ form{display:grid;gap:10px;min-width:330px}
   border-top:1px solid #eee;
   background:#fafafa;
   color:#666;
-  font-size:13px;
+  font-size:13px
 }
 
 .domain-pagination button{
-  margin-left:6px;
+  margin-left:6px
 }
 
+.rag-help{
+  margin:0;
+  padding:8px 10px;
+  border-radius:7px;
+  background:#f3f7fb;
+  color:#555;
+  font-size:12px;
+  line-height:1.5
+}
+
+.rag-control{
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+
+.rag-select{
+  min-width:130px
+}
+
+@media(max-width:1000px){
+  table{
+    font-size:12px
+  }
+
+  th,td{
+    padding:7px
+  }
+
+  .actions button{
+    margin-bottom:4px
+  }
+}
+
+@media(max-width:700px){
+  main{
+    padding:12px
+  }
+
+  header{
+    padding:12px 15px
+  }
+
+  .brand-section{
+    display:none
+  }
+
+  form{
+    min-width:280px
+  }
+}
 </style>
 </head>
+
 <body>
 
 <header>
   <div class="brand">
     <div class="brand-name">AI Scholar Hub</div>
-    <div class="brand-section">Administrator Portal</div>
+    <div class="brand-section">
+      Administrator Portal
+    </div>
   </div>
-  <div style="display:flex;align-items:center;gap:10px"><span id="identity" class="muted" style="color:#d7d9de"></span><button onclick="logout()">Logout</button></div>
+
+  <div style="display:flex;align-items:center;gap:10px">
+    <span
+      id="identity"
+      class="muted"
+      style="color:#d7d9de">
+    </span>
+
+    <button onclick="logout()">
+      Logout
+    </button>
+  </div>
 </header>
 
 <main>
-<section id="institutionPanel" class="panel hidden">
-  <div style="display:flex;justify-content:space-between;align-items:center;gap:12px">
-    <div><h2>Institutions</h2><div class="muted">Manage institutional tenants and their Institution Administrators.</div></div>
-    <button id="addInstitutionButton" class="primary" onclick="institutionDialog.showModal()">+ Add Institution</button>
+
+<section
+  id="institutionPanel"
+  class="panel hidden">
+
+  <div
+    style="display:flex;justify-content:space-between;align-items:center;gap:12px">
+
+    <div>
+      <h2>Institutions</h2>
+
+      <div class="muted">
+        Manage institutional tenants and their Institution Administrators.
+      </div>
+    </div>
+
+    <div
+      style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+
+      <input
+        id="institutionSearch"
+        type="search"
+        placeholder="Search institution or domain..."
+        style="width:280px">
+
+      <button
+        id="addInstitutionButton"
+        class="primary"
+        onclick="institutionDialog.showModal()">
+        + Add Institution
+      </button>
+
+    </div>
   </div>
-  <div id="institutionList" class="institution-grid"></div>
+
+  <div id="institutionList"
+       class="institution-grid">
+  </div>
 </section>
 
 <div class="toolbar">
-<input id="search" placeholder="Search name, username or email">
-<select id="role"><option value="">All roles</option><option>USER</option><option>Instructor</option><option>INSTITUTION_ADMIN</option><option>PLATFORM_ADMIN</option><option>ADMIN</option></select>
-<button onclick="loadUsers()">Search</button>
-<button class="primary" onclick="openCreateDialog()">+ Create User</button>
-<button onclick="bulkDialog.showModal()">↑ Bulk CSV</button>
-<button onclick="location.href='/api/users/export'">↓ Export CSV</button>
+
+  <input
+    id="search"
+    placeholder="Search name, username or email">
+
+  <select id="role">
+    <option value="">All roles</option>
+    <option>USER</option>
+    <option>Instructor</option>
+    <option>INSTITUTION_ADMIN</option>
+    <option>PLATFORM_ADMIN</option>
+    <option>ADMIN</option>
+  </select>
+
+  <button onclick="loadUsers()">
+    Search
+  </button>
+
+  <button
+    class="primary"
+    onclick="openCreateDialog()">
+    + Create User
+  </button>
+
+  <button onclick="bulkDialog.showModal()">
+    ↑ Bulk CSV
+  </button>
+
+  <button onclick="location.href='/api/users/export'">
+    ↓ Export CSV
+  </button>
 </div>
 
-<div id="scopeNotice" class="muted" style="margin:-6px 0 12px"></div>
+<div
+  id="scopeNotice"
+  class="muted"
+  style="margin:-6px 0 12px">
+</div>
+
 <div id="status"></div>
+
 <div id="domainGroups"></div>
+
 </main>
 
 <footer>
-  <div><strong>AI Scholar Hub User-management Portal</strong> • Created by Prof. Priyadarsan Patra</div>
+  <div>
+    <strong>
+      AI Scholar Hub User-management Portal
+    </strong>
+    • Created by Prof. Priyadarsan Patra
+  </div>
 </footer>
 
+<!-- ============================================================
+     CREATE USER
+     ============================================================ -->
+
 <dialog id="createDialog">
+
 <form id="createForm">
-<h3>Create User</h3>
-<input id="cname" placeholder="Name" required>
-<input id="cusername" placeholder="Username">
-<input id="cemail" type="email" placeholder="Email" required>
-<select id="crole"></select><select id="ctenant" class="hidden"></select>
-<p style="margin:0;color:#555;font-size:13px">
-A one-time password setup link will be emailed to the user.
-</p>
-<button class="primary">Create</button>
-<button type="button" onclick="createDialog.close()">Cancel</button>
+
+  <h3>Create User</h3>
+
+  <input
+    id="cname"
+    placeholder="Name"
+    required>
+
+  <input
+    id="cusername"
+    placeholder="Username">
+
+  <input
+    id="cemail"
+    type="email"
+    placeholder="Email"
+    required>
+
+  <select id="crole"></select>
+
+  <select
+    id="ctenant"
+    class="hidden">
+  </select>
+
+  <select
+    id="cragAccess"
+    class="rag-select">
+    <option value="false">
+      RAG Access: Disabled
+    </option>
+    <option value="true">
+      RAG Access: Enabled
+    </option>
+  </select>
+
+  <p class="rag-help">
+    RAG Access is an independent capability.
+    It does not change the user's role.
+    Enabling it permits the account to use the
+    AI Scholar Hub RAG functionality, subject to
+    the RAG service's runtime authorization.
+  </p>
+
+  <p
+    style="margin:0;color:#555;font-size:13px">
+    A one-time password setup link will be emailed
+    to the user.
+  </p>
+
+  <button class="primary">
+    Create
+  </button>
+
+  <button
+    type="button"
+    onclick="createDialog.close()">
+    Cancel
+  </button>
+
 </form>
 </dialog>
+
+<!-- ============================================================
+     EDIT USER
+     ============================================================ -->
 
 <dialog id="editDialog">
+
 <form id="editForm">
-<h3>Edit User</h3>
-<input id="ename" placeholder="Name" required>
-<input id="eusername" placeholder="Username">
-<select id="erole"></select><select id="etenant" class="hidden"></select>
-<input id="epassword" type="password" placeholder="New password (optional)">
-<button class="primary">Save</button>
-<button type="button" onclick="editDialog.close()">Cancel</button>
+
+  <h3>Edit User</h3>
+
+  <input
+    id="ename"
+    placeholder="Name"
+    required>
+
+  <input
+    id="eusername"
+    placeholder="Username">
+
+  <select id="erole"></select>
+
+  <select
+    id="etenant"
+    class="hidden">
+  </select>
+
+  <select
+    id="eragAccess"
+    class="rag-select">
+    <option value="false">
+      RAG Access: Disabled
+    </option>
+    <option value="true">
+      RAG Access: Enabled
+    </option>
+  </select>
+
+  <p class="rag-help">
+    RAG Access can be changed independently of the
+    user's role. Authorization is enforced by the
+    server; an administrator cannot grant RAG Access
+    outside their permitted scope.
+  </p>
+
+  <input
+    id="epassword"
+    type="password"
+    placeholder="New password (optional)">
+
+  <button class="primary">
+    Save
+  </button>
+
+  <button
+    type="button"
+    onclick="editDialog.close()">
+    Cancel
+  </button>
+
 </form>
 </dialog>
+
+<!-- ============================================================
+     ADD INSTITUTION
+     ============================================================ -->
 
 <dialog id="institutionDialog">
+
 <form id="institutionForm">
-<h3>Add Institution</h3>
-<input id="iid" placeholder="Institution ID (e.g. nist)" required pattern="[-a-zA-Z0-9_.]{1,128}">
-<input id="iname" placeholder="Institution name" required maxlength="200">
-<button class="primary">Create Institution</button>
-<button type="button" onclick="institutionDialog.close()">Cancel</button>
+
+  <h3>Add Institution</h3>
+
+  <input
+    id="iid"
+    placeholder="Institution ID (e.g. nist)"
+    required
+    pattern="[-a-zA-Z0-9_.]{1,128}">
+
+  <input
+    id="iname"
+    placeholder="Institution name"
+    required
+    maxlength="200">
+
+  <label
+    for="idomains"
+    class="muted">
+    Email domains
+  </label>
+
+  <textarea
+    id="idomains"
+    placeholder="Example:&#10;ravenshawuniversity.ac.in&#10;ru.ac.in&#10;&#10;Enter one domain per line."
+    rows="4"
+    style="width:100%;resize:vertical"></textarea>
+
+  <div
+    class="muted"
+    style="font-size:12px;margin:4px 0 10px">
+    Enter one or more email domains. A leading @ is optional.
+  </div>
+
+  <button class="primary">
+    Create Institution
+  </button>
+
+  <button
+    type="button"
+    onclick="institutionDialog.close()">
+    Cancel
+  </button>
+
 </form>
 </dialog>
+
+<!-- ============================================================
+     MANAGE INSTITUTION DOMAINS
+     ============================================================ -->
+
+<dialog id="domainDialog">
+
+<form id="domainForm">
+
+  <h3>Manage Institution Domains</h3>
+
+  <div
+    id="domainInstitutionLabel"
+    class="muted"
+    style="margin-bottom:12px">
+  </div>
+
+  <div
+    id="managedDomainList"
+    style="margin-bottom:14px">
+  </div>
+
+  <div
+    style="border-top:1px solid #eee;padding-top:12px">
+
+    <label
+      for="newDomain"
+      class="muted">
+      Add domain
+    </label>
+
+    <div
+      style="display:flex;gap:8px;margin-top:5px">
+
+      <input
+        id="newDomain"
+        placeholder="example.edu"
+        style="flex:1">
+
+      <button
+        type="button"
+        class="primary"
+        onclick="addInstitutionDomain()">
+        Add
+      </button>
+
+    </div>
+
+    <div
+      class="muted"
+      style="font-size:12px;margin-top:5px">
+      Enter one domain at a time. A leading @ is optional.
+    </div>
+
+  </div>
+
+  <div style="margin-top:15px">
+
+    <button
+      type="button"
+      onclick="domainDialog.close()">
+      Close
+    </button>
+
+  </div>
+
+</form>
+</dialog>
+
+<!-- ============================================================
+     ASSIGN INSTITUTION ADMIN
+     ============================================================ -->
 
 <dialog id="assignDialog">
+
 <form id="assignForm">
-<h3>Assign Institution Admin</h3>
-<div id="assignInstitutionLabel" class="muted"></div>
-<select id="assignUser" required></select>
-<button class="primary">Assign Institution Admin</button>
-<button type="button" onclick="assignDialog.close()">Cancel</button>
+
+  <h3>Assign Institution Admin</h3>
+
+  <div
+    id="assignInstitutionLabel"
+    class="muted">
+  </div>
+
+  <select
+    id="assignUser"
+    required>
+  </select>
+
+  <button class="primary">
+    Assign Institution Admin
+  </button>
+
+  <button
+    type="button"
+    onclick="assignDialog.close()">
+    Cancel
+  </button>
+
 </form>
 </dialog>
+
+<!-- ============================================================
+     BULK CSV
+     ============================================================ -->
 
 <dialog id="bulkDialog">
+
 <form id="bulkForm">
-<h3>Bulk User Upload</h3>
 
-<p>
-  CSV format:
-  <code>name,email,role,institutionId</code>
-</p>
+  <h3>Bulk User Upload</h3>
 
-<p>
-  Role is optional and defaults to <b>USER</b>. For <b>INSTITUTION_ADMIN</b>, <b>institutionId</b> is required.
-  Setup links will be emailed automatically to newly created users.
-</p>
+  <p>
+    CSV format:
+    <code>
+      name,username,email,role,institutionId,ragAccess
+    </code>
+  </p>
 
-<input id="csvfile" type="file" accept=".csv" required>
+  <p>
+    Role is optional and defaults to
+    <b>USER</b>.
+    For <b>INSTITUTION_ADMIN</b>,
+    <b>institutionId</b> is required.
+    <b>ragAccess</b> is optional and defaults to
+    <b>false</b>.
+  </p>
 
-<button class="primary">Validate CSV</button>
-<button type="button" onclick="bulkDialog.close()">Cancel</button>
+  <p class="rag-help">
+    RAG Access values accepted by the server:
+    true/false, yes/no, enabled/disabled,
+    on/off, or 1/0.
+  </p>
+
+  <input
+    id="csvfile"
+    type="file"
+    accept=".csv"
+    required>
+
+  <button class="primary">
+    Validate CSV
+  </button>
+
+  <button
+    type="button"
+    onclick="bulkDialog.close()">
+    Cancel
+  </button>
+
 </form>
 </dialog>
 
-<script>let editingId=null;
-let currentMe=null;
-let institutionsCache=[];
-let currentRenderedUsers=[];
-const domainPages={};
-const USERS_PER_PAGE=25;
+<script>
 
-const esc=v=>String(v??"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#039;");
-function role(u=currentMe){return String(u?.role||"").toUpperCase()}
-function isSuperadmin(){return currentMe?.superAdmin===true && String(currentMe?.email||"").trim().toLowerCase()==="ppatra@seedsnet.org"}
-function isPlatformAdmin(){return isSuperadmin() || role()==="PLATFORM_ADMIN"}
-function isInstitutionAdmin(){return role()==="INSTITUTION_ADMIN"}
-function ownTenant(){return String(currentMe?.tenantId||"").trim()}
-function getDomain(email){const v=String(email||"").trim().toLowerCase(),at=v.lastIndexOf("@");return at>0?v.slice(at+1):"(no domain)"}
-function isSuperadminUser(u){return u?.superAdmin===true && String(u?.email||"").trim().toLowerCase()==="ppatra@seedsnet.org"}
-function isSameAccount(u){return String(u?._id||"")===String(currentMe?._id||"");}
-function canManageTarget(u){
-  const tr=String(u?.role||"").trim().toUpperCase();
-  if(isSuperadmin())return !isSameAccount(u);
-  if(role()==="PLATFORM_ADMIN")
-    return tr!=="SUPERADMIN" && tr!=="PLATFORM_ADMIN" && tr!=="ADMIN";
-  if(isInstitutionAdmin())
-    return String(u?.tenantId||"").trim()===ownTenant() && (tr==="USER" || tr==="INSTRUCTOR");
+let editingId = null;
+let currentMe = null;
+let institutionsCache = [];
+let currentRenderedUsers = [];
+
+const domainPages = {};
+
+const USERS_PER_PAGE = 25;
+
+const esc = v =>
+  String(v ?? "")
+    .replaceAll("&","&amp;")
+    .replaceAll("<","&lt;")
+    .replaceAll(">","&gt;")
+    .replaceAll('"',"&quot;")
+    .replaceAll("'","&#039;");
+
+function role(u = currentMe) {
+  return String(
+    u?.role || ""
+  ).toUpperCase();
+}
+
+function isSuperadmin() {
+  return (
+    currentMe?.superAdmin === true &&
+    String(
+      currentMe?.email || ""
+    )
+      .trim()
+      .toLowerCase() ===
+      "ppatra@seedsnet.org"
+  );
+}
+
+function isPlatformAdmin() {
+  return (
+    isSuperadmin() ||
+    role() === "PLATFORM_ADMIN"
+  );
+}
+
+function isInstitutionAdmin() {
+  return (
+    role() ===
+    "INSTITUTION_ADMIN"
+  );
+}
+
+function ownTenant() {
+  return String(
+    currentMe?.tenantId || ""
+  ).trim();
+}
+
+function getDomain(email) {
+  const v =
+    String(email || "")
+      .trim()
+      .toLowerCase();
+
+  const at =
+    v.lastIndexOf("@");
+
+  return at > 0
+    ? v.slice(at + 1)
+    : "(no domain)";
+}
+
+function isSuperadminUser(u) {
+  return (
+    u?.superAdmin === true &&
+    String(
+      u?.email || ""
+    )
+      .trim()
+      .toLowerCase() ===
+      "ppatra@seedsnet.org"
+  );
+}
+
+function isSameAccount(u) {
+  return (
+    String(
+      u?._id || ""
+    ) ===
+    String(
+      currentMe?._id || ""
+    )
+  );
+}
+
+function canManageTarget(u) {
+  const tr =
+    String(
+      u?.role || ""
+    )
+      .trim()
+      .toUpperCase();
+
+  if (isSuperadmin()) {
+    return !isSameAccount(u);
+  }
+
+  if (
+    role() ===
+    "PLATFORM_ADMIN"
+  ) {
+    return (
+      tr !== "SUPERADMIN" &&
+      tr !== "PLATFORM_ADMIN" &&
+      tr !== "ADMIN"
+    );
+  }
+
+  if (
+    isInstitutionAdmin()
+  ) {
+    return (
+      String(
+        u?.tenantId || ""
+      ).trim() ===
+      ownTenant() &&
+      (
+        tr === "USER" ||
+        tr === "INSTRUCTOR"
+      )
+    );
+  }
+
   return false;
 }
-function roleOptions(select, includeCurrent){
-  const current=String(includeCurrent||"").trim().toUpperCase();
+
+function canManageRagTarget(u) {
+  const tr =
+    String(
+      u?.role || ""
+    )
+      .trim()
+      .toUpperCase();
+
+  if (isSuperadmin()) {
+    return true;
+  }
+
+  if (
+    role() ===
+    "PLATFORM_ADMIN"
+  ) {
+    return (
+      tr !== "SUPERADMIN" &&
+      tr !== "PLATFORM_ADMIN" &&
+      tr !== "ADMIN"
+    );
+  }
+
+  if (
+    isInstitutionAdmin()
+  ) {
+    return (
+      String(
+        u?.tenantId || ""
+      ).trim() ===
+      ownTenant() &&
+      (
+        tr === "USER" ||
+        tr === "INSTRUCTOR"
+      )
+    );
+  }
+
+  return false;
+}
+
+function roleOptions(
+  select,
+  includeCurrent
+) {
+  const current =
+    String(
+      includeCurrent || ""
+    )
+      .trim()
+      .toUpperCase();
+
   let options;
 
-  if(isInstitutionAdmin()){
-    options=[["USER","User/Student"],["Instructor","Instructor"]];
-  }else if(isSuperadmin()){
-    options=[
-      ["USER","User/Student"],
-      ["Instructor","Instructor"],
-      ["INSTITUTION_ADMIN","Institution Admin"],
-      ["PLATFORM_ADMIN","Platform Admin"]
+  if (
+    isInstitutionAdmin()
+  ) {
+    options = [
+      [
+        "USER",
+        "User/Student"
+      ],
+      [
+        "Instructor",
+        "Instructor"
+      ]
     ];
-  }else if(role()==="PLATFORM_ADMIN"){
-    options=[
-      ["USER","User/Student"],
-      ["Instructor","Instructor"],
-      ["INSTITUTION_ADMIN","Institution Admin"]
+  } else if (
+    isSuperadmin()
+  ) {
+    options = [
+      [
+        "USER",
+        "User/Student"
+      ],
+      [
+        "Instructor",
+        "Instructor"
+      ],
+      [
+        "INSTITUTION_ADMIN",
+        "Institution Admin"
+      ],
+      [
+        "PLATFORM_ADMIN",
+        "Platform Admin"
+      ]
     ];
-  }else{
-    options=[["USER","User/Student"],["Instructor","Instructor"],["INSTITUTION_ADMIN","Institution Admin"],["ADMIN","Legacy Admin"]];
+  } else if (
+    role() ===
+    "PLATFORM_ADMIN"
+  ) {
+    options = [
+      [
+        "USER",
+        "User/Student"
+      ],
+      [
+        "Instructor",
+        "Instructor"
+      ],
+      [
+        "INSTITUTION_ADMIN",
+        "Institution Admin"
+      ]
+    ];
+  } else {
+    options = [
+      [
+        "USER",
+        "User/Student"
+      ],
+      [
+        "Instructor",
+        "Instructor"
+      ],
+      [
+        "INSTITUTION_ADMIN",
+        "Institution Admin"
+      ],
+      [
+        "ADMIN",
+        "Legacy Admin"
+      ]
+    ];
   }
 
-  select.innerHTML=options.map(([v,l])=>`<option value="${v}">${l}</option>`).join("");
-  if(includeCurrent && !options.some(x=>x[0].toUpperCase()===current))
-    select.innerHTML+=`<option value="${esc(includeCurrent)}">${esc(includeCurrent)}</option>`;
-  if(includeCurrent)select.value=includeCurrent;
+  select.innerHTML =
+    options
+      .map(
+        ([v,l]) =>
+          `<option value="${v}">${l}</option>`
+      )
+      .join("");
 
-  // The designated Superadmin account's role is immutable in the UI.
-  if(isSuperadminUser(currentMe) && includeCurrent==="ADMIN"){
-    select.value=includeCurrent;
-    select.disabled=true;
-  }else{
-    select.disabled=false;
+  if (
+    includeCurrent &&
+    !options.some(
+      x =>
+        x[0].toUpperCase() ===
+        current
+    )
+  ) {
+    select.innerHTML +=
+      `<option value="${esc(
+        includeCurrent
+      )}">${esc(
+        includeCurrent
+      )}</option>`;
+  }
+
+  if (includeCurrent) {
+    select.value =
+      includeCurrent;
+  }
+
+  /*
+   * Designated Superadmin role
+   * is immutable in UI.
+   */
+
+  if (
+    isSuperadminUser(
+      currentMe
+    ) &&
+    includeCurrent ===
+      "ADMIN"
+  ) {
+    select.value =
+      includeCurrent;
+
+    select.disabled =
+      true;
+  } else {
+    select.disabled =
+      false;
   }
 }
-function tenantOptions(select, selected=""){
- select.innerHTML=institutionsCache.map(i=>`<option value="${esc(i._id)}">${esc(i.name)} (${esc(i._id)})</option>`).join("");
- if(selected)select.value=selected;
+
+function tenantOptions(
+  select,
+  selected = ""
+) {
+  select.innerHTML =
+    institutionsCache
+      .map(
+        i =>
+          `<option value="${esc(
+            i._id
+          )}">${esc(
+            i.name
+          )} (${esc(
+            i._id
+          )})</option>`
+      )
+      .join("");
+
+  if (selected) {
+    select.value =
+      selected;
+  }
 }
-function refreshTenantControls(){
- const createTenant=document.getElementById("ctenant"),editTenant=document.getElementById("etenant");
- const createScoped=["USER","Instructor","INSTITUTION_ADMIN"].includes(crole?.value);
- const editScoped=["USER","Instructor","INSTITUTION_ADMIN"].includes(erole?.value);
- if(isInstitutionAdmin()){
-   createTenant.classList.add("hidden");editTenant.classList.add("hidden");
- }else{
-   tenantOptions(createTenant);tenantOptions(editTenant);
-   createTenant.classList.toggle("hidden",!createScoped);
-   editTenant.classList.toggle("hidden",!editScoped);
- }
+
+function refreshTenantControls() {
+  const createTenant =
+    document.getElementById(
+      "ctenant"
+    );
+
+  const editTenant =
+    document.getElementById(
+      "etenant"
+    );
+
+  const createScoped =
+    [
+      "USER",
+      "Instructor",
+      "INSTITUTION_ADMIN"
+    ].includes(
+      crole?.value
+    );
+
+  const editScoped =
+    [
+      "USER",
+      "Instructor",
+      "INSTITUTION_ADMIN"
+    ].includes(
+      erole?.value
+    );
+
+  if (
+    isInstitutionAdmin()
+  ) {
+    createTenant.classList.add(
+      "hidden"
+    );
+
+    editTenant.classList.add(
+      "hidden"
+    );
+  } else {
+    tenantOptions(
+      createTenant
+    );
+
+    tenantOptions(
+      editTenant
+    );
+
+    createTenant.classList.toggle(
+      "hidden",
+      !createScoped
+    );
+
+    editTenant.classList.toggle(
+      "hidden",
+      !editScoped
+    );
+  }
 }
-async function api(url,options={}){const r=await fetch(url,options);if(r.status===401){location.href="/login";throw new Error("Authentication required")}const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||"Request failed");return d}
-async function loadMe(){currentMe=await api("/api/me");identity.textContent=`${currentMe.name||currentMe.email} • ${displayRole(currentMe)}${currentMe.tenantId?` • ${currentMe.tenantId}`:""}`;scopeNotice.textContent=isInstitutionAdmin()?`Institution scope: ${ownTenant()}`:"Platform-wide administration";document.getElementById("institutionPanel").classList.toggle("hidden",isInstitutionAdmin());roleOptions(crole);roleOptions(erole);refreshTenantControls();crole.onchange=refreshTenantControls;erole.onchange=refreshTenantControls}
-async function loadInstitutions(){
- if(isInstitutionAdmin())return;
- const d=await api("/api/institutions");institutionsCache=d.institutions||[];renderInstitutions();refreshTenantControls();
+
+function refreshRagControl(
+  select,
+  user = null
+) {
+  const canManage =
+    !user ||
+    canManageRagTarget(
+      user
+    );
+
+  select.disabled =
+    !canManage;
+
+  if (user) {
+    select.value =
+      user.ragAccess === true
+        ? "true"
+        : "false";
+  }
 }
-function renderInstitutions(){
- institutionList.innerHTML="";
- if(!institutionsCache.length){institutionList.innerHTML='<div class="empty">No institutions have been created yet.</div>';return}
- for(const i of institutionsCache){
-   const card=document.createElement("section");card.className="user-institution-section";
-   const header=document.createElement("button");header.type="button";header.className="institution-user-header";
-   const domainCount=(i.domains||[]).length;
-   header.innerHTML=`<span class="institution-user-arrow">▶</span><span class="institution-user-name">${esc(i.name)}</span><span class="institution-user-count">${domainCount} domain${domainCount===1?"":"s"} · ${esc(i.status||"enabled")}</span>`;
-   const content=document.createElement("div");content.className="institution-user-content";content.hidden=true;
-   const info=document.createElement("div");info.className="panel";info.style.margin="0 0 10px";
-   const admins=(i.admins||[]).map(a=>`${esc(a.name||"")} &lt;${esc(a.email||"")}&gt;`).join("<br>")||'<span class="muted">No Institution Admin assigned</span>';
-   const domains=(i.domains||[]).map(d=>`<span class="domain-chip">${esc(d)}</span>`).join("")||'<span class="muted">No domains detected from users assigned to this institution.</span>';
-   info.innerHTML=`<div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start"><div><strong>${esc(i.name)}</strong><div class="muted">Institution ID: ${esc(i._id)}</div></div><span class="badge ${(i.status||"enabled")==="enabled"?"enabled":"disabled"}">${esc(i.status||"enabled")}</span></div><div style="margin-top:10px"><div class="muted">Domains belonging to this institution</div><div class="institution-domain-list">${domains}</div></div><div style="margin-top:10px"><div class="muted">Institution Admins</div><div style="margin-top:5px">${admins}</div></div>`;
-   content.appendChild(info);
-   const actions=document.createElement("div");actions.className="institution-actions";actions.style.justifyContent="flex-start";
-   const toggle=document.createElement("button");toggle.textContent=i.status==="disabled"?"Enable":"Disable";toggle.onclick=()=>toggleInstitution(i);actions.appendChild(toggle);
-   const assign=document.createElement("button");assign.textContent="Assign Admin";assign.onclick=()=>openAssignDialog(i);actions.appendChild(assign);
-   if(isSuperadmin()){const del=document.createElement("button");del.className="danger";del.textContent="Delete permanently";del.onclick=()=>deleteInstitution(i);actions.appendChild(del)}
-   content.appendChild(actions);
-   header.onclick=()=>{content.hidden=!content.hidden;header.querySelector(".institution-user-arrow").textContent=content.hidden?"▶":"▼"};
-   card.append(header,content);institutionList.appendChild(card);
- }
+
+async function api(
+  url,
+  options = {}
+) {
+  const r =
+    await fetch(
+      url,
+      options
+    );
+
+  if (
+    r.status === 401
+  ) {
+    location.href =
+      "/login";
+
+    throw new Error(
+      "Authentication required"
+    );
+  }
+
+  const d =
+    await r.json()
+      .catch(
+        () => ({})
+      );
+
+  if (!r.ok) {
+    throw new Error(
+      d.error ||
+      "Request failed"
+    );
+  }
+
+  return d;
 }
-async function toggleInstitution(i){try{await api(`/api/institutions/${encodeURIComponent(i._id)}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({status:i.status==="disabled"?"enabled":"disabled"})});await loadInstitutions();}catch(e){alert(e.message)}}
-async function deleteInstitution(i){
- if(!isSuperadmin())return alert("Superadmin access required");
- if(!confirm(`PERMANENTLY delete ${i.name} (${i._id})? This is the only operation that can permanently remove institution data.`))return;
- try{await api(`/api/institutions/${encodeURIComponent(i._id)}`,{method:"DELETE"});await loadInstitutions();await loadUsers();}catch(e){alert(e.message)}
+
+async function loadMe() {
+  currentMe =
+    await api(
+      "/api/me"
+    );
+
+  identity.textContent =
+    `${currentMe.name || currentMe.email} • ${displayRole(currentMe)}${
+      currentMe.tenantId
+        ? ` • ${currentMe.tenantId}`
+        : ""
+    }`;
+
+  scopeNotice.textContent =
+    isInstitutionAdmin()
+      ? `Institution scope: ${ownTenant()}`
+      : "Platform-wide administration";
+
+  document
+    .getElementById(
+      "institutionPanel"
+    )
+    .classList.toggle(
+      "hidden",
+      isInstitutionAdmin()
+    );
+
+  roleOptions(crole);
+  roleOptions(erole);
+
+  refreshTenantControls();
+
+  refreshRagControl(
+    cragAccess
+  );
+
+  crole.onchange =
+    refreshTenantControls;
+
+  erole.onchange =
+    refreshTenantControls;
 }
-async function openAssignDialog(i){
- assignInstitutionLabel.textContent=`Institution: ${i.name} (${i._id})`;
- try{
-   const users=await api(`/api/users?q=&role=USER`);const instructors=await api(`/api/users?q=&role=Instructor`);
-   const all=[...users,...instructors].filter((u,x,a)=>a.findIndex(v=>v._id===u._id)===x);
-   assignUser.innerHTML=all.map(u=>`<option value="${esc(u._id)}">${esc(u.name||"")} — ${esc(u.email)}${u.tenantId&&u.tenantId!==i._id?` [currently ${esc(institutionLabel(u.tenantId))}]`:""}</option>`).join("");
-   if(!all.length)assignUser.innerHTML='<option value="">No eligible users found</option>';
-   assignDialog.dataset.institution=i._id;assignDialog.showModal();
- }catch(e){alert(e.message)}
+
+async function loadInstitutions() {
+  if (
+    isInstitutionAdmin()
+  ) {
+    return;
+  }
+
+  const d =
+    await api(
+      "/api/institutions"
+    );
+
+  institutionsCache =
+    d.institutions || [];
+
+  renderInstitutions();
+
+  refreshTenantControls();
 }
-assignForm.onsubmit=async e=>{e.preventDefault();try{await api(`/api/institutions/${encodeURIComponent(assignDialog.dataset.institution)}/admin`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({userId:assignUser.value})});assignDialog.close();await loadInstitutions();await loadUsers()}catch(e){alert(e.message)}};
-institutionForm.onsubmit=async e=>{e.preventDefault();try{await api("/api/institutions",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({id:iid.value,name:iname.value})});institutionDialog.close();institutionForm.reset();await loadInstitutions()}catch(e){alert(e.message)}};
-function institutionLabel(tenantId){
-  const id=String(tenantId||"").trim();
-  if(!id)return "No institution assigned";
-  const i=institutionsCache.find(x=>String(x._id)===id);
-  return i?`${i.name} (${i._id})`:id;
+
+function institutionMatchesSearch(institution, query) {
+  if (!query) {
+    return true;
+  }
+
+  const values = [
+    institution._id,
+    institution.name,
+
+    ...(Array.isArray(institution.domains)
+      ? institution.domains
+      : []),
+
+    ...(Array.isArray(institution.admins)
+      ? institution.admins.flatMap(admin => [
+          admin.name,
+          admin.email
+        ])
+      : [])
+  ];
+
+  return values.some(value =>
+    String(value || "")
+      .toLowerCase()
+      .includes(query)
+  );
 }
-function displayRole(u){
-  if(isSuperadminUser(u))return "SUPERADMIN";
-  return String(u?.role||"");
-}
-function renderDomain(domain,data,pageKey){
-  const page=domainPages[pageKey]||1,totalPages=Math.max(1,Math.ceil(data.length/USERS_PER_PAGE)),currentPage=Math.min(page,totalPages);
-  domainPages[pageKey]=currentPage;
-  const rows=data.slice((currentPage-1)*USERS_PER_PAGE,currentPage*USERS_PER_PAGE);
-  const section=document.createElement("section");section.className="domain-section";
-  const header=document.createElement("button");header.type="button";header.className="domain-header";
-  header.innerHTML=`<span class="domain-arrow">▶</span><span class="domain-name">${esc(domain)}</span><span class="domain-count">${data.length} account${data.length===1?"":"s"}</span>`;
-  const content=document.createElement("div");content.className="domain-content";content.hidden=true;
-  header.onclick=()=>{content.hidden=!content.hidden;header.querySelector(".domain-arrow").textContent=content.hidden?"▶":"▼"};
-  const table=document.createElement("table");
-  table.innerHTML=`<thead><tr><th>Name</th><th>Username</th><th>Email</th><th>Role</th><th>Provider</th><th>Created</th><th>Actions</th></tr></thead>`;
-  const tbody=document.createElement("tbody");
-  rows.forEach(u=>{
-    const tr=document.createElement("tr");
-    const canManage=canManageTarget(u);
-    tr.innerHTML=`<td>${esc(u.name)}</td><td>${esc(u.username||"")}</td><td>${esc(u.email)}</td><td>${esc(displayRole(u))}</td><td>${esc(u.provider||"")}</td><td>${u.createdAt?new Date(u.createdAt).toLocaleDateString():""}</td><td class="actions"></td>`;
-    const a=tr.querySelector(".actions");
-    if(canManage){
-      const eb=document.createElement("button");eb.textContent="Edit";eb.onclick=()=>editUser(u);a.appendChild(eb);
-      const rb=document.createElement("button");rb.textContent="Send Link";rb.onclick=()=>sendReset(u._id,u.email);a.appendChild(rb);
-      const db=document.createElement("button");db.className="danger";db.textContent="Delete";db.onclick=()=>deleteUser(u._id,u.name||u.email);a.appendChild(db);
+
+function renderInstitutions() {
+  const institutionSearch =
+    document.getElementById(
+      "institutionSearch"
+    );
+
+  if (institutionSearch) {
+    institutionSearch.oninput =
+      renderInstitutions;
+  }
+
+  institutionList.innerHTML =
+    "";
+
+  const query =
+    String(
+      document.getElementById(
+        "institutionSearch"
+      )?.value || ""
+    )
+      .trim()
+      .toLowerCase();
+
+  const visibleInstitutions =
+    institutionsCache.filter(
+      institution =>
+        institutionMatchesSearch(
+          institution,
+          query
+        )
+    );
+
+  if (
+    !visibleInstitutions.length
+  ) {
+    institutionList.innerHTML =
+      query
+        ? '<div class="empty">No institutions match your search.</div>'
+        : '<div class="empty">No institutions have been created yet.</div>';
+
+    return;
+  }
+  for (
+    const i of
+    visibleInstitutions
+  ) {
+    const card =
+      document.createElement(
+        "section"
+      );
+
+    card.className =
+      "user-institution-section";
+
+    const header =
+      document.createElement(
+        "button"
+      );
+
+    header.type =
+      "button";
+
+    header.className =
+      "institution-user-header";
+
+    const domainCount =
+      (
+        i.domains ||
+        []
+      ).length;
+
+    header.innerHTML =
+      `<span class="institution-user-arrow">▶</span>
+       <span class="institution-user-name">${esc(
+         i.name
+       )}</span>
+       <span class="institution-user-count">${domainCount}
+       domain${domainCount === 1 ? "" : "s"}
+       · ${esc(
+         i.status ||
+         "enabled"
+       )}</span>`;
+
+    const content =
+      document.createElement(
+        "div"
+      );
+
+    content.className =
+      "institution-user-content";
+
+    content.hidden =
+      true;
+
+    const info =
+      document.createElement(
+        "div"
+      );
+
+    info.className =
+      "panel";
+
+    info.style.margin =
+      "0 0 10px";
+
+    const admins =
+      (
+        i.admins ||
+        []
+      )
+        .map(
+          a =>
+            `${esc(
+              a.name ||
+              ""
+            )} &lt;${esc(
+              a.email ||
+              ""
+            )}&gt;`
+        )
+        .join("<br>") ||
+      '<span class="muted">No Institution Admin assigned</span>';
+
+    const domains =
+      (
+        i.domains ||
+        []
+      )
+        .map(
+          d =>
+            `<span class="domain-chip">${esc(
+              d
+            )}</span>`
+        )
+        .join("") ||
+      '<span class="muted">No domains configured for this institution.</span>';
+
+    info.innerHTML =
+      `<div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start">
+        <div>
+          <strong>${esc(
+            i.name
+          )}</strong>
+          <div class="muted">
+            Institution ID: ${esc(
+              i._id
+            )}
+          </div>
+        </div>
+
+        <span class="badge ${
+          (
+            i.status ||
+            "enabled"
+          ) === "enabled"
+            ? "enabled"
+            : "disabled"
+        }">
+          ${esc(
+            i.status ||
+            "enabled"
+          )}
+        </span>
+      </div>
+
+      <div style="margin-top:10px">
+        <div class="muted">
+          Domains belonging to this institution
+        </div>
+
+        <div class="institution-domain-list">
+          ${domains}
+        </div>
+      </div>
+
+      <div style="margin-top:10px">
+
+        <button
+          type="button"
+          onclick="openDomainDialog('${esc(i._id)}')">
+          Manage Domains
+        </button>
+
+      </div>
+
+      <div style="margin-top:10px">
+        <div class="muted">
+          Institution Admins
+        </div>
+
+        <div style="margin-top:5px">
+          ${admins}
+        </div>
+      </div>`;
+
+    content.appendChild(
+      info
+    );
+
+    const actions =
+      document.createElement(
+        "div"
+      );
+
+    actions.className =
+      "institution-actions";
+
+    actions.style.justifyContent =
+      "flex-start";
+
+    const toggle =
+      document.createElement(
+        "button"
+      );
+
+    toggle.textContent =
+      i.status ===
+      "disabled"
+        ? "Enable"
+        : "Disable";
+
+    toggle.onclick =
+      () =>
+        toggleInstitution(
+          i
+        );
+
+    actions.appendChild(
+      toggle
+    );
+
+    const assign =
+      document.createElement(
+        "button"
+      );
+
+    assign.textContent =
+      "Assign Admin";
+
+    assign.onclick =
+      () =>
+        openAssignDialog(
+          i
+        );
+
+    actions.appendChild(
+      assign
+    );
+
+    if (
+      isSuperadmin()
+    ) {
+      const del =
+        document.createElement(
+          "button"
+        );
+
+      del.className =
+        "danger";
+
+      del.textContent =
+        "Delete permanently";
+
+      del.onclick =
+        () =>
+          deleteInstitution(
+            i
+          );
+
+      actions.appendChild(
+        del
+      );
     }
-    tbody.appendChild(tr);
-  });
-  table.appendChild(tbody);content.appendChild(table);
-  if(totalPages>1){
-    const pg=document.createElement("div");pg.className="domain-pagination";
-    const info=document.createElement("span");info.textContent=`Page ${currentPage} of ${totalPages}`;
-    const controls=document.createElement("div");
-    const prev=document.createElement("button");prev.textContent="‹ Previous";prev.disabled=currentPage===1;prev.onclick=()=>{domainPages[pageKey]=currentPage-1;renderUsers(currentRenderedUsers)};
-    const next=document.createElement("button");next.textContent="Next ›";next.disabled=currentPage===totalPages;next.onclick=()=>{domainPages[pageKey]=currentPage+1;renderUsers(currentRenderedUsers)};
-    controls.append(prev,next);pg.append(info,controls);content.appendChild(pg);
-  }
-  section.append(header,content);return section;
-}
-function renderInstitutionUsers(tenantId,data){
-  const key=String(tenantId||"").trim();
-  const section=document.createElement("section");section.className="user-institution-section";
-  const domains={};data.forEach(u=>{const d=getDomain(u.email);(domains[d]||(domains[d]=[])).push(u)});
-  const institution=institutionsCache.find(i=>String(i._id)===key);
-  const name=institution?institution.name:key||"Unassigned";
-  const header=document.createElement("button");header.type="button";header.className="institution-user-header";
-  const domainCount=Object.keys(domains).length;
-  header.innerHTML=`<span class="institution-user-arrow">▶</span><span class="institution-user-name">${esc(name)}</span><span class="institution-user-count">${data.length} account${data.length===1?"":"s"} · ${domainCount} domain${domainCount===1?"":"s"}</span>`;
-  const content=document.createElement("div");content.className="institution-user-content";content.hidden=true;
-  header.onclick=()=>{content.hidden=!content.hidden;header.querySelector(".institution-user-arrow").textContent=content.hidden?"▶":"▼"};
-  Object.keys(domains).sort((a,b)=>a.localeCompare(b)).forEach(d=>content.appendChild(renderDomain(d,domains[d],`${key}::${d}`)));
-  section.append(header,content);return section;
-}
-function renderAdminAccounts(data){
-  const higher=data.filter(isHigherAdminUser);
-  if(!higher.length)return;
-  const section=document.createElement("section");section.className="panel admin-section";
-  section.innerHTML='<h2>Platform Administration</h2><p class="section-caption">Higher-level administrators are not institution members and are therefore shown separately from SEEDS.</p>';
-  const table=document.createElement("table");table.innerHTML='<thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Actions</th></tr></thead>';
-  const tbody=document.createElement("tbody");
-  higher.forEach(u=>{
-    const tr=document.createElement("tr");tr.innerHTML=`<td>${esc(u.name||"")}</td><td>${esc(u.email||"")}</td><td><span class="scope-pill">${esc(displayRole(u))}</span></td><td class="actions"></td>`;
-    const a=tr.querySelector(".actions");
-    if(canManageTarget(u)){
-      const eb=document.createElement("button");eb.textContent="Edit";eb.onclick=()=>editUser(u);a.appendChild(eb);
-      const rb=document.createElement("button");rb.textContent="Send Link";rb.onclick=()=>sendReset(u._id,u.email);a.appendChild(rb);
-    }
-    tbody.appendChild(tr);
-  });
-  table.appendChild(tbody);section.appendChild(table);domainGroups.appendChild(section);
-}
-function isHigherAdminUser(u){return isSuperadminUser(u)||["PLATFORM_ADMIN","ADMIN"].includes(String(u?.role||"").toUpperCase());}
-function renderUsers(data){
-  currentRenderedUsers=data;
-  domainGroups.innerHTML="";
-  const tenantGroups={};
-  data.filter(u=>!isHigherAdminUser(u)).forEach(u=>{const k=String(u.tenantId||"").trim()||"__none__";(tenantGroups[k]||(tenantGroups[k]=[])).push(u)});
-  // Institution Admins are institution-scoped but are not ordinary domain users.
-  // Keep them visible inside the institution tree without treating their role as a domain.
-  Object.keys(tenantGroups).sort((a,b)=>institutionLabel(a).localeCompare(institutionLabel(b))).forEach(k=>domainGroups.appendChild(renderInstitutionUsers(k==="__none__"?"":k,tenantGroups[k])));
-  if(isSuperadmin()||role()==="PLATFORM_ADMIN")renderAdminAccounts(data);
-}
-async function loadUsers(){try{const q=encodeURIComponent(search.value),r=encodeURIComponent(document.getElementById("role").value);const data=await api(`/api/users?q=${q}&role=${r}`);status.textContent=`${data.length} user(s)`;Object.keys(domainPages).forEach(k=>delete domainPages[k]);renderUsers(data)}catch(e){status.textContent=e.message}}
-function openCreateDialog(){roleOptions(crole);refreshTenantControls();createDialog.showModal()}
-createForm.onsubmit=async e=>{e.preventDefault();try{const body={name:cname.value,username:cusername.value,email:cemail.value,role:crole.value};if(crole.value==="PLATFORM_ADMIN"){if(!isSuperadmin())throw new Error("Only the Superadmin may create Platform Admins");body.tenantId=null;}else if(["USER","Instructor","INSTITUTION_ADMIN"].includes(crole.value)){body.tenantId=isInstitutionAdmin()?ownTenant():ctenant.value;}await api("/api/users",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});createDialog.close();createForm.reset();await loadUsers();await loadInstitutions()}catch(e){alert(e.message)}};
-function editUser(u){
-  if(!canManageTarget(u))return alert("You are not authorized to edit this account");
-  editingId=u._id;ename.value=u.name||"";eusername.value=u.username||"";roleOptions(erole,u.role);refreshTenantControls();etenant.value=u.tenantId||"";epassword.value="";editDialog.showModal();
-}
-editForm.onsubmit=async e=>{e.preventDefault();try{const body={name:ename.value,username:eusername.value,role:erole.value};if(["USER","Instructor","INSTITUTION_ADMIN"].includes(erole.value))body.tenantId=isInstitutionAdmin()?ownTenant():etenant.value;if(erole.value==="PLATFORM_ADMIN")body.tenantId=null;if(epassword.value)body.password=epassword.value;await api(`/api/users/${editingId}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});editDialog.close();await loadUsers();await loadInstitutions()}catch(e){alert(e.message)}};
-async function sendReset(id,email){if(!confirm(`Send a password setup/reset link to ${email}?`))return;try{const d=await api(`/api/users/${id}/send-reset`,{method:"POST"});alert(d.message||"Password setup/reset email sent.")}catch(e){alert(e.message)}}
-async function deleteUser(id,name){if(!confirm(`Delete ${name}? This cannot be undone.`))return;try{await api(`/api/users/${id}`,{method:"DELETE"});await loadUsers();await loadInstitutions()}catch(e){alert(e.message)}}
 
-bulkForm.onsubmit=async e=>{e.preventDefault();const file=csvfile.files[0];if(!file)return;const csv=await file.text();try{const d=await api("/api/users/bulk",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({csv,confirm:false})});const newUsers=d.preview.filter(x=>x.status==="new"),skipped=d.preview.filter(x=>x.status==="skipped");let message=`CSV validation complete.\n\nNew users: ${newUsers.length}\nExisting users (will be skipped): ${skipped.length}\nErrors: ${d.errors.length}`;if(d.errors.length)message+=`\n\nErrors:\n${d.errors.join("\n")}`;if(!confirm(message+"\n\nProceed with creating the new users?"))return;const result=await api("/api/users/bulk",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({csv,confirm:true})});alert(`Import complete.\n\nCreated: ${result.created.length}\nSkipped: ${result.skipped.length}\nErrors: ${result.failed.length+result.errors.length}`);bulkDialog.close();bulkForm.reset();await loadUsers();await loadInstitutions()}catch(e){alert(e.message)}};
-function csvEscape(v){return `"${String(v??"").replaceAll('"','""')}"`}
-async function logout(){await fetch("/api/logout",{method:"POST"});location.href="/login"}
-(async()=>{try{await loadMe();await loadInstitutions();await loadUsers()}catch(e){console.error(e)}})();
+    content.appendChild(
+      actions
+    );
+
+    header.onclick =
+      () => {
+        content.hidden =
+          !content.hidden;
+
+        header
+          .querySelector(
+            ".institution-user-arrow"
+          )
+          .textContent =
+          content.hidden
+            ? "▶"
+            : "▼";
+      };
+
+    card.append(
+      header,
+      content
+    );
+
+    institutionList.appendChild(
+      card
+    );
+  }
+}
+
+async function toggleInstitution(
+  i
+) {
+  try {
+    await api(
+      `/api/institutions/${encodeURIComponent(
+        i._id
+      )}`,
+      {
+        method:
+          "PATCH",
+
+        headers: {
+          "Content-Type":
+            "application/json"
+        },
+
+        body:
+          JSON.stringify({
+            status:
+              i.status ===
+              "disabled"
+                ? "enabled"
+                : "disabled"
+          })
+      }
+    );
+
+    loadInstitutions();
+  } catch (e) {
+    alert(
+      e.message
+    );
+  }
+}
+
+async function deleteInstitution(
+  i
+) {
+  if (!isSuperadmin()) {
+    return alert(
+      "Superadmin access required"
+    );
+  }
+
+  if (
+    !confirm(
+      `PERMANENTLY delete ${i.name} (${i._id})? This is the only operation that can permanently remove institution data.`
+    )
+  ) {
+    return;
+  }
+
+  try {
+    await api(
+      `/api/institutions/${encodeURIComponent(
+        i._id
+      )}`,
+      {
+        method:
+          "DELETE"
+      }
+    );
+
+    await loadInstitutions();
+    await loadUsers();
+  } catch (e) {
+    alert(
+      e.message
+    );
+  }
+}
+
+async function openAssignDialog(
+  i
+) {
+  assignInstitutionLabel.textContent =
+    `Institution: ${i.name} (${i._id})`;
+
+  try {
+    const users =
+      await api(
+        "/api/users?q=&role=USER"
+      );
+
+    const instructors =
+      await api(
+        "/api/users?q=&role=Instructor"
+      );
+
+    const all = [
+      ...users,
+      ...instructors
+    ].filter(
+      (u,x,a) =>
+        a.findIndex(
+          v =>
+            v._id ===
+            u._id
+        ) === x
+    );
+
+    assignUser.innerHTML =
+      all
+        .map(
+          u =>
+            `<option value="${esc(
+              u._id
+            )}">
+              ${esc(
+                u.name ||
+                ""
+              )}
+              — ${esc(
+                u.email
+              )}
+              ${
+                u.tenantId &&
+                u.tenantId !==
+                  i._id
+                  ? ` [currently ${esc(
+                      institutionLabel(
+                        u.tenantId
+                      )
+                    )}]`
+                  : ""
+              }
+            </option>`
+        )
+        .join("");
+
+    if (!all.length) {
+      assignUser.innerHTML =
+        '<option value="">No eligible users found</option>';
+    }
+
+    assignDialog.dataset.institution =
+      i._id;
+
+    assignDialog.showModal();
+  } catch (e) {
+    alert(
+      e.message
+    );
+  }
+}
+
+assignForm.onsubmit =
+  async e => {
+    e.preventDefault();
+
+    try {
+      await api(
+        `/api/institutions/${encodeURIComponent(
+          assignDialog.dataset.institution
+        )}/admin`,
+        {
+          method:
+            "POST",
+
+          headers: {
+            "Content-Type":
+              "application/json"
+          },
+
+          body:
+            JSON.stringify({
+              userId:
+                assignUser.value
+            })
+        }
+      );
+
+      assignDialog.close();
+
+      await loadInstitutions();
+      await loadUsers();
+    } catch (e) {
+      alert(
+        e.message
+      );
+    }
+  };
+
+let managingInstitutionId = null;
+
+function renderManagedDomains() {
+  const institution =
+    institutionsCache.find(
+      i =>
+        String(i._id) ===
+        String(managingInstitutionId)
+    );
+
+  if (!institution) {
+    return;
+  }
+
+  domainInstitutionLabel.textContent =
+    `${institution.name} — ${institution._id}`;
+
+  const domains =
+    Array.isArray(institution.domains)
+      ? institution.domains
+      : [];
+
+  if (!domains.length) {
+    managedDomainList.innerHTML =
+      '<div class="muted">No domains configured.</div>';
+    return;
+  }
+
+  managedDomainList.innerHTML =
+    domains
+      .map(
+        domain =>
+          `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:7px 0;border-bottom:1px solid #eee">
+             <span class="domain-chip">${esc(domain)}</span>
+             <button
+               type="button"
+               onclick="deleteInstitutionDomain('${esc(domain)}')">
+               Delete
+             </button>
+           </div>`
+      )
+      .join("");
+}
+
+function openDomainDialog(id) {
+  managingInstitutionId = id;
+  newDomain.value = "";
+  renderManagedDomains();
+  domainDialog.showModal();
+}
+
+async function saveInstitutionDomains(domains) {
+  await api(
+    `/api/institutions/${encodeURIComponent(
+      managingInstitutionId
+    )}`,
+    {
+      method: "PATCH",
+
+      headers: {
+        "Content-Type":
+          "application/json"
+      },
+
+      body:
+        JSON.stringify({
+          domains
+        })
+    }
+  );
+
+  await loadInstitutions();
+  renderManagedDomains();
+}
+
+async function addInstitutionDomain() {
+  const value =
+    String(
+      newDomain.value || ""
+    )
+      .trim()
+      .toLowerCase()
+      .replace(/^@/, "");
+
+  if (!value) {
+    return;
+  }
+
+  if (
+    value.length > 253 ||
+    !/^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/.test(value)
+  ) {
+    alert(
+      "Please enter a valid domain, for example example.edu"
+    );
+    return;
+  }
+
+  const institution =
+    institutionsCache.find(
+      i =>
+        String(i._id) ===
+        String(managingInstitutionId)
+    );
+
+  if (!institution) {
+    alert("Institution not found");
+    return;
+  }
+
+  const domains =
+    Array.isArray(institution.domains)
+      ? [...institution.domains]
+      : [];
+
+  if (
+    domains.some(
+      d =>
+        String(d).toLowerCase() ===
+        value
+    )
+  ) {
+    alert(
+      "This domain is already assigned to this institution."
+    );
+    return;
+  }
+
+  domains.push(value);
+
+  try {
+    await saveInstitutionDomains(
+      domains
+        .map(
+          d =>
+            String(d)
+              .trim()
+              .toLowerCase()
+              .replace(/^@/, "")
+        )
+        .filter(Boolean)
+        .sort()
+    );
+
+    newDomain.value = "";
+  } catch (e) {
+    alert(e.message);
+  }
+}
+
+async function deleteInstitutionDomain(domain) {
+  const institution =
+    institutionsCache.find(
+      i =>
+        String(i._id) ===
+        String(managingInstitutionId)
+    );
+
+  if (!institution) {
+    alert("Institution not found");
+    return;
+  }
+
+  const domains =
+    Array.isArray(institution.domains)
+      ? institution.domains.filter(
+          d =>
+            String(d).toLowerCase() !==
+            String(domain).toLowerCase()
+        )
+      : [];
+
+  if (
+    !confirm(
+      `Remove domain "${domain}" from ${institution.name}?`
+    )
+  ) {
+    return;
+  }
+
+  try {
+    await saveInstitutionDomains(
+      domains
+    );
+  } catch (e) {
+    alert(e.message);
+  }
+}
+
+institutionForm.onsubmit =
+  async e => {
+    e.preventDefault();
+
+    try {
+      await api(
+        "/api/institutions",
+        {
+          method:
+            "POST",
+
+          headers: {
+            "Content-Type":
+              "application/json"
+          },
+
+          body:
+            JSON.stringify({
+              id:
+                iid.value,
+              name:
+                iname.value,
+              domains:
+                idomains.value
+                  .split(/[\n,]+/)
+                  .map(
+                    d =>
+                      d.trim()
+                        .toLowerCase()
+                        .replace(/^@/, "")
+                  )
+                  .filter(Boolean)
+            })
+        }
+      );
+
+      institutionDialog.close();
+
+      institutionForm.reset();
+
+      await loadInstitutions();
+    } catch (e) {
+      alert(
+        e.message
+      );
+    }
+  };
+
+function institutionLabel(
+  tenantId
+) {
+  const id =
+    String(
+      tenantId || ""
+    ).trim();
+
+  if (!id) {
+    return "No institution assigned";
+  }
+
+  const i =
+    institutionsCache.find(
+      x =>
+        String(
+          x._id
+        ) === id
+    );
+
+  return i
+    ? `${i.name} (${i._id})`
+    : id;
+}
+
+function displayRole(u) {
+  if (
+    isSuperadminUser(
+      u
+    )
+  ) {
+    return "SUPERADMIN";
+  }
+
+  return String(
+    u?.role || ""
+  );
+}
+
+function ragBadge(
+  user
+) {
+  const enabled =
+    user?.ragAccess ===
+    true;
+
+  return enabled
+    ? `<span class="badge rag-enabled">Enabled</span>`
+    : `<span class="badge rag-disabled">Disabled</span>`;
+}
+
+function renderDomain(
+  domain,
+  data,
+  pageKey
+) {
+  const page =
+    domainPages[
+      pageKey
+    ] || 1;
+
+  const totalPages =
+    Math.max(
+      1,
+      Math.ceil(
+        data.length /
+          USERS_PER_PAGE
+      )
+    );
+
+  const currentPage =
+    Math.min(
+      page,
+      totalPages
+    );
+
+  domainPages[
+    pageKey
+  ] =
+    currentPage;
+
+  const rows =
+    data.slice(
+      (
+        currentPage -
+        1
+      ) *
+        USERS_PER_PAGE,
+
+      currentPage *
+        USERS_PER_PAGE
+    );
+
+  const section =
+    document.createElement(
+      "section"
+    );
+
+  section.className =
+    "domain-section";
+
+  const header =
+    document.createElement(
+      "button"
+    );
+
+  header.type =
+    "button";
+
+  header.className =
+    "domain-header";
+
+  header.innerHTML =
+    `<span class="domain-arrow">▶</span>
+     <span class="domain-name">${esc(
+       domain
+     )}</span>
+     <span class="domain-count">${data.length}
+     account${
+       data.length ===
+       1
+         ? ""
+         : "s"
+     }</span>`;
+
+  const content =
+    document.createElement(
+      "div"
+    );
+
+  content.className =
+    "domain-content";
+
+  content.hidden =
+    true;
+
+  header.onclick =
+    () => {
+      content.hidden =
+        !content.hidden;
+
+      header
+        .querySelector(
+          ".domain-arrow"
+        )
+        .textContent =
+        content.hidden
+          ? "▶"
+          : "▼";
+    };
+
+  const table =
+    document.createElement(
+      "table"
+    );
+
+  table.innerHTML =
+    `<thead>
+      <tr>
+        <th>Name</th>
+        <th>Username</th>
+        <th>Email</th>
+        <th>Role</th>
+        <th>RAG Access</th>
+        <th>Provider</th>
+        <th>Created</th>
+        <th>Actions</th>
+      </tr>
+    </thead>`;
+
+  const tbody =
+    document.createElement(
+      "tbody"
+    );
+
+  rows.forEach(
+    u => {
+      const tr =
+        document.createElement(
+          "tr"
+        );
+
+      const canManage =
+        canManageTarget(
+          u
+        );
+
+      tr.innerHTML =
+        `<td>${esc(
+          u.name
+        )}</td>
+
+         <td>${esc(
+           u.username ||
+             ""
+         )}</td>
+
+         <td>${esc(
+           u.email
+         )}</td>
+
+         <td>${esc(
+           displayRole(
+             u
+           )
+         )}</td>
+
+         <td>
+           ${ragBadge(
+             u
+           )}
+         </td>
+
+         <td>${esc(
+           u.provider ||
+             ""
+         )}</td>
+
+         <td>${
+           u.createdAt
+             ? new Date(
+                 u.createdAt
+               ).toLocaleDateString()
+             : ""
+         }</td>
+
+         <td class="actions"></td>`;
+
+      const a =
+        tr.querySelector(
+          ".actions"
+        );
+
+      if (
+        canManage
+      ) {
+        const eb =
+          document.createElement(
+            "button"
+          );
+
+        eb.textContent =
+          "Edit";
+
+        eb.onclick =
+          () =>
+            editUser(
+              u
+            );
+
+        a.appendChild(
+          eb
+        );
+
+        const rb =
+          document.createElement(
+            "button"
+          );
+
+        rb.textContent =
+          "Send Link";
+
+        rb.onclick =
+          () =>
+            sendReset(
+              u._id,
+              u.email
+            );
+
+        a.appendChild(
+          rb
+        );
+
+        const db =
+          document.createElement(
+            "button"
+          );
+
+        db.className =
+          "danger";
+
+        db.textContent =
+          "Delete";
+
+        db.onclick =
+          () =>
+            deleteUser(
+              u._id,
+              u.name ||
+                u.email
+            );
+
+        a.appendChild(
+          db
+        );
+      }
+
+      tbody.appendChild(
+        tr
+      );
+    }
+  );
+
+  table.appendChild(
+    tbody
+  );
+
+  content.appendChild(
+    table
+  );
+
+  if (
+    totalPages >
+    1
+  ) {
+    const pg =
+      document.createElement(
+        "div"
+      );
+
+    pg.className =
+      "domain-pagination";
+
+    const info =
+      document.createElement(
+        "span"
+      );
+
+    info.textContent =
+      `Page ${currentPage} of ${totalPages}`;
+
+    const controls =
+      document.createElement(
+        "div"
+      );
+
+    const prev =
+      document.createElement(
+        "button"
+      );
+
+    prev.textContent =
+      "‹ Previous";
+
+    prev.disabled =
+      currentPage ===
+      1;
+
+    prev.onclick =
+      () => {
+        domainPages[
+          pageKey
+        ] =
+          currentPage -
+          1;
+
+        renderUsers(
+          currentRenderedUsers
+        );
+      };
+
+    const next =
+      document.createElement(
+        "button"
+      );
+
+    next.textContent =
+      "Next ›";
+
+    next.disabled =
+      currentPage ===
+      totalPages;
+
+    next.onclick =
+      () => {
+        domainPages[
+          pageKey
+        ] =
+          currentPage +
+          1;
+
+        renderUsers(
+          currentRenderedUsers
+        );
+      };
+
+    controls.append(
+      prev,
+      next
+    );
+
+    pg.append(
+      info,
+      controls
+    );
+
+    content.appendChild(
+      pg
+    );
+  }
+
+  section.append(
+    header,
+    content
+  );
+
+  return section;
+}
+
+function renderInstitutionUsers(
+  tenantId,
+  data
+) {
+  const key =
+    String(
+      tenantId || ""
+    ).trim();
+
+  const section =
+    document.createElement(
+      "section"
+    );
+
+  section.className =
+    "user-institution-section";
+
+  const domains =
+    {};
+
+  data.forEach(
+    u => {
+      const d =
+        getDomain(
+          u.email
+        );
+
+      (
+        domains[d] ||
+        (
+          domains[d] =
+          []
+        )
+      ).push(u);
+    }
+  );
+
+  const institution =
+    institutionsCache.find(
+      i =>
+        String(
+          i._id
+        ) === key
+    );
+
+  const name =
+    institution
+      ? institution.name
+      : key ||
+        "Unassigned";
+
+  const header =
+    document.createElement(
+      "button"
+    );
+
+  header.type =
+    "button";
+
+  header.className =
+    "institution-user-header";
+
+  const domainCount =
+    Object.keys(
+      domains
+    ).length;
+
+  header.innerHTML =
+    `<span class="institution-user-arrow">▶</span>
+     <span class="institution-user-name">${esc(
+       name
+     )}</span>
+     <span class="institution-user-count">${data.length}
+     account${
+       data.length ===
+       1
+         ? ""
+         : "s"
+     } · ${domainCount}
+     domain${
+       domainCount ===
+       1
+         ? ""
+         : "s"
+     }</span>`;
+
+  const content =
+    document.createElement(
+      "div"
+    );
+
+  content.className =
+    "institution-user-content";
+
+  content.hidden =
+    true;
+
+  header.onclick =
+    () => {
+      content.hidden =
+        !content.hidden;
+
+      header
+        .querySelector(
+          ".institution-user-arrow"
+        )
+        .textContent =
+        content.hidden
+          ? "▶"
+          : "▼";
+    };
+
+  Object.keys(
+    domains
+  )
+    .sort(
+      (
+        a,
+        b
+      ) =>
+        a.localeCompare(
+          b
+        )
+    )
+    .forEach(
+      d =>
+        content.appendChild(
+          renderDomain(
+            d,
+            domains[d],
+            `${key}::${d}`
+          )
+        )
+    );
+
+  section.append(
+    header,
+    content
+  );
+
+  return section;
+}
+
+function renderAdminAccounts(
+  data
+) {
+  const higher =
+    data.filter(
+      isHigherAdminUser
+    );
+
+  if (!higher.length) {
+    return;
+  }
+
+  const section =
+    document.createElement(
+      "section"
+    );
+
+  section.className =
+    "panel admin-section";
+
+  section.innerHTML =
+    `<h2>Platform Administration</h2>
+     <p class="section-caption">
+       Higher-level administrators are not institution members
+       and are therefore shown separately.
+     </p>`;
+
+  const table =
+    document.createElement(
+      "table"
+    );
+
+  table.innerHTML =
+    `<thead>
+      <tr>
+        <th>Name</th>
+        <th>Email</th>
+        <th>Role</th>
+        <th>RAG Access</th>
+        <th>Actions</th>
+      </tr>
+    </thead>`;
+
+  const tbody =
+    document.createElement(
+      "tbody"
+    );
+
+  higher.forEach(
+    u => {
+      const tr =
+        document.createElement(
+          "tr"
+        );
+
+      tr.innerHTML =
+        `<td>${esc(
+          u.name ||
+            ""
+        )}</td>
+
+         <td>${esc(
+           u.email ||
+             ""
+         )}</td>
+
+         <td>
+           <span class="scope-pill">
+             ${esc(
+               displayRole(
+                 u
+               )
+             )}
+           </span>
+         </td>
+
+         <td>
+           ${ragBadge(
+             u
+           )}
+         </td>
+
+         <td class="actions"></td>`;
+
+      const a =
+        tr.querySelector(
+          ".actions"
+        );
+
+      if (
+        canManageTarget(
+          u
+        )
+      ) {
+        const eb =
+          document.createElement(
+            "button"
+          );
+
+        eb.textContent =
+          "Edit";
+
+        eb.onclick =
+          () =>
+            editUser(
+              u
+            );
+
+        a.appendChild(
+          eb
+        );
+
+        const rb =
+          document.createElement(
+            "button"
+          );
+
+        rb.textContent =
+          "Send Link";
+
+        rb.onclick =
+          () =>
+            sendReset(
+              u._id,
+              u.email
+            );
+
+        a.appendChild(
+          rb
+        );
+      }
+
+      tbody.appendChild(
+        tr
+      );
+    }
+  );
+
+  table.appendChild(
+    tbody
+  );
+
+  section.appendChild(
+    table
+  );
+
+  domainGroups.appendChild(
+    section
+  );
+}
+
+function isHigherAdminUser(
+  u
+) {
+  return (
+    isSuperadminUser(
+      u
+    ) ||
+    [
+      "PLATFORM_ADMIN",
+      "ADMIN"
+    ].includes(
+      String(
+        u?.role || ""
+      ).toUpperCase()
+    )
+  );
+}
+
+let usersPage = 1;
+let usersPageData = [];
+
+function renderUsersPagination(
+  total,
+  page
+) {
+  const existing =
+    document.getElementById(
+      "usersPagination"
+    );
+
+  if (existing) {
+    existing.remove();
+  }
+
+  if (!total) {
+    return;
+  }
+
+  const totalPages =
+    Math.ceil(
+      total /
+        USERS_PER_PAGE
+    );
+
+  if (totalPages <= 1) {
+    return;
+  }
+
+  const toolbar =
+    document.createElement(
+      "div"
+    );
+
+  toolbar.id =
+    "usersPagination";
+
+  toolbar.style =
+    "display:flex;align-items:center;justify-content:center;gap:10px;margin:16px 0";
+
+  const start =
+    (page - 1) *
+      USERS_PER_PAGE +
+    1;
+
+  const end =
+    Math.min(
+      page *
+        USERS_PER_PAGE,
+      total
+    );
+
+  toolbar.innerHTML =
+    `<button
+       type="button"
+       ${page <= 1 ? "disabled" : ""}
+       onclick="changeUsersPage(${page - 1})">
+       ‹ Previous
+     </button>
+
+     <span class="muted">
+       Showing ${start}–${end} of ${total}
+       &nbsp;·&nbsp;
+       Page ${page} of ${totalPages}
+     </span>
+
+     <button
+       type="button"
+       ${page >= totalPages ? "disabled" : ""}
+       onclick="changeUsersPage(${page + 1})">
+       Next ›
+     </button>`;
+
+  domainGroups.parentNode.insertBefore(
+    toolbar,
+    domainGroups.nextSibling
+  );
+}
+
+function changeUsersPage(
+  page
+) {
+  const totalPages =
+    Math.ceil(
+      usersPageData.length /
+        USERS_PER_PAGE
+    );
+
+  if (
+    page < 1 ||
+    page > totalPages
+  ) {
+    return;
+  }
+
+  usersPage =
+    page;
+
+  renderUsers(
+    usersPageData,
+    true
+  );
+}
+
+function renderUsers(
+  data,
+  preservePage = false
+) {
+  currentRenderedUsers =
+    data;
+
+  usersPageData =
+    Array.isArray(data)
+      ? data
+      : [];
+
+  if (!preservePage) {
+    usersPage = 1;
+  }
+
+  const start =
+    (usersPage - 1) *
+    USERS_PER_PAGE;
+
+  const pageData =
+    usersPageData.slice(
+      start,
+      start +
+        USERS_PER_PAGE
+    );
+
+  domainGroups.innerHTML =
+    "";
+
+  const tenantGroups =
+    {};
+
+  pageData
+    .filter(
+      u =>
+        !isHigherAdminUser(
+          u
+        )
+    )
+    .forEach(
+      u => {
+        const k =
+          String(
+            u.tenantId ||
+              ""
+          ).trim() ||
+          "__none__";
+
+        (
+          tenantGroups[k] ||
+          (
+            tenantGroups[k] =
+              []
+          )
+        ).push(u);
+      }
+    );
+
+  Object.keys(
+    tenantGroups
+  )
+    .sort(
+      (
+        a,
+        b
+      ) =>
+        institutionLabel(
+          a
+        ).localeCompare(
+          institutionLabel(
+            b
+          )
+        )
+    )
+    .forEach(
+      k =>
+        domainGroups.appendChild(
+          renderInstitutionUsers(
+            k ===
+            "__none__"
+              ? ""
+              : k,
+            tenantGroups[k]
+          )
+        )
+    );
+
+  if (
+    isSuperadmin() ||
+    role() ===
+      "PLATFORM_ADMIN"
+  ) {
+    renderAdminAccounts(
+      usersPageData
+    );
+  }
+
+  renderUsersPagination(
+    usersPageData.length,
+    usersPage
+  );
+}
+
+async function loadUsers() {
+  try {
+    const q =
+      encodeURIComponent(
+        search.value
+      );
+
+    const r =
+      encodeURIComponent(
+        document.getElementById(
+          "role"
+        ).value
+      );
+
+    const data =
+      await api(
+        `/api/users?q=${q}&role=${r}`
+      );
+
+    status.textContent =
+      `${data.length} user(s)`;
+
+    Object.keys(
+      domainPages
+    ).forEach(
+      k =>
+        delete domainPages[k]
+    );
+
+    usersPage = 1;
+
+    renderUsers(
+      data
+    );
+  } catch (e) {
+    status.textContent =
+      e.message;
+  }
+}
+
+function openCreateDialog() {
+  roleOptions(
+    crole
+  );
+
+  refreshTenantControls();
+
+  cragAccess.value =
+    "true";
+
+  refreshRagControl(
+    cragAccess
+  );
+
+  createDialog.showModal();
+}
+
+createForm.onsubmit =
+  async e => {
+    e.preventDefault();
+
+    try {
+      const body = {
+        name:
+          cname.value,
+
+        username:
+          cusername.value,
+
+        email:
+          cemail.value,
+
+        role:
+          crole.value,
+
+        ragAccess:
+          cragAccess.value ===
+          "true"
+      };
+
+      if (
+        crole.value ===
+        "PLATFORM_ADMIN"
+      ) {
+        if (
+          !isSuperadmin()
+        ) {
+          throw new Error(
+            "Only the Superadmin may create Platform Admins"
+          );
+        }
+
+        body.tenantId =
+          null;
+      } else if (
+        [
+          "USER",
+          "Instructor",
+          "INSTITUTION_ADMIN"
+        ].includes(
+          crole.value
+        )
+      ) {
+        body.tenantId =
+          isInstitutionAdmin()
+            ? ownTenant()
+            : ctenant.value;
+      }
+
+      await api(
+        "/api/users",
+        {
+          method:
+            "POST",
+
+          headers: {
+            "Content-Type":
+              "application/json"
+          },
+
+          body:
+            JSON.stringify(
+              body
+            )
+        }
+      );
+
+      createDialog.close();
+
+      createForm.reset();
+
+      await loadUsers();
+      await loadInstitutions();
+
+      alert(
+        body.ragAccess
+          ? "User created with RAG Access enabled."
+          : "User created."
+      );
+    } catch (e) {
+      alert(
+        e.message
+      );
+    }
+  };
+
+function editUser(
+  u
+) {
+  if (
+    !canManageTarget(
+      u
+    )
+  ) {
+    return alert(
+      "You are not authorized to edit this account"
+    );
+  }
+
+  editingId =
+    u._id;
+
+  ename.value =
+    u.name || "";
+
+  eusername.value =
+    u.username || "";
+
+  roleOptions(
+    erole,
+    u.role
+  );
+
+  refreshTenantControls();
+
+  etenant.value =
+    u.tenantId || "";
+
+  epassword.value =
+    "";
+
+  refreshRagControl(
+    eragAccess,
+    u
+  );
+
+  editDialog.showModal();
+}
+
+editForm.onsubmit =
+  async e => {
+    e.preventDefault();
+
+    try {
+      const body = {
+        name:
+          ename.value,
+
+        username:
+          eusername.value,
+
+        role:
+          erole.value,
+
+        ragAccess:
+          eragAccess.value ===
+          "true"
+      };
+
+      if (
+        [
+          "USER",
+          "Instructor",
+          "INSTITUTION_ADMIN"
+        ].includes(
+          erole.value
+        )
+      ) {
+        body.tenantId =
+          isInstitutionAdmin()
+            ? ownTenant()
+            : etenant.value;
+      }
+
+      if (
+        erole.value ===
+        "PLATFORM_ADMIN"
+      ) {
+        body.tenantId =
+          null;
+      }
+
+      if (
+        epassword.value
+      ) {
+        body.password =
+          epassword.value;
+      }
+
+      await api(
+        `/api/users/${editingId}`,
+        {
+          method:
+            "PATCH",
+
+          headers: {
+            "Content-Type":
+              "application/json"
+          },
+
+          body:
+            JSON.stringify(
+              body
+            )
+        }
+      );
+
+      editDialog.close();
+
+      await loadUsers();
+      await loadInstitutions();
+    } catch (e) {
+      alert(
+        e.message
+      );
+    }
+  };
+
+async function sendReset(
+  id,
+  email
+) {
+  if (
+    !confirm(
+      `Send a password setup/reset link to ${email}?`
+    )
+  ) {
+    return;
+  }
+
+  try {
+    const d =
+      await api(
+        `/api/users/${id}/send-reset`,
+        {
+          method:
+            "POST"
+        }
+      );
+
+    alert(
+      d.message ||
+      "Password setup/reset email sent."
+    );
+  } catch (e) {
+    alert(
+      e.message
+    );
+  }
+}
+
+async function deleteUser(
+  id,
+  name
+) {
+  if (
+    !confirm(
+      `Delete ${name}? This cannot be undone.`
+    )
+  ) {
+    return;
+  }
+
+  try {
+    await api(
+      `/api/users/${id}`,
+      {
+        method:
+          "DELETE"
+      }
+    );
+
+    await loadUsers();
+    await loadInstitutions();
+  } catch (e) {
+    alert(
+      e.message
+    );
+  }
+}
+
+bulkForm.onsubmit =
+  async e => {
+    e.preventDefault();
+
+    const file =
+      csvfile.files[0];
+
+    if (!file) {
+      return;
+    }
+
+    const csv =
+      await file.text();
+
+    try {
+      const d =
+        await api(
+          "/api/users/bulk",
+          {
+            method:
+              "POST",
+
+            headers: {
+              "Content-Type":
+                "application/json"
+            },
+
+            body:
+              JSON.stringify({
+                csv,
+                confirm:
+                  false
+              })
+          }
+        );
+
+      const newUsers =
+        d.preview.filter(
+          x =>
+            x.status ===
+            "new"
+        );
+
+      const skipped =
+        d.preview.filter(
+          x =>
+            x.status ===
+            "skipped"
+        );
+
+      const ragEnabled =
+        newUsers.filter(
+          x =>
+            x.ragAccess ===
+            true
+        ).length;
+
+      let message =
+        `CSV validation complete.
+
+New users: ${newUsers.length}
+Existing users (will be skipped): ${skipped.length}
+New users with RAG Access: ${ragEnabled}
+Errors: ${d.errors.length}`;
+
+      if (
+        d.errors.length
+      ) {
+        message +=
+          `
+
+Errors:
+${d.errors.join(
+  "\n"
+)}`;
+      }
+
+      if (
+        !confirm(
+          message +
+          `
+
+Proceed with creating the new users?`
+        )
+      ) {
+        return;
+      }
+
+      const result =
+        await api(
+          "/api/users/bulk",
+          {
+            method:
+              "POST",
+
+            headers: {
+              "Content-Type":
+                "application/json"
+            },
+
+            body:
+              JSON.stringify({
+                csv,
+                confirm:
+                  true
+              })
+          }
+        );
+
+      const createdRag =
+        result.created.filter(
+          x =>
+            x.ragAccess ===
+            true
+        ).length;
+
+      alert(
+        `Import complete.
+
+Created: ${result.created.length}
+Created with RAG Access: ${createdRag}
+Skipped: ${result.skipped.length}
+Errors: ${
+          result.failed.length +
+          result.errors.length
+        }`
+      );
+
+      bulkDialog.close();
+
+      bulkForm.reset();
+
+      await loadUsers();
+      await loadInstitutions();
+    } catch (e) {
+      alert(
+        e.message
+      );
+    }
+  };
+
+async function logout() {
+  await fetch(
+    "/api/logout",
+    {
+      method:
+        "POST"
+    }
+  );
+
+  location.href =
+    "/login";
+}
+
+(async () => {
+  try {
+    await loadMe();
+    await loadInstitutions();
+    await loadUsers();
+  } catch (e) {
+    console.error(e);
+  }
+})();
+
 </script>
+
 </body>
 </html>

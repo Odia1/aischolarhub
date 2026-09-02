@@ -48,7 +48,7 @@ TEMP_TARGET="${BACKUP_DIR}/temp_backup_${TIMESTAMP}"
 MONGO_CONTAINER="chat-mongodb"
 PGVECTOR_CONTAINER="vectordb"
 OLLAMA_CONTAINER="aischolarhub-ollama"
-LIBRECHAT_CONTAINER="LibreChat"
+LIBRECHAT_CONTAINER="AI_Scholar_Hub"
 
 echo "============================================================"
 echo "[$(date)] AI-Scholar-Hub backup starting"

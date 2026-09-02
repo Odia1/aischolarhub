@@ -68,12 +68,13 @@ describe('requireAdmin middleware', () => {
 
       expect(statusMock).toHaveBeenCalledWith(403);
       expect(jsonMock).toHaveBeenCalledWith({
-        error: 'Access denied: Admin privileges required',
+        error: 'Access denied: administrator privileges required',
         error_code: 'ADMIN_REQUIRED',
       });
       expect(mockNext).not.toHaveBeenCalled();
       expect(logger.debug).toHaveBeenCalledWith(
-        '[requireAdmin] Access denied for non-admin user: user@test.com',
+        '[requireAdmin] Access denied',
+        { user: 'user@test.com', role: undefined },
       );
     });
 
@@ -87,7 +88,7 @@ describe('requireAdmin middleware', () => {
 
       expect(statusMock).toHaveBeenCalledWith(403);
       expect(jsonMock).toHaveBeenCalledWith({
-        error: 'Access denied: Admin privileges required',
+        error: 'Access denied: administrator privileges required',
         error_code: 'ADMIN_REQUIRED',
       });
       expect(mockNext).not.toHaveBeenCalled();
@@ -103,7 +104,7 @@ describe('requireAdmin middleware', () => {
 
       expect(statusMock).toHaveBeenCalledWith(403);
       expect(jsonMock).toHaveBeenCalledWith({
-        error: 'Access denied: Admin privileges required',
+        error: 'Access denied: administrator privileges required',
         error_code: 'ADMIN_REQUIRED',
       });
       expect(mockNext).not.toHaveBeenCalled();
