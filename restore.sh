@@ -2,7 +2,7 @@
 # =============================================================================
 # AI Scholar Hub — FULL RESTORE SCRIPT
 #
-# Note: mongod --noauth, so the restore should not try to authenticate with the MONGO_INITDB_ROOT_* credentials. Update as needed.
+# Note:the restore should authenticate with the MONGO_INITDB_ROOT_* credentials. Update as needed.
 # =============================================================================
 #
 # Purpose:
