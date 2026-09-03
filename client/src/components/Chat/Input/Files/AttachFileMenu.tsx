@@ -235,7 +235,7 @@ const AttachFileMenu = ({
 
       if (capabilities.fileSearchEnabled && fileSearchAllowedByAgent) {
         items.push({
-          label: localize('com_ui_upload_file_search'),
+          label: 'Upload to RAG (File Search)',
           onClick: () => {
             setToolResource(EToolResources.file_search);
             setEphemeralAgent((prev) => ({

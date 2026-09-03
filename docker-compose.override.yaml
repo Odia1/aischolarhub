@@ -2,11 +2,8 @@ services:
   api:
     container_name: AI_Scholar_Hub
 
-    build:
-      context: /opt/aischolarhub
-      dockerfile: Dockerfile
+    image: seeds.azurecr.io/aischolarhub-custom:dev-rag-tenant-v1
 
-    image: aischolarhub-custom:latest
 
 
     volumes:
@@ -51,3 +48,6 @@ services:
     expose:
       - "8000"
 
+
+  rag_api:
+    image: seeds.azurecr.io/aischolarhub-rag-api:dev-rag-tenant-v1

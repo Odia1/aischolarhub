@@ -35,6 +35,11 @@ import { createTokenModel } from './token';
 import { createAgentModel } from './agent';
 import { createSkillModel } from './skill';
 import { createGroupModel } from './group';
+import { createDepartmentModel } from './department';
+import { createCourseModel } from './course';
+import { createGroupDepartmentModel } from './groupDepartment';
+import { createGroupCourseModel } from './groupCourse';
+import { createCourseInstructorModel } from './courseInstructor';
 import { createUserModel } from './user';
 import { createInstitutionModel } from './institution';
 import { createRoleModel } from './role';
@@ -83,6 +88,11 @@ export function createModels(mongoose: typeof import('mongoose')): {
   SystemGrant: ReturnType<typeof createSystemGrantModel>;
   AuditLog: ReturnType<typeof createAuditLogModel>;
   Group: ReturnType<typeof createGroupModel>;
+  Department: ReturnType<typeof createDepartmentModel>;
+  Course: ReturnType<typeof createCourseModel>;
+  GroupDepartment: ReturnType<typeof createGroupDepartmentModel>;
+  GroupCourse: ReturnType<typeof createGroupCourseModel>;
+  CourseInstructor: ReturnType<typeof createCourseInstructorModel>;
   Config: ReturnType<typeof createConfigModel>;
   AgentTriggerDelivery: ReturnType<typeof createAgentTriggerDeliveryModel>;
   AgentTriggerLaneSequence: ReturnType<typeof createAgentTriggerLaneSequenceModel>;
@@ -128,6 +138,11 @@ export function createModels(mongoose: typeof import('mongoose')): {
     SystemGrant: createSystemGrantModel(mongoose),
     AuditLog: createAuditLogModel(mongoose),
     Group: createGroupModel(mongoose),
+    Department: createDepartmentModel(mongoose),
+    Course: createCourseModel(mongoose),
+    GroupDepartment: createGroupDepartmentModel(mongoose),
+    GroupCourse: createGroupCourseModel(mongoose),
+    CourseInstructor: createCourseInstructorModel(mongoose),
     Config: createConfigModel(mongoose),
     AgentTriggerDelivery: createAgentTriggerDeliveryModel(mongoose),
     AgentTriggerLaneSequence: createAgentTriggerLaneSequenceModel(mongoose),

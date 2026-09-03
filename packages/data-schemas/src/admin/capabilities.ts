@@ -19,6 +19,8 @@ export const SystemCapabilities = {
   MANAGE_USERS: 'manage:users',
   READ_GROUPS: 'read:groups',
   MANAGE_GROUPS: 'manage:groups',
+  READ_ORGANIZATION: 'read:organization',
+  MANAGE_ORGANIZATION: 'manage:organization',
   READ_ROLES: 'read:roles',
   MANAGE_ROLES: 'manage:roles',
   READ_CONFIGS: 'read:configs',
@@ -87,6 +89,7 @@ export const CapabilityImplications: Partial<Record<BaseSystemCapability, BaseSy
   {
     [SystemCapabilities.MANAGE_USERS]: [SystemCapabilities.READ_USERS],
     [SystemCapabilities.MANAGE_GROUPS]: [SystemCapabilities.READ_GROUPS],
+    [SystemCapabilities.MANAGE_ORGANIZATION]: [SystemCapabilities.READ_ORGANIZATION],
     [SystemCapabilities.MANAGE_ROLES]: [SystemCapabilities.READ_ROLES],
     [SystemCapabilities.MANAGE_CONFIGS]: [SystemCapabilities.READ_CONFIGS],
     [SystemCapabilities.MANAGE_AGENTS]: [SystemCapabilities.READ_AGENTS],
@@ -229,6 +232,14 @@ export const CAPABILITY_CATEGORIES: CapabilityCategory[] = [
     key: 'roles',
     labelKey: 'com_cap_cat_roles',
     capabilities: [SystemCapabilities.MANAGE_ROLES, SystemCapabilities.READ_ROLES],
+  },
+  {
+    key: 'organization',
+    labelKey: 'com_cap_cat_organization',
+    capabilities: [
+      SystemCapabilities.MANAGE_ORGANIZATION,
+      SystemCapabilities.READ_ORGANIZATION,
+    ],
   },
   {
     key: 'config',

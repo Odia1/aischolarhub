@@ -7,6 +7,7 @@ const adminLangfuse = require('./admin/langfuse');
 const adminGrants = require('./admin/grants');
 const adminGroups = require('./admin/groups');
 const adminInstitutions = require('./admin/institutions');
+const adminOrganization = require('./admin/organization');
 const adminRoles = require('./admin/roles');
 const adminSkills = require('./admin/skills');
 const adminUsers = require('./admin/users');
@@ -52,6 +53,7 @@ module.exports = {
   adminGrants,
   adminGroups,
   adminInstitutions,
+  adminOrganization,
   adminRoles,
   adminSkills,
   adminUsers,

@@ -22,7 +22,7 @@ const deleteVectors = async (req, file) => {
     return;
   }
   try {
-    const jwtToken = generateShortLivedToken(req.user.id);
+    const jwtToken = generateShortLivedToken(req.user.id, '5m', req.user.tenantId);
 
     return await axios.delete(`${process.env.RAG_API_URL}/documents`, {
       headers: {
@@ -70,7 +70,7 @@ async function uploadVectors({ req, file, file_id, entity_id, storageMetadata })
   }
 
   try {
-    const jwtToken = generateShortLivedToken(req.user.id);
+    const jwtToken = generateShortLivedToken(req.user.id, '5m', req.user.tenantId);
     const formData = new FormData();
     formData.append('file_id', file_id);
     formData.append('file', fs.createReadStream(file.path));

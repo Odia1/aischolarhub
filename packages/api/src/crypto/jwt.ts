@@ -13,19 +13,31 @@ type AgentTriggerRequest = {
  * @param {String} [expireIn='5m'] - The expiration time for the token.
  * @returns {String} - The generated JWT token.
  */
-export const generateShortLivedToken = (userId: string, expireIn: string = '5m'): string => {
-  return jwt.sign({ id: userId }, process.env.JWT_SECRET!, {
+export const generateShortLivedToken = (
+  userId: string,
+  expireIn: string = '5m',
+  tenantId?: string,
+): string => {
+  return jwt.sign(
+    {
+      id: userId,
+      ...(tenantId ? { tenantId } : {}),
+    },
+    process.env.JWT_SECRET!,
+    {
     expiresIn: expireIn,
-    algorithm: 'HS256',
-  });
+      algorithm: 'HS256',
+    },
+  );
 };
 
 /** Mint the server-only identity used by durable agent trigger admission. */
 export const generateAgentTriggerToken = (userId: string, expireIn: string = '60s'): string => {
   return jwt.sign({ id: userId, scope: AGENT_TRIGGER_SCOPE }, process.env.JWT_SECRET!, {
     expiresIn: expireIn,
-    algorithm: 'HS256',
-  });
+      algorithm: 'HS256',
+    },
+  );
 };
 
 /** Verify the signed trigger scope together with its explicit transport marker. */

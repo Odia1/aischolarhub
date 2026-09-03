@@ -37,6 +37,7 @@ export * from './aclEntry';
 export * from './systemGrant';
 export * from './auditLog';
 export * from './group';
+export * from './organization';
 /* Config */
 export * from './config';
 /* Admin */
