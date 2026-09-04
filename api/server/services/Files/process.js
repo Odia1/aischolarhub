@@ -1,4 +1,5 @@
 const fs = require('fs');
+const crypto = require('crypto');
 const path = require('path');
 const mime = require('mime');
 const { v4 } = require('uuid');
@@ -68,6 +69,17 @@ const createSanitizedUploadWrapper = (uploadFunction) => {
 
     return uploadFunction({ req, file: sanitizedFile, file_id, ...restParams });
   };
+};
+
+const getFileDigest = async (filePath) => {
+  return new Promise((resolve, reject) => {
+    const hash = crypto.createHash('sha256');
+    const stream = fs.createReadStream(filePath);
+
+    stream.on('error', reject);
+    stream.on('data', (chunk) => hash.update(chunk));
+    stream.on('end', () => resolve(hash.digest('hex')));
+  });
 };
 
 const hasCodeEnvRef = (file) =>
@@ -920,10 +932,32 @@ const processAgentFileUpload = async ({ req, res, metadata, sseStream }) => {
 
   // Dual storage pattern for RAG files: Storage + Vector DB
   let storageResult, embeddingResult;
+  let fileDigest;
   const isImageFile = file.mimetype.startsWith('image');
   const source = getFileStrategy(appConfig, { isImage: isImageFile });
 
   if (tool_resource === EToolResources.file_search) {
+    // Calculate the SHA-256 digest before storage/vectorization so duplicate
+    // RAG uploads can be rejected before creating additional copies.
+    fileDigest = await getFileDigest(file.path);
+
+    // Reject an identical RAG document already uploaded within this tenant.
+    // The tenant boundary ensures identical content can exist independently
+    // in different institutions.
+    const existingRagFile = await db.findRagDuplicate(
+      fileDigest,
+      req.user.tenantId,
+    );
+
+    if (existingRagFile) {
+      const duplicateError = new Error(
+        `This document has already been uploaded to File Search as "${existingRagFile.filename}".`,
+      );
+      duplicateError.statusCode = 409;
+      duplicateError.code = 'DUPLICATE_RAG_FILE';
+      throw duplicateError;
+    }
+
     // FIRST: Upload to Storage for permanent backup (S3/local/etc.)
     const { handleFileUpload } = getStrategyFunctions(source);
     const sanitizedUploadFn = createSanitizedUploadWrapper(handleFileUpload);
@@ -1032,6 +1066,7 @@ const processAgentFileUpload = async ({ req, res, metadata, sseStream }) => {
       height,
       width,
       tenantId: req.user.tenantId,
+      digest: fileDigest,
     }),
     ...retentionExpiry,
   };

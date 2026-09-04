@@ -30,6 +30,10 @@ function withOwnerScope<T extends FilterQuery<IMongoFile>>(
 /** Factory function that takes mongoose instance and returns the file methods */
 export function createFileMethods(mongoose: typeof import('mongoose')): {
   findFileById: (file_id: string, options?: Record<string, unknown>) => Promise<IMongoFile | null>;
+  findRagDuplicate: (
+    digest: string,
+    tenantId: string,
+  ) => Promise<IMongoFile | null>;
   getFiles: (
     filter: FilterQuery<IMongoFile>,
     _sortOptions?: Record<string, SortOrder> | null,
@@ -114,6 +118,30 @@ export function createFileMethods(mongoose: typeof import('mongoose')): {
    * @param options - Additional query options (userId, agentId for ACL)
    * @returns A promise that resolves to an array of file documents
    */
+  /**
+   * Finds an existing RAG file with the same content digest within a tenant.
+   * The tenant boundary is mandatory so identical documents can exist
+   * independently in different institutions.
+   */
+  async function findRagDuplicate(
+    digest: string,
+    tenantId: string,
+  ): Promise<IMongoFile | null> {
+    if (!digest || !tenantId) {
+      return null;
+    }
+
+    const File = mongoose.models.File as Model<IMongoFile>;
+
+    return File.findOne({
+      digest,
+      tenantId,
+      embedded: true,
+    })
+      .select({ text: 0 })
+      .lean<IMongoFile>();
+  }
+
   async function getFiles(
     filter: FilterQuery<IMongoFile>,
     _sortOptions?: Record<string, SortOrder> | null,
@@ -677,6 +705,7 @@ export function createFileMethods(mongoose: typeof import('mongoose')): {
 
   return {
     findFileById,
+    findRagDuplicate,
     getFiles,
     getExpiredFiles,
     getToolFilesByIds,

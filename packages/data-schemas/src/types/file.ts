@@ -6,6 +6,8 @@ export interface IMongoFile extends Omit<Document, 'model'> {
   conversationId?: string;
   messageId?: string;
   file_id: string;
+  /** SHA-256 digest of the original uploaded file bytes. */
+  digest?: string;
   temp_file_id?: string;
   bytes: number;
   text?: string;

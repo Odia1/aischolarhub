@@ -1424,6 +1424,7 @@ const groupDepartments = db.collection("group_departments");
 const ragLocations = db.collection("ragLocations");
 const ragGroups = db.collection("ragGroups");
 const ragGroupManagers = db.collection("ragGroupManagers");
+const ragFiles = db.collection("files");
 
 const ORG_ID_RE = /^[-a-zA-Z0-9_.]{1,128}$/;
 const RAG_TYPES = new Set(["DEPARTMENT", "COURSE", "INSTRUCTOR"]);
@@ -1569,6 +1570,8 @@ async function ensureOrgIndexes() {
     ragGroups.createIndex({ tenantId: 1, groupIds: 1 }),
     ragGroups.createIndex({ tenantId: 1, departmentIds: 1 }),
     ragGroups.createIndex({ tenantId: 1, courseIds: 1 }),
+    ragGroups.createIndex({ tenantId: 1, userIds: 1 }),
+    ragFiles.createIndex({ tenantId: 1, ragGroupIds: 1 }),
     ragGroupManagers.createIndex({ tenantId: 1, ragGroupId: 1, userId: 1 }, { unique: true }),
     ragGroupManagers.createIndex({ tenantId: 1, ragGroupId: 1 }),
     ragGroupManagers.createIndex({ tenantId: 1, userId: 1 })
@@ -2116,6 +2119,7 @@ async function validateRagGroupReferences(tenantId, body) {
   const groupIds = cleanIdList(body.groupIds);
   const departmentIds = cleanIdList(body.departmentIds);
   const courseIds = cleanIdList(body.courseIds);
+  const userIds = cleanIdList(body.userIds);
 
   const groupObjects = groupIds.map(oid).filter(Boolean);
   const departmentObjects = departmentIds.map(oid).filter(Boolean);
@@ -2147,7 +2151,21 @@ async function validateRagGroupReferences(tenantId, body) {
   if (coursesFound !== courseObjects.length)
     throw new Error("One or more Courses do not belong to this institution");
 
-  return { groupIds, departmentIds, courseIds };
+  if (userIds.length) {
+    const userObjects = userIds.map(oid).filter(Boolean);
+    if (userIds.length !== userObjects.length)
+      throw new Error("One or more User IDs are invalid");
+
+    const usersFound = await db.collection("users").countDocuments({
+      _id: { $in: userObjects },
+      tenantId
+    });
+
+    if (usersFound !== userObjects.length)
+      throw new Error("One or more Users do not belong to this institution");
+  }
+
+  return { groupIds, departmentIds, courseIds, userIds };
 }
 
 app.get("/api/rag-groups", async (req, res) => {
@@ -2271,12 +2289,14 @@ app.patch("/api/rag-groups/:id", async (req, res) => {
     if (
       req.body.groupIds !== undefined ||
       req.body.departmentIds !== undefined ||
-      req.body.courseIds !== undefined
+      req.body.courseIds !== undefined ||
+      req.body.userIds !== undefined
     ) {
       const refs = await validateRagGroupReferences(current.tenantId, {
         groupIds: req.body.groupIds !== undefined ? req.body.groupIds : current.groupIds,
         departmentIds: req.body.departmentIds !== undefined ? req.body.departmentIds : current.departmentIds,
-        courseIds: req.body.courseIds !== undefined ? req.body.courseIds : current.courseIds
+        courseIds: req.body.courseIds !== undefined ? req.body.courseIds : current.courseIds,
+        userIds: req.body.userIds !== undefined ? req.body.userIds : current.userIds
       });
 
       Object.assign(update, refs);
@@ -2302,6 +2322,156 @@ app.patch("/api/rag-groups/:id", async (req, res) => {
 
     res.status(400).json({
       error: e.message || "Failed to update RAG Group"
+    });
+  }
+});
+
+
+async function canManageRagDocuments(req, ragGroup) {
+  if (isOrgElevated(req)) return true;
+
+  if (!req.admin || !ragGroup) return false;
+  if (ragGroup.tenantId !== actorTenant(req)) return false;
+
+  const assignment = await ragGroupManagers.findOne({
+    tenantId: ragGroup.tenantId,
+    ragGroupId: String(ragGroup._id),
+    userId: String(req.admin._id),
+    permissions: "MANAGE_DOCUMENTS"
+  });
+
+  return !!assignment;
+}
+
+app.get("/api/rag-groups/:id/documents", async (req, res) => {
+  try {
+    const _id = oid(req.params.id);
+    if (!_id)
+      return res.status(400).json({ error: "Invalid RAG Group ID" });
+
+    const ragGroup = await ragGroups.findOne(
+      isInstitutionAdmin(req.admin)
+        ? { _id, tenantId: actorTenant(req) }
+        : { _id }
+    );
+
+    if (!ragGroup)
+      return res.status(404).json({ error: "RAG Group not found" });
+
+    if (!(await canManageRagDocuments(req, ragGroup)))
+      return res.status(403).json({ error: "RAG document management is not permitted" });
+
+    const documents = await ragFiles.find(
+      {
+        tenantId: ragGroup.tenantId,
+        ragGroupIds: String(ragGroup._id)
+      },
+      {
+        projection: {
+          text: 0
+        }
+      }
+    ).sort({ filename: 1 }).toArray();
+
+    res.json({ documents });
+  } catch (e) {
+    console.error("[RAG-GROUP-DOCUMENTS]", e);
+    res.status(500).json({ error: "Failed to retrieve RAG documents" });
+  }
+});
+
+app.patch("/api/rag-files/:fileId/rag-groups", async (req, res) => {
+  try {
+    const fileId = String(req.params.fileId || "").trim();
+    if (!fileId)
+      return res.status(400).json({ error: "File ID is required" });
+
+    const requestedIds = cleanIdList(req.body.ragGroupIds);
+
+    const file = await ragFiles.findOne({ file_id: fileId });
+    if (!file)
+      return res.status(404).json({ error: "RAG document not found" });
+
+    if (
+      isInstitutionAdmin(req.admin) &&
+      file.tenantId !== actorTenant(req)
+    ) {
+      return res.status(403).json({ error: "Cross-institution RAG access is not permitted" });
+    }
+
+    const objectIds = requestedIds.map(oid).filter(Boolean);
+
+    if (objectIds.length !== requestedIds.length)
+      return res.status(400).json({ error: "One or more RAG Group IDs are invalid" });
+
+    const targetGroups = objectIds.length
+      ? await ragGroups.find({
+          _id: { $in: objectIds },
+          tenantId: file.tenantId
+        }).toArray()
+      : [];
+
+    if (targetGroups.length !== objectIds.length)
+      return res.status(400).json({
+        error: "One or more RAG Groups do not belong to this institution"
+      });
+
+    const existingIds = cleanIdList(file.ragGroupIds);
+
+    const permissionIds = [...new Set([
+      ...existingIds,
+      ...requestedIds
+    ])];
+
+    if (!isOrgElevated(req)) {
+      const permissionObjects = permissionIds.map(oid).filter(Boolean);
+
+      const permissionGroups = permissionObjects.length
+        ? await ragGroups.find({
+            _id: { $in: permissionObjects },
+            tenantId: file.tenantId
+          }).toArray()
+        : [];
+
+      for (const ragGroup of permissionGroups) {
+        if (!(await canManageRagDocuments(req, ragGroup))) {
+          return res.status(403).json({
+            error: "You do not have document-management permission for one or more RAG Groups"
+          });
+        }
+      }
+    }
+
+    const result = await ragFiles.findOneAndUpdate(
+      {
+        _id: file._id,
+        tenantId: file.tenantId
+      },
+      {
+        $set: {
+          ragGroupIds: requestedIds,
+          updatedAt: new Date()
+        }
+      },
+      {
+        returnDocument: "after"
+      }
+    );
+
+    await audit("RAG_FILE_GROUPS_UPDATED", req, {
+      safeDetails: {
+        tenantId: file.tenantId,
+        fileId,
+        previousRagGroupIds: existingIds,
+        ragGroupIds: requestedIds
+      }
+    });
+
+    res.json({ file: result });
+  } catch (e) {
+    console.error("[RAG-FILE-GROUPS]", e);
+    res.status(400).json({
+      error: e.message || "Failed to update RAG document assignment"
     });
   }
 });

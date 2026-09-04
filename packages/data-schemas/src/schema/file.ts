@@ -25,6 +25,13 @@ const file: Schema<IMongoFile> = new Schema(
       index: true,
       required: true,
     },
+    digest: {
+      /**
+       * SHA-256 digest of the original uploaded file bytes.
+       * Used for tenant-scoped RAG duplicate detection.
+       */
+      type: String,
+    },
     temp_file_id: {
       type: String,
     },
@@ -160,6 +167,18 @@ const file: Schema<IMongoFile> = new Schema(
 
 file.index({ expiredAt: 1 });
 file.index({ createdAt: 1, updatedAt: 1 });
+
+/**
+ * Prevent identical file contents from being uploaded more than once
+ * within the same tenant. Existing files without a digest remain valid.
+ */
+file.index(
+  { tenantId: 1, digest: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { digest: { $type: 'string' } },
+  },
+);
 file.index(
   { filename: 1, conversationId: 1, context: 1, tenantId: 1 },
   { unique: true, partialFilterExpression: { context: FileContext.execute_code } },
