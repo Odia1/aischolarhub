@@ -17,7 +17,7 @@ function createContextHandlers(req, userMessageContent) {
   const queryPromises = [];
   const processedFiles = [];
   const processedIds = new Set();
-  const jwtToken = generateShortLivedToken(req.user.id);
+  const jwtToken = generateShortLivedToken(req.user.id, '5m', req.user?.tenantId);
   const useFullContext = isEnabled(process.env.RAG_USE_FULL_CONTEXT);
 
   const query = async (file) => {

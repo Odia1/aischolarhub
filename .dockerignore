@@ -58,3 +58,9 @@ gemini-proxy/*.pyc
 
 # Temp/editor files
 **/*~
+# Runtime data - exclude from Docker/ACR build context
+ollama_data/
+data-node/
+uploads/
+logs/
+checkpoints/

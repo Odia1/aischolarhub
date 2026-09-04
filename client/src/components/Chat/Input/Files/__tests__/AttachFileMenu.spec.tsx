@@ -102,7 +102,7 @@ function setupMocks(overrides: { provider?: string } = {}) {
     com_files_upload_sharepoint: 'Upload from SharePoint',
     com_sidepanel_attach_files: 'Attach Files',
     com_ui_upload_code_environment: 'Upload to Code Environment',
-    com_ui_upload_file_search: 'Upload for File Search',
+    com_ui_upload_file_search: 'Upload for RAG / File Search',
     com_ui_upload_image_input: 'Upload Image',
     com_ui_upload_ocr_text: 'Upload as Text',
     com_ui_upload_provider: 'Upload to Provider',
@@ -288,7 +288,7 @@ describe('AttachFileMenu', () => {
       expect(screen.getByText('Upload as Text')).toBeInTheDocument();
     });
 
-    it('shows File Search option when enabled and allowed by agent', () => {
+    it('shows RAG / File Search option when enabled and allowed by agent', () => {
       setupMocks();
       mockUseAgentCapabilities.mockReturnValue({
         contextEnabled: false,
@@ -302,10 +302,10 @@ describe('AttachFileMenu', () => {
       });
       renderMenu({ endpointType: EModelEndpoint.openAI });
       openMenu();
-      expect(screen.getByText('Upload for File Search')).toBeInTheDocument();
+      expect(screen.getByText('Upload for RAG / File Search')).toBeInTheDocument();
     });
 
-    it('does NOT show File Search when enabled but not allowed by agent', () => {
+    it('does NOT show RAG / File Search when enabled but not allowed by agent', () => {
       setupMocks();
       mockUseAgentCapabilities.mockReturnValue({
         contextEnabled: false,
@@ -314,7 +314,7 @@ describe('AttachFileMenu', () => {
       });
       renderMenu({ endpointType: EModelEndpoint.openAI });
       openMenu();
-      expect(screen.queryByText('Upload for File Search')).not.toBeInTheDocument();
+      expect(screen.queryByText('Upload for RAG / File Search')).not.toBeInTheDocument();
     });
 
     it('shows Code Files option when enabled and allowed by agent', () => {
@@ -350,11 +350,11 @@ describe('AttachFileMenu', () => {
       openMenu();
       expect(screen.getByText('Upload to Provider')).toBeInTheDocument();
       expect(screen.getByText('Upload as Text')).toBeInTheDocument();
-      expect(screen.getByText('Upload for File Search')).toBeInTheDocument();
+      expect(screen.getByText('Upload for RAG / File Search')).toBeInTheDocument();
       expect(screen.getByText('Upload to Code Environment')).toBeInTheDocument();
     });
 
-    it('passes File Search resource when the file input changes before React state commits', () => {
+    it('passes RAG / File Search resource when the file input changes before React state commits', () => {
       setupMocks();
       const handleFileChange = jest.fn();
       mockUseFileHandlingNoChatContext.mockReturnValue({ handleFileChange });
@@ -385,7 +385,7 @@ describe('AttachFileMenu', () => {
         renderMenu({ endpointType: EModelEndpoint.openAI });
         openMenu();
         fireEvent.click(screen.getByText('Upload to Provider'));
-        fireEvent.click(screen.getByText('Upload for File Search'));
+        fireEvent.click(screen.getByText('Upload for RAG / File Search'));
       } finally {
         HTMLInputElement.prototype.click = originalClick;
       }

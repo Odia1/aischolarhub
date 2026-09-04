@@ -55,7 +55,7 @@ jest.mock('~/components/Chat/Input/Files/Image', () => {
 
 const mockClearUploadRecovery = jest.requireMock('../useFileHandling').clearUploadRecovery;
 
-/** Mirrors the shape `utils/forms.tsx` builds for agent Context/File Search panels */
+/** Mirrors the shape `utils/forms.tsx` builds for agent Context/RAG / File Search panels */
 const makeFile = (file_id: string): ExtendedFile =>
   ({
     file_id,

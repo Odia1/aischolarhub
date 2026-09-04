@@ -25,6 +25,8 @@ const adminAudit = db.collection("adminAudit");
 const aiProviders = db.collection("aiProviders");
 const aiModels = db.collection("aiModels");
 const modelEntitlements = db.collection("modelEntitlements");
+const academicAgents = db.collection("academicAgents");
+const learnerStates = db.collection("learnerStates");
 
 const sessions = new Map();
 
@@ -42,7 +44,16 @@ await Promise.all([
     { tenantId: 1, role: 1, agentId: 1 },
     { unique: true }
   ),
-  modelEntitlements.createIndex({ tenantId: 1, enabled: 1 })
+  modelEntitlements.createIndex({ tenantId: 1, enabled: 1 }),
+  academicAgents.createIndex(
+    { tenantId: 1, agentId: 1 },
+    { unique: true }
+  ),
+  academicAgents.createIndex({ tenantId: 1, enabled: 1 }),
+  learnerStates.createIndex(
+    { tenantId: 1, userId: 1 },
+    { unique: true }
+  )
 ]);
 
 async function audit(action, req, details = {}) {
@@ -271,6 +282,40 @@ async function resolvePolicyTenant(req, requestedTenantId) {
   return await institutionExists(tenantId)
     ? tenantId
     : null;
+}
+
+
+function canManageAcademicAgents(req) {
+  return canManageModelPolicy(req) || isInstitutionAdmin(req.admin);
+}
+
+async function resolveAcademicTenant(req, requestedTenantId) {
+  if (isInstitutionAdmin(req.admin)) {
+    return actorTenant(req);
+  }
+
+  const tenantId = String(requestedTenantId || "").trim();
+  if (!tenantId) return null;
+
+  return await institutionExists(tenantId) ? tenantId : null;
+}
+
+function normalizePedagogy(input = {}) {
+  const mode = String(input.mode || "SOCRATIC")
+    .trim()
+    .toUpperCase();
+
+  return {
+    mode,
+    diagnoseFirst: input.diagnoseFirst !== false,
+    activeRetrieval: input.activeRetrieval !== false,
+    adaptiveDifficulty: input.adaptiveDifficulty !== false,
+    misconceptionRepair: input.misconceptionRepair !== false,
+    masteryTracking: input.masteryTracking !== false,
+    strategy: String(input.strategy || "")
+      .trim()
+      .slice(0, 4000)
+  };
 }
 
 function userScope(req, extra = {}) {
@@ -2789,6 +2834,466 @@ app.delete("/api/rag-locations/:id", async(req,res)=>{
     await audit("RAG_LOCATION_DELETED",req,{safeDetails:{tenantId:current.tenantId,type:current.type,targetId:current.targetId,ragLocationId:current._id.toString()}});
     res.json({ok:true});
   }catch(e){res.status(500).json({error:"Failed to delete RAG access point"});}
+});
+
+
+
+/* ============================================================
+ * ACADEMIC AGENT FRAMEWORK
+ * ============================================================ */
+
+app.get("/api/academic-agents", async (req, res) => {
+  try {
+    if (!canManageAcademicAgents(req))
+      return res.status(403).json({
+        error: "Academic Agent administration is not permitted"
+      });
+
+    const tenantId = await resolveAcademicTenant(
+      req,
+      req.query.tenantId
+    );
+
+    if (!tenantId)
+      return res.status(400).json({
+        error: "A valid institution is required"
+      });
+
+    const agents = await academicAgents
+      .find({ tenantId })
+      .sort({ name: 1 })
+      .toArray();
+
+    res.json({ agents, tenantId });
+  } catch (e) {
+    console.error("[ACADEMIC-AGENTS-LIST]", e);
+    res.status(500).json({
+      error: "Failed to retrieve Academic Agents"
+    });
+  }
+});
+
+
+app.post("/api/academic-agents/bootstrap", async (req, res) => {
+  try {
+    if (!canManageAcademicAgents(req))
+      return res.status(403).json({
+        error: "Academic Agent administration is not permitted"
+      });
+
+    const tenantId = await resolveAcademicTenant(
+      req,
+      req.body.tenantId
+    );
+
+    if (!tenantId)
+      return res.status(400).json({
+        error: "A valid institution is required"
+      });
+
+    const now = new Date();
+
+    const defaults = [
+      {
+        tenantId,
+        agentId: "SOCRATIC_TUTOR",
+        name: "Socratic Tutor",
+        description:
+          "Adaptive higher-education tutor using guided discovery, misconception repair and active retrieval.",
+        modelSpecName: "Undergrad Socratic Tutor",
+        enabled: true,
+        allowedRoles: ["USER", "INSTRUCTOR"],
+        pedagogy: {
+          mode: "SOCRATIC",
+          diagnoseFirst: true,
+          activeRetrieval: true,
+          adaptiveDifficulty: true,
+          misconceptionRepair: true,
+          masteryTracking: true,
+          strategy:
+            "Diagnose current understanding first. Use minimum necessary assistance. Move from prompt to hint to explanation only as needed. Verify learning with active retrieval."
+        },
+        createdAt: now,
+        updatedAt: now
+      },
+      {
+        tenantId,
+        agentId: "RESEARCH_SYNTHESIZER",
+        name: "Research Synthesizer",
+        description:
+          "Advanced research assistant for literature synthesis, scholarly reasoning and research-method support.",
+        modelSpecName: "PhD & Post-Doc Research",
+        enabled: true,
+        allowedRoles: ["INSTRUCTOR", "INSTITUTION_ADMIN"],
+        pedagogy: {
+          mode: "RESEARCH",
+          diagnoseFirst: true,
+          activeRetrieval: false,
+          adaptiveDifficulty: true,
+          misconceptionRepair: true,
+          masteryTracking: false,
+          strategy:
+            "Clarify the research question, distinguish evidence from inference, expose uncertainty, compare competing explanations and preserve scholarly rigor."
+        },
+        createdAt: now,
+        updatedAt: now
+      }
+    ];
+
+    let created = 0;
+
+    for (const doc of defaults) {
+      const result = await academicAgents.updateOne(
+        {
+          tenantId,
+          agentId: doc.agentId
+        },
+        {
+          $setOnInsert: doc
+        },
+        {
+          upsert: true
+        }
+      );
+
+      if (result.upsertedCount) created++;
+    }
+
+    await audit("ACADEMIC_AGENTS_BOOTSTRAPPED", req, {
+      safeDetails: {
+        tenantId,
+        created
+      }
+    });
+
+    res.json({ ok: true, created });
+  } catch (e) {
+    console.error("[ACADEMIC-AGENTS-BOOTSTRAP]", e);
+    res.status(400).json({
+      error: e.message || "Failed to bootstrap Academic Agents"
+    });
+  }
+});
+
+
+app.post("/api/academic-agents", async (req, res) => {
+  try {
+    if (!canManageAcademicAgents(req))
+      return res.status(403).json({
+        error: "Academic Agent administration is not permitted"
+      });
+
+    const tenantId = await resolveAcademicTenant(
+      req,
+      req.body.tenantId
+    );
+
+    if (!tenantId)
+      return res.status(400).json({
+        error: "A valid institution is required"
+      });
+
+    const agentId = cleanPolicyKey(
+      req.body.agentId,
+      "Agent ID"
+    ).toUpperCase();
+
+    const name = String(req.body.name || "")
+      .trim()
+      .slice(0, 200);
+
+    const modelSpecName = String(
+      req.body.modelSpecName || ""
+    ).trim().slice(0, 200);
+
+    if (!name || !modelSpecName)
+      return res.status(400).json({
+        error: "Agent name and modelSpecName are required"
+      });
+
+    const now = new Date();
+
+    const doc = {
+      tenantId,
+      agentId,
+      name,
+      description: String(req.body.description || "")
+        .trim()
+        .slice(0, 2000),
+      modelSpecName,
+      enabled: req.body.enabled !== false,
+      allowedRoles: cleanStringList(req.body.allowedRoles)
+        .map(x => x.toUpperCase()),
+      pedagogy: normalizePedagogy(req.body.pedagogy),
+      createdAt: now,
+      updatedAt: now
+    };
+
+    const result = await academicAgents.insertOne(doc);
+    doc._id = result.insertedId;
+
+    await audit("ACADEMIC_AGENT_CREATED", req, {
+      safeDetails: {
+        tenantId,
+        agentId,
+        modelSpecName
+      }
+    });
+
+    res.status(201).json({ agent: doc });
+  } catch (e) {
+    if (e?.code === 11000)
+      return res.status(409).json({
+        error: "This Academic Agent ID already exists for the institution"
+      });
+
+    res.status(400).json({
+      error: e.message || "Failed to create Academic Agent"
+    });
+  }
+});
+
+
+app.patch("/api/academic-agents/:id", async (req, res) => {
+  try {
+    if (!canManageAcademicAgents(req))
+      return res.status(403).json({
+        error: "Academic Agent administration is not permitted"
+      });
+
+    const _id = new ObjectId(req.params.id);
+
+    const filter = isInstitutionAdmin(req.admin)
+      ? { _id, tenantId: actorTenant(req) }
+      : { _id };
+
+    const current = await academicAgents.findOne(filter);
+
+    if (!current)
+      return res.status(404).json({
+        error: "Academic Agent not found"
+      });
+
+    const update = {
+      updatedAt: new Date()
+    };
+
+    if (req.body.name !== undefined)
+      update.name = String(req.body.name || "")
+        .trim().slice(0, 200);
+
+    if (req.body.description !== undefined)
+      update.description = String(req.body.description || "")
+        .trim().slice(0, 2000);
+
+    if (req.body.modelSpecName !== undefined)
+      update.modelSpecName = String(req.body.modelSpecName || "")
+        .trim().slice(0, 200);
+
+    if (req.body.enabled !== undefined)
+      update.enabled = req.body.enabled === true;
+
+    if (req.body.allowedRoles !== undefined)
+      update.allowedRoles = cleanStringList(
+        req.body.allowedRoles
+      ).map(x => x.toUpperCase());
+
+    if (req.body.pedagogy !== undefined)
+      update.pedagogy = normalizePedagogy(
+        req.body.pedagogy
+      );
+
+    const agent = await academicAgents.findOneAndUpdate(
+      { _id: current._id, tenantId: current.tenantId },
+      { $set: update },
+      { returnDocument: "after" }
+    );
+
+    await audit("ACADEMIC_AGENT_UPDATED", req, {
+      safeDetails: {
+        tenantId: current.tenantId,
+        agentId: current.agentId
+      }
+    });
+
+    res.json({ agent });
+  } catch (e) {
+    res.status(400).json({
+      error: e.message || "Failed to update Academic Agent"
+    });
+  }
+});
+
+
+app.delete("/api/academic-agents/:id", async (req, res) => {
+  try {
+    if (!canManageAcademicAgents(req))
+      return res.status(403).json({
+        error: "Academic Agent administration is not permitted"
+      });
+
+    const _id = new ObjectId(req.params.id);
+
+    const filter = isInstitutionAdmin(req.admin)
+      ? { _id, tenantId: actorTenant(req) }
+      : { _id };
+
+    const current = await academicAgents.findOne(filter);
+
+    if (!current)
+      return res.status(404).json({
+        error: "Academic Agent not found"
+      });
+
+    await academicAgents.deleteOne({
+      _id: current._id,
+      tenantId: current.tenantId
+    });
+
+    await audit("ACADEMIC_AGENT_DELETED", req, {
+      safeDetails: {
+        tenantId: current.tenantId,
+        agentId: current.agentId
+      }
+    });
+
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(400).json({
+      error: e.message || "Failed to delete Academic Agent"
+    });
+  }
+});
+
+
+app.get("/api/learner-states/:userId", async (req, res) => {
+  try {
+    if (!canManageAcademicAgents(req))
+      return res.status(403).json({
+        error: "Learner-state administration is not permitted"
+      });
+
+    const userObjectId = new ObjectId(req.params.userId);
+
+    const user = await users.findOne(
+      isInstitutionAdmin(req.admin)
+        ? {
+            _id: userObjectId,
+            tenantId: actorTenant(req)
+          }
+        : { _id: userObjectId },
+      {
+        projection: {
+          _id: 1,
+          tenantId: 1,
+          name: 1,
+          email: 1,
+          role: 1
+        }
+      }
+    );
+
+    if (!user)
+      return res.status(404).json({
+        error: "User not found"
+      });
+
+    const state = await learnerStates.findOne({
+      tenantId: user.tenantId,
+      userId: String(user._id)
+    });
+
+    res.json({
+      user,
+      state: state || null
+    });
+  } catch (e) {
+    res.status(400).json({
+      error: e.message || "Failed to retrieve learner state"
+    });
+  }
+});
+
+
+app.put("/api/learner-states/:userId", async (req, res) => {
+  try {
+    if (!canManageAcademicAgents(req))
+      return res.status(403).json({
+        error: "Learner-state administration is not permitted"
+      });
+
+    const userObjectId = new ObjectId(req.params.userId);
+
+    const user = await users.findOne(
+      isInstitutionAdmin(req.admin)
+        ? {
+            _id: userObjectId,
+            tenantId: actorTenant(req)
+          }
+        : { _id: userObjectId },
+      {
+        projection: {
+          _id: 1,
+          tenantId: 1
+        }
+      }
+    );
+
+    if (!user)
+      return res.status(404).json({
+        error: "User not found"
+      });
+
+    const now = new Date();
+
+    const state = await learnerStates.findOneAndUpdate(
+      {
+        tenantId: user.tenantId,
+        userId: String(user._id)
+      },
+      {
+        $set: {
+          tenantId: user.tenantId,
+          userId: String(user._id),
+          currentObjective: String(
+            req.body.currentObjective || ""
+          ).trim().slice(0, 1000),
+          preferredLanguage: String(
+            req.body.preferredLanguage || ""
+          ).trim().slice(0, 100),
+          masteryLevel: String(
+            req.body.masteryLevel || "UNKNOWN"
+          ).trim().toUpperCase().slice(0, 50),
+          supportLevel: String(
+            req.body.supportLevel || "ADAPTIVE"
+          ).trim().toUpperCase().slice(0, 50),
+          notes: String(req.body.notes || "")
+            .trim().slice(0, 2000),
+          updatedAt: now
+        },
+        $setOnInsert: {
+          createdAt: now
+        }
+      },
+      {
+        upsert: true,
+        returnDocument: "after"
+      }
+    );
+
+    await audit("LEARNER_STATE_UPDATED", req, {
+      safeDetails: {
+        tenantId: user.tenantId,
+        userId: String(user._id)
+      }
+    });
+
+    res.json({ state });
+  } catch (e) {
+    res.status(400).json({
+      error: e.message || "Failed to update learner state"
+    });
+  }
 });
 
 

@@ -45,7 +45,7 @@ export enum PermissionTypes {
    */
   MARKETPLACE = 'MARKETPLACE',
   /**
-   * Type for using the "File Search" feature
+   * Type for using the "RAG / File Search" feature
    */
   FILE_SEARCH = 'FILE_SEARCH',
   /**

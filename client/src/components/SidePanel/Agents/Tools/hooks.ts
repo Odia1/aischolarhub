@@ -91,7 +91,7 @@ export interface AgentFileEntries {
 const NO_FILES: Array<[string, ExtendedFile]> = [];
 
 /**
- * File entries for the agent's builtin file tools (File Context, File Search,
+ * File entries for the agent's builtin file tools (File Context, RAG / File Search,
  * Code Interpreter). Agents loaded from the API carry only
  * `tool_resources.*.file_ids` — the client-side entry arrays exist on the form
  * `agent` object only after an in-session upload. Reading them directly would

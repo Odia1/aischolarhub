@@ -184,17 +184,157 @@ async function applyModelEntitlement(appConfig, options = {}) {
 }
 
 
+
+async function applyAcademicIntelligence(appConfig, options = {}) {
+  const tenantId = String(options?.tenantId || '').trim();
+  const userId = String(options?.userId || '').trim();
+  const role = String(options?.role || '').trim().toUpperCase();
+
+  if (
+    options?.baseOnly === true ||
+    !tenantId ||
+    mongoose.connection.readyState !== 1 ||
+    !mongoose.connection.db
+  ) {
+    return appConfig;
+  }
+
+  const mongo = mongoose.connection.db;
+
+  const agents = await mongo.collection('academicAgents')
+    .find({
+      tenantId,
+      enabled: { $ne: false }
+    })
+    .toArray();
+
+  if (!agents.length) {
+    return appConfig;
+  }
+
+  const learnerState = userId
+    ? await mongo.collection('learnerStates').findOne({
+        tenantId,
+        userId
+      })
+    : null;
+
+  const agentMap = new Map(
+    agents.map(agent => [
+      String(agent.modelSpecName || '').trim(),
+      agent
+    ])
+  );
+
+  const specs = Array.isArray(appConfig?.modelSpecs?.list)
+    ? appConfig.modelSpecs.list
+    : [];
+
+  const list = specs
+    .filter(spec => {
+      const agent = agentMap.get(
+        String(spec?.name || '').trim()
+      );
+
+      if (!agent) return true;
+
+      const allowedRoles = Array.isArray(agent.allowedRoles)
+        ? agent.allowedRoles.map(x => String(x).toUpperCase())
+        : [];
+
+      return !allowedRoles.length || allowedRoles.includes(role);
+    })
+    .map(spec => {
+      const agent = agentMap.get(
+        String(spec?.name || '').trim()
+      );
+
+      if (!agent) return spec;
+
+      const pedagogy = agent.pedagogy || {};
+
+      const adaptiveContext = learnerState
+        ? [
+            learnerState.currentObjective
+              ? `Current learning objective: ${learnerState.currentObjective}`
+              : '',
+            learnerState.masteryLevel
+              ? `Current mastery level: ${learnerState.masteryLevel}`
+              : '',
+            learnerState.supportLevel
+              ? `Support level: ${learnerState.supportLevel}`
+              : '',
+            learnerState.preferredLanguage
+              ? `Preferred explanatory language: ${learnerState.preferredLanguage}`
+              : ''
+          ].filter(Boolean).join('\n')
+        : '';
+
+      const policy = [
+        '',
+        '## AI SCHOLAR HUB ACADEMIC AGENT POLICY',
+        `Academic Agent: ${agent.name || agent.agentId}`,
+        `Pedagogical mode: ${pedagogy.mode || 'ADAPTIVE'}`,
+        pedagogy.diagnoseFirst !== false
+          ? 'Diagnose the learner’s current understanding before substantial instruction.'
+          : '',
+        pedagogy.activeRetrieval !== false
+          ? 'Use active retrieval to verify understanding after important explanations.'
+          : '',
+        pedagogy.adaptiveDifficulty !== false
+          ? 'Adapt difficulty and scaffolding to demonstrated mastery.'
+          : '',
+        pedagogy.misconceptionRepair !== false
+          ? 'Identify and repair misconceptions rather than merely marking answers wrong.'
+          : '',
+        pedagogy.masteryTracking !== false
+          ? 'Use evidence from the conversation to reason about mastery, without invasive psychological profiling.'
+          : '',
+        pedagogy.strategy || '',
+        adaptiveContext
+          ? `\n## CURRENT LEARNER CONTEXT\n${adaptiveContext}`
+          : ''
+      ].filter(Boolean).join('\n');
+
+      return {
+        ...spec,
+        preset: {
+          ...(spec.preset || {}),
+          promptPrefix:
+            String(spec?.preset?.promptPrefix || '').trim() +
+            '\n\n' +
+            policy
+        }
+      };
+    });
+
+  return {
+    ...appConfig,
+    modelSpecs: {
+      ...(appConfig?.modelSpecs || {}),
+      list
+    }
+  };
+}
+
 async function getAppConfig(options = {}) {
-  const config = await getBaseAppConfig(options);
+  let config = await getBaseAppConfig(options);
 
   try {
-    return await applyModelEntitlement(
+    config = await applyModelEntitlement(
       config,
       options
     );
+
+    config = await applyAcademicIntelligence(
+      config,
+      options
+    );
+
+    return config;
   } catch (error) {
     logger.error(
-      '[modelEntitlements] enforcement failed:',
+      '[academicIntelligence] policy application failed:',
       error
     );
 

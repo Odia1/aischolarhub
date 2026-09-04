@@ -342,9 +342,28 @@
               `).join('')}
           </select>
 
-          <input name="agentId"
-            value="${esc(existing?.agentId || '*')}"
-            placeholder="Academic Agent ID or *">
+          <label class="muted">Academic Agent scope</label>
+          <select name="agentId">
+            <option value="*"
+              ${!existing?.agentId || existing?.agentId === '*' ? 'selected' : ''}>
+              All Academic Agents (*)
+            </option>
+
+            <option value="SOCRATIC_TUTOR"
+              ${existing?.agentId === 'SOCRATIC_TUTOR' ? 'selected' : ''}>
+              Socratic Tutor
+            </option>
+
+            <option value="RESEARCH_SYNTHESIZER"
+              ${existing?.agentId === 'RESEARCH_SYNTHESIZER' ? 'selected' : ''}>
+              Research Synthesizer
+            </option>
+          </select>
+
+          <div class="muted" style="font-size:12px">
+            "*" is the default policy for all Academic Agents.
+            Agent-specific rules may override it.
+          </div>
 
           <label class="muted">Cost tier</label>
           <select name="costTier">
@@ -359,9 +378,43 @@
           </select>
 
           <label class="muted">Allowed models</label>
-          <select name="allowedModels" multiple>
-            ${modelOptions(existing?.allowedModels || [])}
-          </select>
+
+          <div style="
+            border:1px solid #ddd;
+            border-radius:6px;
+            padding:10px;
+            max-height:220px;
+            overflow:auto">
+
+            ${state.models
+              .filter(m => m.enabled !== false)
+              .map(m => {
+                const key = modelKey(m);
+                const checked =
+                  (existing?.allowedModels || []).includes(key);
+
+                return `
+                  <label style="
+                    display:flex;
+                    gap:8px;
+                    align-items:center;
+                    margin:5px 0">
+
+                    <input
+                      type="checkbox"
+                      name="allowedModels"
+                      value="${esc(key)}"
+                      ${checked ? 'checked' : ''}>
+
+                    <span>
+                      ${esc(m.label || m.model)}
+                      — ${esc(m.providerKey)}
+                      [${esc(m.costTier || 'BALANCED')}]
+                    </span>
+                  </label>
+                `;
+              }).join('') || '<div class="muted">No models configured.</div>'}
+          </div>
 
           <label class="muted">Default model</label>
           <select name="defaultModel">
@@ -378,17 +431,48 @@
           </select>
 
           <label class="muted">Fallback models</label>
-          <select name="fallbackModels" multiple>
-            ${modelOptions(existing?.fallbackModels || [])}
-          </select>
+
+          <div style="
+            border:1px solid #ddd;
+            border-radius:6px;
+            padding:10px;
+            max-height:180px;
+            overflow:auto">
+
+            ${state.models
+              .filter(m => m.enabled !== false)
+              .map(m => {
+                const key = modelKey(m);
+                const checked =
+                  (existing?.fallbackModels || []).includes(key);
+
+                return `
+                  <label style="
+                    display:flex;
+                    gap:8px;
+                    align-items:center;
+                    margin:5px 0">
+
+                    <input
+                      type="checkbox"
+                      name="fallbackModels"
+                      value="${esc(key)}"
+                      ${checked ? 'checked' : ''}>
+
+                    <span>
+                      ${esc(m.label || m.model)}
+                      — ${esc(m.providerKey)}
+                    </span>
+                  </label>
+                `;
+              }).join('')}
+          </div>
         `,
         async f => {
-          const values = field => {
-            const el = f.querySelector(`[name="${field}"]`);
-            return el
-              ? [...el.selectedOptions].map(o => o.value)
-              : [];
-          };
+          const values = field =>
+            [...f.querySelectorAll(
+              `input[name="${field}"]:checked`
+            )].map(el => el.value);
 
           await call('/api/model-entitlements', {
             method:'PUT',

@@ -940,16 +940,14 @@ const processAgentFileUpload = async ({ req, res, metadata, sseStream }) => {
     // Calculate the SHA-256 digest before storage/vectorization so duplicate
     // RAG uploads can be rejected before creating additional copies.
     fileDigest = await getFileDigest(file.path);
-
-    // Reject an identical RAG document already uploaded within this tenant.
+// Reject an identical RAG document already uploaded within this tenant.
     // The tenant boundary ensures identical content can exist independently
     // in different institutions.
     const existingRagFile = await db.findRagDuplicate(
       fileDigest,
       req.user.tenantId,
     );
-
-    if (existingRagFile) {
+if (existingRagFile) {
       const duplicateError = new Error(
         `This document has already been uploaded to File Search as "${existingRagFile.filename}".`,
       );

@@ -136,7 +136,7 @@ function FileSearch({
         />
       )}
       <div className="flex flex-col gap-3">
-        {/* File Search (RAG API) Files */}
+        {/* RAG / File Search (RAG API) Files */}
         <FileRow
           files={files}
           setFiles={setFiles}

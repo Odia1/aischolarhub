@@ -8,7 +8,7 @@ const translations: Record<string, string> = {
   com_endpoint_thinking: 'Thinking',
   com_ui_export_agent_update: 'Agent Update',
   com_ui_export_audio: 'Audio',
-  com_ui_export_file_search: 'File Search',
+  com_ui_export_file_search: 'RAG / File Search',
   com_ui_export_image: 'Image',
   com_ui_export_retrieval: 'Retrieval',
   com_ui_export_steer: 'You (steered)',
