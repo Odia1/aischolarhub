@@ -300,6 +300,45 @@ async function resolveAcademicTenant(req, requestedTenantId) {
   return await institutionExists(tenantId) ? tenantId : null;
 }
 
+function normalizeAcademicRagPolicy(value) {
+  const policy =
+    value && typeof value === "object"
+      ? value
+      : {};
+
+  const personalRag =
+    String(
+      policy.personalRag ||
+      "INHERIT_USER_ACCESS"
+    ).trim().toUpperCase();
+
+  if (personalRag !== "INHERIT_USER_ACCESS")
+    throw new Error(
+      "Academic Agent personalRag must be INHERIT_USER_ACCESS"
+    );
+
+  const sharedScopeMode =
+    String(
+      policy.sharedScopeMode ||
+      "NONE"
+    ).trim().toUpperCase();
+
+  if (!["NONE", "SELECTED_RAG_GROUPS"].includes(sharedScopeMode))
+    throw new Error(
+      "Academic Agent sharedScopeMode must be NONE or SELECTED_RAG_GROUPS"
+    );
+
+  return {
+    personalRag: "INHERIT_USER_ACCESS",
+    sharedScopeMode,
+    ragGroupIds:
+      sharedScopeMode === "SELECTED_RAG_GROUPS"
+        ? cleanIdList(policy.ragGroupIds)
+        : []
+  };
+}
+
+
 function normalizePedagogy(input = {}) {
   const mode = String(input.mode || "SOCRATIC")
     .trim()
@@ -2930,7 +2969,7 @@ app.post("/api/academic-agents/bootstrap", async (req, res) => {
           "Advanced research assistant for literature synthesis, scholarly reasoning and research-method support.",
         modelSpecName: "PhD & Post-Doc Research",
         enabled: true,
-        allowedRoles: ["INSTRUCTOR", "INSTITUTION_ADMIN"],
+        allowedRoles: ["USER", "INSTRUCTOR", "INSTITUTION_ADMIN"],
         ragPolicy: {
           personalRag: "INHERIT_USER_ACCESS",
           sharedScopeMode: "NONE",
@@ -3047,6 +3086,7 @@ app.post("/api/academic-agents", async (req, res) => {
       enabled: req.body.enabled !== false,
       allowedRoles: cleanStringList(req.body.allowedRoles)
         .map(x => x.toUpperCase()),
+      ragPolicy: normalizeAcademicRagPolicy(req.body.ragPolicy),
       pedagogy: normalizePedagogy(req.body.pedagogy),
       createdAt: now,
       updatedAt: now
@@ -3120,6 +3160,11 @@ app.patch("/api/academic-agents/:id", async (req, res) => {
       update.allowedRoles = cleanStringList(
         req.body.allowedRoles
       ).map(x => x.toUpperCase());
+
+    if (req.body.ragPolicy !== undefined)
+      update.ragPolicy = normalizeAcademicRagPolicy(
+        req.body.ragPolicy
+      );
 
     if (req.body.pedagogy !== undefined)
       update.pedagogy = normalizePedagogy(
@@ -3269,33 +3314,50 @@ app.put("/api/learner-states/:userId", async (req, res) => {
 
     const now = new Date();
 
+    const stateSet = {
+      tenantId: user.tenantId,
+      userId: String(user._id),
+      updatedAt: now
+    };
+
+    if (req.body.currentObjective !== undefined)
+      stateSet.currentObjective = String(
+        req.body.currentObjective || ""
+      ).trim().slice(0, 1000);
+
+    if (req.body.preferredLanguage !== undefined)
+      stateSet.preferredLanguage = String(
+        req.body.preferredLanguage || ""
+      ).trim().slice(0, 100);
+
+    if (req.body.masteryLevel !== undefined)
+      stateSet.masteryLevel = String(
+        req.body.masteryLevel || "UNKNOWN"
+      ).trim().toUpperCase().slice(0, 50);
+
+    if (req.body.supportLevel !== undefined)
+      stateSet.supportLevel = String(
+        req.body.supportLevel || "ADAPTIVE"
+      ).trim().toUpperCase().slice(0, 50);
+
+    if (req.body.notes !== undefined)
+      stateSet.notes = String(
+        req.body.notes || ""
+      ).trim().slice(0, 2000);
+
     const state = await learnerStates.findOneAndUpdate(
       {
         tenantId: user.tenantId,
         userId: String(user._id)
       },
       {
-        $set: {
-          tenantId: user.tenantId,
-          userId: String(user._id),
-          currentObjective: String(
-            req.body.currentObjective || ""
-          ).trim().slice(0, 1000),
-          preferredLanguage: String(
-            req.body.preferredLanguage || ""
-          ).trim().slice(0, 100),
-          masteryLevel: String(
-            req.body.masteryLevel || "UNKNOWN"
-          ).trim().toUpperCase().slice(0, 50),
-          supportLevel: String(
-            req.body.supportLevel || "ADAPTIVE"
-          ).trim().toUpperCase().slice(0, 50),
-          notes: String(req.body.notes || "")
-            .trim().slice(0, 2000),
-          updatedAt: now
-        },
+        $set: stateSet,
         $setOnInsert: {
-          createdAt: now
+          createdAt: now,
+          currentObjective: "",
+          preferredLanguage: "",
+          masteryLevel: "UNKNOWN",
+          supportLevel: "ADAPTIVE"
         }
       },
       {

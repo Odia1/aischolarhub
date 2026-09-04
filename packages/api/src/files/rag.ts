@@ -43,7 +43,7 @@ export async function deleteRagFile({
     return false;
   }
 
-  const jwtToken = generateShortLivedToken(actor.id);
+  const jwtToken = generateShortLivedToken(actor.id, '5m', file.tenantId ?? undefined);
 
   try {
     await axios.delete(`${process.env.RAG_API_URL}/documents`, {
