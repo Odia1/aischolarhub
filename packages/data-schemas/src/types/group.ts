@@ -15,6 +15,8 @@ export interface IGroup extends Document {
   createdAt?: Date;
   updatedAt?: Date;
   tenantId?: string;
+  /** Parent generic group; null/undefined means top-level group */
+  parentGroupId?: Types.ObjectId | null;
 }
 
 export interface CreateGroupRequest {
@@ -25,6 +27,7 @@ export interface CreateGroupRequest {
   memberIds?: string[];
   source: 'local' | 'entra';
   idOnTheSource?: string;
+  parentGroupId?: string | null;
 }
 
 export interface UpdateGroupRequest {
@@ -35,6 +38,7 @@ export interface UpdateGroupRequest {
   memberIds?: string[];
   source?: 'local' | 'entra' | 'ldap';
   idOnTheSource?: string;
+  parentGroupId?: string | null;
 }
 
 export interface GroupFilterOptions extends CursorPaginationParams {

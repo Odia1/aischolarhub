@@ -45,6 +45,14 @@ const groupSchema: Schema<IGroup> = new Schema<IGroup>(
       type: String,
       index: true,
     },
+    /** Generic hierarchy. Null/undefined means top-level group. */
+    parentGroupId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Group',
+      required: false,
+      default: null,
+      index: true,
+    },
   },
   { timestamps: true },
 );
@@ -57,5 +65,7 @@ groupSchema.index(
   },
 );
 groupSchema.index({ memberIds: 1, tenantId: 1 });
+groupSchema.index({ tenantId: 1, parentGroupId: 1 });
+groupSchema.index({ tenantId: 1, parentGroupId: 1, name: 1 });
 
 export default groupSchema;

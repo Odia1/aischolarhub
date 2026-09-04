@@ -495,7 +495,8 @@ app.get("/api/me", (req, res) => {
 app.get("/api/users", async (req, res) => {
   try {
     const q = String(req.query.q || "").trim();
-    const role = String(req.query.role || "").trim();
+    const roleParam = String(req.query.role || "").trim();
+    const limit = Math.min(Math.max(parseInt(req.query.limit || "0", 10) || 0, 0), 100);
     const filter = userScope(req);
 
     if (q) {
@@ -505,11 +506,17 @@ app.get("/api/users", async (req, res) => {
         { email: { $regex: q, $options: "i" } }
       ];
     }
-    if (role) filter.role = role;
+    const roles = roleParam.split(",").map(x => x.trim()).filter(Boolean);
+    if (roles.length === 1) filter.role = roles[0];
+    else if (roles.length > 1) filter.role = { $in: roles };
 
-    const result = await users.find(filter, {
+    let cursor = users.find(filter, {
       projection: { password: 0, refreshToken: 0, backupCodes: 0 }
-    }).sort({ createdAt: -1 }).toArray();
+    }).sort({ createdAt: -1 });
+
+    if (limit) cursor = cursor.limit(limit);
+
+    const result = await cursor.toArray();
 
     res.json(result);
   } catch (e) {
@@ -1410,10 +1417,13 @@ app.post("/api/users/bulk", async (req, res) => {
 const departments = db.collection("departments");
 const courses = db.collection("courses");
 const groups = db.collection("groups");
+const groupAdmins = db.collection("group_admins");
 const courseInstructors = db.collection("course_instructors");
 const groupCourses = db.collection("group_courses");
 const groupDepartments = db.collection("group_departments");
 const ragLocations = db.collection("ragLocations");
+const ragGroups = db.collection("ragGroups");
+const ragGroupManagers = db.collection("ragGroupManagers");
 
 const ORG_ID_RE = /^[-a-zA-Z0-9_.]{1,128}$/;
 const RAG_TYPES = new Set(["DEPARTMENT", "COURSE", "INSTRUCTOR"]);
@@ -1449,6 +1459,90 @@ function orgCanManage(req) {
   return isSuperAdmin(req.admin) || isPlatformAdmin(req.admin) || isInstitutionAdmin(req.admin);
 }
 
+const GROUP_ADMIN_PERMISSIONS = new Set([
+  "MANAGE_MEMBERS",
+  "MANAGE_SUBGROUPS",
+  "MANAGE_RAG",
+  "MANAGE_ADMINS"
+]);
+
+function isOrgElevated(req) {
+  return isSuperAdmin(req.admin) ||
+    isPlatformAdmin(req.admin) ||
+    isInstitutionAdmin(req.admin);
+}
+
+async function groupAdminPermissions(req, group) {
+  if (!req.admin || !group) return new Set();
+
+  const userId = req.admin._id;
+  if (!userId) return new Set();
+
+  const assignments = await groupAdmins.find({
+    tenantId: group.tenantId,
+    groupId: group._id,
+    userId: String(userId)
+  }).toArray();
+
+  const permissions = new Set();
+
+  for (const assignment of assignments) {
+    for (const permission of Array.isArray(assignment.permissions) ? assignment.permissions : []) {
+      const value = String(permission).trim().toUpperCase();
+      if (GROUP_ADMIN_PERMISSIONS.has(value)) permissions.add(value);
+    }
+  }
+
+  return permissions;
+}
+
+async function hasGroupAdminPermission(req, group, permission, includeDescendants = false) {
+  if (isOrgElevated(req)) return true;
+  if (!group || group.tenantId !== actorTenant(req)) return false;
+
+  const requested = String(permission || "").trim().toUpperCase();
+  if (!GROUP_ADMIN_PERMISSIONS.has(requested)) return false;
+
+  let current = group;
+  const visited = new Set();
+
+  while (current) {
+    const key = String(current._id);
+    if (visited.has(key)) return false;
+    visited.add(key);
+
+    const permissions = await groupAdminPermissions(req, current);
+    if (permissions.has(requested)) {
+      if (String(current._id) === String(group._id) || includeDescendants) {
+        return true;
+      }
+    }
+
+    if (!includeDescendants || !current.parentGroupId) break;
+
+    const parentId = oid(current.parentGroupId);
+    if (!parentId) break;
+
+    current = await groups.findOne({
+      _id: parentId,
+      tenantId: group.tenantId
+    });
+  }
+
+  return false;
+}
+
+async function requireGroupPermission(req, res, group, permission, includeDescendants = false) {
+  if (await hasGroupAdminPermission(req, group, permission, includeDescendants)) {
+    return true;
+  }
+
+  res.status(403).json({
+    error: "You do not have permission to manage this group"
+  });
+  return false;
+}
+
 function oid(value) {
   return ObjectId.isValid(value) ? new ObjectId(value) : null;
 }
@@ -1460,12 +1554,24 @@ async function ensureOrgIndexes() {
     courses.createIndex({ tenantId: 1, code: 1 }, { unique: true }),
     courses.createIndex({ tenantId: 1, departmentId: 1 }),
     groups.createIndex({ tenantId: 1, name: 1 }, { unique: true }),
+    groups.createIndex({ tenantId: 1, parentGroupId: 1 }),
+    groupAdmins.createIndex({ tenantId: 1, groupId: 1, userId: 1 }, { unique: true }),
+    groupAdmins.createIndex({ tenantId: 1, groupId: 1 }),
+    groupAdmins.createIndex({ tenantId: 1, userId: 1 }),
     courseInstructors.createIndex({ tenantId: 1, courseId: 1, userId: 1 }, { unique: true }),
     courseInstructors.createIndex({ tenantId: 1, userId: 1 }),
     groupCourses.createIndex({ tenantId: 1, groupId: 1, courseId: 1 }, { unique: true }),
     groupDepartments.createIndex({ tenantId: 1, groupId: 1, departmentId: 1 }, { unique: true }),
     ragLocations.createIndex({ tenantId: 1, type: 1, targetId: 1 }, { unique: true }),
-    ragLocations.createIndex({ tenantId: 1, type: 1 })
+    ragLocations.createIndex({ tenantId: 1, type: 1 }),
+    ragGroups.createIndex({ tenantId: 1, name: 1 }, { unique: true }),
+    ragGroups.createIndex({ tenantId: 1, enabled: 1 }),
+    ragGroups.createIndex({ tenantId: 1, groupIds: 1 }),
+    ragGroups.createIndex({ tenantId: 1, departmentIds: 1 }),
+    ragGroups.createIndex({ tenantId: 1, courseIds: 1 }),
+    ragGroupManagers.createIndex({ tenantId: 1, ragGroupId: 1, userId: 1 }, { unique: true }),
+    ragGroupManagers.createIndex({ tenantId: 1, ragGroupId: 1 }),
+    ragGroupManagers.createIndex({ tenantId: 1, userId: 1 })
   ]);
 }
 
@@ -1664,11 +1770,107 @@ app.put("/api/courses/:id/instructors", async (req, res) => {
 app.get("/api/groups", async (req, res) => {
   try {
     if (!orgCanManage(req)) return res.status(403).json({ error: "Organization administration is not permitted" });
-    const tenantId = await requireOrgTenant(req, res); if (!tenantId) return;
+    const tenantId = await requireOrgTenant(req, res); if (!tenantId);
+
     const result = await groups.find({ tenantId }).sort({ name: 1 }).toArray();
-    res.json({ groups: result });
+
+    const counts = await groupAdmins.aggregate([
+      { $match: { tenantId } },
+      { $group: { _id: "$groupId", count: { $sum: 1 } } }
+    ]).toArray();
+
+    const countMap = new Map(
+      counts.map(x => [String(x._id), x.count])
+    );
+
+    res.json({
+      groups: result.map(g => ({
+        ...g,
+        adminCount: countMap.get(String(g._id)) || 0
+      }))
+    });
   } catch (e) { res.status(500).json({ error: "Failed to retrieve groups" }); }
 });
+
+app.get("/api/groups/mine", async (req, res) => {
+  try {
+    const tenantId = actorTenant(req);
+    if (!tenantId) return res.status(403).json({ error: "Institution context is required" });
+
+    if (isOrgElevated(req)) {
+      const result = await groups.find({ tenantId }).sort({ name: 1 }).toArray();
+      return res.json({ groups: result });
+    }
+
+    const assignments = await groupAdmins.find({
+      tenantId,
+      userId: String(req.admin?._id || "")
+    }).toArray();
+
+    const ids = assignments
+      .map(a => oid(a.groupId))
+      .filter(Boolean);
+
+    if (!ids.length) return res.json({ groups: [] });
+
+    const result = await groups.find({
+      tenantId,
+      _id: { $in: ids }
+    }).sort({ name: 1 }).toArray();
+
+    res.json({
+      groups: result,
+      permissions: assignments.map(a => ({
+        groupId: String(a.groupId),
+        permissions: Array.isArray(a.permissions) ? a.permissions : []
+      }))
+    });
+  } catch (e) {
+    console.error("[GROUPS-MINE]", e);
+    res.status(500).json({ error: "Failed to retrieve assigned groups" });
+  }
+});
+
+async function validateGroupParent(tenantId, groupId, parentGroupId) {
+  if (parentGroupId === undefined || parentGroupId === null || parentGroupId === "") return null;
+
+  const parentId = oid(parentGroupId);
+  if (!parentId) throw new Error("Invalid parentGroupId");
+  if (groupId && parentId.equals(groupId)) {
+    throw new Error("A group cannot be its own parent");
+  }
+
+  const parent = await groups.findOne(
+    { _id: parentId, tenantId },
+    { projection: { _id: 1 } }
+  );
+  if (!parent) throw new Error("Parent group not found in this institution");
+
+  // Walk upward and reject cycles.
+  const seen = new Set();
+  let cursor = parentId;
+
+  while (cursor) {
+    const key = cursor.toString();
+    if (seen.has(key)) throw new Error("Group hierarchy contains a cycle");
+    seen.add(key);
+
+    const node = await groups.findOne(
+      { _id: cursor, tenantId },
+      { projection: { parentGroupId: 1 } }
+    );
+
+    if (!node) break;
+
+    if (groupId && node.parentGroupId && String(node.parentGroupId) === String(groupId)) {
+      throw new Error("Group hierarchy would create a cycle");
+    }
+
+    cursor = node.parentGroupId ? oid(node.parentGroupId) : null;
+  }
+
+  return parentId;
+}
 
 async function validateGroupRelations(tenantId, memberIds, departmentIds, courseIds) {
   const members = [];
@@ -1686,12 +1888,33 @@ async function validateGroupRelations(tenantId, memberIds, departmentIds, course
 
 app.post("/api/groups", async (req, res) => {
   try {
-    if (!orgCanManage(req)) return res.status(403).json({ error: "Organization administration is not permitted" });
     const tenantId = await requireOrgTenant(req, res); if (!tenantId) return;
+    const parentGroupId = await validateGroupParent(tenantId, null, req.body.parentGroupId);
+
+    if (!isOrgElevated(req)) {
+      if (!parentGroupId) {
+        return res.status(403).json({ error: "Group Admins may only create subgroups" });
+      }
+      const parent = await groups.findOne({ _id: parentGroupId, tenantId });
+      if (!parent || !(await hasGroupAdminPermission(req, parent, "MANAGE_SUBGROUPS"))) {
+        return res.status(403).json({ error: "You do not have permission to create a subgroup here" });
+      }
+    }
+
     const name = cleanName(req.body.name, "Group name");
     const rel = await validateGroupRelations(tenantId, req.body.memberIds, req.body.departmentIds, req.body.courseIds);
     const now = new Date();
-    const doc = { tenantId, name, description: String(req.body.description || "").trim().slice(0, 1000), memberIds: rel.members, departmentIds: rel.departments, courseIds: rel.courses, createdAt: now, updatedAt: now };
+    const doc = {
+      tenantId,
+      name,
+      description: String(req.body.description || "").trim().slice(0, 1000),
+      memberIds: rel.members,
+      departmentIds: rel.departments,
+      courseIds: rel.courses,
+      parentGroupId,
+      createdAt: now,
+      updatedAt: now
+    };
     const result = await groups.insertOne(doc); doc._id=result.insertedId;
     await audit("GROUP_CREATED", req, { safeDetails: { tenantId, groupId: doc._id.toString(), name } });
     res.status(201).json({ group: doc });
@@ -1700,11 +1923,31 @@ app.post("/api/groups", async (req, res) => {
 
 app.patch("/api/groups/:id", async (req, res) => {
   try {
-    if (!orgCanManage(req)) return res.status(403).json({ error: "Organization administration is not permitted" });
     const current=await getScopedGroup(req,req.params.id); if(!current)return res.status(404).json({error:"Group not found"});
+
+    if (!isOrgElevated(req)) {
+      const onlyMembers =
+        req.body.memberIds !== undefined &&
+        req.body.name === undefined &&
+        req.body.description === undefined &&
+        req.body.parentGroupId === undefined &&
+        req.body.departmentIds === undefined &&
+        req.body.courseIds === undefined;
+
+      if (!(await requireGroupPermission(
+        req,
+        res,
+        current,
+        onlyMembers ? "MANAGE_MEMBERS" : "MANAGE_SUBGROUPS"
+      ))) return;
+    }
+
     const update={updatedAt:new Date()};
     if(req.body.name!==undefined)update.name=cleanName(req.body.name,"Group name");
     if(req.body.description!==undefined)update.description=String(req.body.description||"").trim().slice(0,1000);
+    if(req.body.parentGroupId!==undefined){
+      update.parentGroupId=await validateGroupParent(current.tenantId,current._id,req.body.parentGroupId);
+    }
     if(req.body.memberIds!==undefined||req.body.departmentIds!==undefined||req.body.courseIds!==undefined){
       const rel=await validateGroupRelations(current.tenantId, req.body.memberIds??current.memberIds, req.body.departmentIds??current.departmentIds, req.body.courseIds??current.courseIds);
       if(req.body.memberIds!==undefined)update.memberIds=rel.members;
@@ -1719,16 +1962,531 @@ app.patch("/api/groups/:id", async (req, res) => {
 
 app.delete("/api/groups/:id", async (req,res)=>{
   try{
-    if(!orgCanManage(req))return res.status(403).json({error:"Organization administration is not permitted"});
     const current=await getScopedGroup(req,req.params.id);if(!current)return res.status(404).json({error:"Group not found"});
+    if (!(await requireGroupPermission(req, res, current, "MANAGE_SUBGROUPS"))) return;
+    const child = await groups.findOne(
+      { tenantId: current.tenantId, parentGroupId: current._id },
+      { projection: { _id: 1, name: 1 } }
+    );
+    if (child) {
+      return res.status(409).json({
+        error: "Group has subgroups. Move or delete its subgroups first."
+      });
+    }
+
     await Promise.all([
       groupCourses.deleteMany({tenantId:current.tenantId,groupId:current._id}),
       groupDepartments.deleteMany({tenantId:current.tenantId,groupId:current._id}),
+      groupAdmins.deleteMany({tenantId:current.tenantId,groupId:current._id}),
       groups.deleteOne({_id:current._id,tenantId:current.tenantId})
     ]);
     await audit("GROUP_DELETED",req,{safeDetails:{tenantId:current.tenantId,groupId:current._id.toString()}});
     res.json({ok:true});
   }catch(e){res.status(500).json({error:"Failed to delete group"});}
+});
+
+// ============================================================
+// GROUP ADMINISTRATORS
+// Scoped relationship; not a global role.
+// ============================================================
+
+app.get("/api/groups/:id/admins", async (req, res) => {
+  try {
+    if (!orgCanManage(req)) {
+      return res.status(403).json({ error: "Organization administration is not permitted" });
+    }
+
+    const group = await getScopedGroup(req, req.params.id);
+    if (!group) return res.status(404).json({ error: "Group not found" });
+
+    const admins = await groupAdmins.find({
+      tenantId: group.tenantId,
+      groupId: group._id
+    }).sort({ userId: 1 }).toArray();
+
+    const ids = admins.map(x => oid(x.userId)).filter(Boolean);
+    const userDocs = ids.length
+      ? await users.find(
+          { _id: { $in: ids }, tenantId: group.tenantId },
+          { projection: { password: 0, refreshToken: 0, backupCodes: 0 } }
+        ).toArray()
+      : [];
+
+    const byId = new Map(userDocs.map(u => [u._id.toString(), u]));
+
+    res.json({
+      admins: admins.map(a => ({
+        ...a,
+        user: byId.get(String(a.userId)) || null
+      }))
+    });
+  } catch (e) {
+    res.status(500).json({ error: "Failed to retrieve group administrators" });
+  }
+});
+
+app.put("/api/groups/:id/admins", async (req, res) => {
+  try {
+    if (!orgCanManage(req)) {
+      return res.status(403).json({ error: "Organization administration is not permitted" });
+    }
+
+    const group = await getScopedGroup(req, req.params.id);
+    if (!group) return res.status(404).json({ error: "Group not found" });
+
+    const requested = Array.isArray(req.body.admins) ? req.body.admins : [];
+
+    const valid = [];
+    for (const item of requested) {
+      const userId = String(item?.userId || "");
+      const userObjectId = oid(userId);
+      if (!userObjectId) continue;
+
+      const user = await users.findOne(
+        {
+          _id: userObjectId,
+          tenantId: group.tenantId,
+          role: { $in: ["USER", "Instructor", "INSTITUTION_ADMIN"] }
+        },
+        { projection: { _id: 1 } }
+      );
+
+      if (!user) continue;
+
+      const permissions = [...new Set(
+        (Array.isArray(item?.permissions) ? item.permissions : [
+          "MANAGE_MEMBERS",
+          "MANAGE_SUBGROUPS",
+          "MANAGE_RAG"
+        ])
+        .map(String)
+        .filter(Boolean)
+      )];
+
+      valid.push({
+        tenantId: group.tenantId,
+        groupId: group._id,
+        userId: user._id.toString(),
+        permissions,
+        updatedAt: new Date()
+      });
+    }
+
+    await groupAdmins.deleteMany({
+      tenantId: group.tenantId,
+      groupId: group._id
+    });
+
+    if (valid.length) {
+      await groupAdmins.insertMany(valid);
+    }
+
+    await audit("GROUP_ADMINS_UPDATED", req, {
+      safeDetails: {
+        tenantId: group.tenantId,
+        groupId: group._id.toString(),
+        count: valid.length
+      }
+    });
+
+    res.json({ ok: true, admins: valid });
+  } catch (e) {
+    res.status(400).json({
+      error: e.message || "Failed to update group administrators"
+    });
+  }
+});
+
+
+const RAG_GROUP_ACCESS_MODES = new Set([
+  "GROUP_ONLY",
+  "GROUP_AND_DESCENDANTS",
+  "SELECTED_GROUPS",
+  "SELECTED_USERS"
+]);
+
+function cleanIdList(values) {
+  if (!Array.isArray(values)) return [];
+  return [...new Set(
+    values.map(v => String(v || "").trim()).filter(Boolean)
+  )];
+}
+
+async function validateRagGroupReferences(tenantId, body) {
+  const groupIds = cleanIdList(body.groupIds);
+  const departmentIds = cleanIdList(body.departmentIds);
+  const courseIds = cleanIdList(body.courseIds);
+
+  const groupObjects = groupIds.map(oid).filter(Boolean);
+  const departmentObjects = departmentIds.map(oid).filter(Boolean);
+  const courseObjects = courseIds.map(oid).filter(Boolean);
+
+  if (groupIds.length !== groupObjects.length)
+    throw new Error("One or more Group IDs are invalid");
+  if (departmentIds.length !== departmentObjects.length)
+    throw new Error("One or more Department IDs are invalid");
+  if (courseIds.length !== courseObjects.length)
+    throw new Error("One or more Course IDs are invalid");
+
+  const [groupsFound, departmentsFound, coursesFound] = await Promise.all([
+    groupObjects.length
+      ? groups.countDocuments({ _id: { $in: groupObjects }, tenantId })
+      : 0,
+    departmentObjects.length
+      ? departments.countDocuments({ _id: { $in: departmentObjects }, tenantId })
+      : 0,
+    courseObjects.length
+      ? courses.countDocuments({ _id: { $in: courseObjects }, tenantId })
+      : 0
+  ]);
+
+  if (groupsFound !== groupObjects.length)
+    throw new Error("One or more Groups do not belong to this institution");
+  if (departmentsFound !== departmentObjects.length)
+    throw new Error("One or more Departments do not belong to this institution");
+  if (coursesFound !== courseObjects.length)
+    throw new Error("One or more Courses do not belong to this institution");
+
+  return { groupIds, departmentIds, courseIds };
+}
+
+app.get("/api/rag-groups", async (req, res) => {
+  try {
+    if (!orgCanManage(req))
+      return res.status(403).json({ error: "RAG Group administration is not permitted" });
+
+    const tenantId = await requireOrgTenant(req, res);
+    if (!tenantId) return;
+
+    const result = await ragGroups.find({ tenantId }).sort({ name: 1 }).toArray();
+
+    const counts = await ragGroupManagers.aggregate([
+      { $match: { tenantId } },
+      { $group: { _id: "$ragGroupId", count: { $sum: 1 } } }
+    ]).toArray();
+
+    const countMap = new Map(
+      counts.map(x => [String(x._id), x.count])
+    );
+
+    res.json({
+      ragGroups: result.map(r => ({
+        ...r,
+        managerCount: countMap.get(String(r._id)) || 0
+      }))
+    });
+  } catch (e) {
+    console.error("[RAG-GROUPS-LIST]", e);
+    res.status(500).json({ error: "Failed to retrieve RAG Groups" });
+  }
+});
+
+app.post("/api/rag-groups", async (req, res) => {
+  try {
+    if (!orgCanManage(req))
+      return res.status(403).json({ error: "RAG Group administration is not permitted" });
+
+    const tenantId = await requireOrgTenant(req, res);
+    if (!tenantId) return;
+
+    const name = cleanName(req.body.name, "RAG Group name");
+    const description = String(req.body.description || "").trim().slice(0, 1000);
+    const accessMode = String(req.body.accessMode || "GROUP_ONLY").trim().toUpperCase();
+
+    if (!RAG_GROUP_ACCESS_MODES.has(accessMode))
+      return res.status(400).json({ error: "Invalid RAG Group access mode" });
+
+    const refs = await validateRagGroupReferences(tenantId, req.body);
+
+    const now = new Date();
+    const doc = {
+      tenantId,
+      name,
+      description,
+      enabled: req.body.enabled !== false,
+      accessMode,
+      ...refs,
+      createdAt: now,
+      updatedAt: now
+    };
+
+    const result = await ragGroups.insertOne(doc);
+    doc._id = result.insertedId;
+
+    await audit("RAG_GROUP_CREATED", req, {
+      safeDetails: {
+        tenantId,
+        ragGroupId: doc._id.toString(),
+        name,
+        accessMode
+      }
+    });
+
+    res.status(201).json({ ragGroup: doc });
+  } catch (e) {
+    if (e?.code === 11000)
+      return res.status(409).json({ error: "A RAG Group with this name already exists" });
+
+    res.status(400).json({
+      error: e.message || "Failed to create RAG Group"
+    });
+  }
+});
+
+app.patch("/api/rag-groups/:id", async (req, res) => {
+  try {
+    if (!orgCanManage(req))
+      return res.status(403).json({ error: "RAG Group administration is not permitted" });
+
+    const _id = oid(req.params.id);
+    if (!_id) return res.status(400).json({ error: "Invalid RAG Group ID" });
+
+    const tenantId = actorTenant(req);
+    const filter = isInstitutionAdmin(req.admin)
+      ? { _id, tenantId }
+      : { _id };
+
+    const current = await ragGroups.findOne(filter);
+    if (!current)
+      return res.status(404).json({ error: "RAG Group not found" });
+
+    const update = { updatedAt: new Date() };
+
+    if (req.body.name !== undefined)
+      update.name = cleanName(req.body.name, "RAG Group name");
+
+    if (req.body.description !== undefined)
+      update.description = String(req.body.description || "").trim().slice(0, 1000);
+
+    if (req.body.enabled !== undefined)
+      update.enabled = req.body.enabled === true;
+
+    if (req.body.accessMode !== undefined) {
+      const accessMode = String(req.body.accessMode).trim().toUpperCase();
+      if (!RAG_GROUP_ACCESS_MODES.has(accessMode))
+        return res.status(400).json({ error: "Invalid RAG Group access mode" });
+      update.accessMode = accessMode;
+    }
+
+    if (
+      req.body.groupIds !== undefined ||
+      req.body.departmentIds !== undefined ||
+      req.body.courseIds !== undefined
+    ) {
+      const refs = await validateRagGroupReferences(current.tenantId, {
+        groupIds: req.body.groupIds !== undefined ? req.body.groupIds : current.groupIds,
+        departmentIds: req.body.departmentIds !== undefined ? req.body.departmentIds : current.departmentIds,
+        courseIds: req.body.courseIds !== undefined ? req.body.courseIds : current.courseIds
+      });
+
+      Object.assign(update, refs);
+    }
+
+    const result = await ragGroups.findOneAndUpdate(
+      { _id: current._id, tenantId: current.tenantId },
+      { $set: update },
+      { returnDocument: "after" }
+    );
+
+    await audit("RAG_GROUP_UPDATED", req, {
+      safeDetails: {
+        tenantId: current.tenantId,
+        ragGroupId: current._id.toString()
+      }
+    });
+
+    res.json({ ragGroup: result });
+  } catch (e) {
+    if (e?.code === 11000)
+      return res.status(409).json({ error: "A RAG Group with this name already exists" });
+
+    res.status(400).json({
+      error: e.message || "Failed to update RAG Group"
+    });
+  }
+});
+
+app.delete("/api/rag-groups/:id", async (req, res) => {
+  try {
+    if (!orgCanManage(req))
+      return res.status(403).json({ error: "RAG Group administration is not permitted" });
+
+    const _id = oid(req.params.id);
+    if (!_id) return res.status(400).json({ error: "Invalid RAG Group ID" });
+
+    const filter = isInstitutionAdmin(req.admin)
+      ? { _id, tenantId: actorTenant(req) }
+      : { _id };
+
+    const current = await ragGroups.findOne(filter);
+    if (!current)
+      return res.status(404).json({ error: "RAG Group not found" });
+
+    await ragGroupManagers.deleteMany({
+      ragGroupId: current._id,
+      tenantId: current.tenantId
+    });
+
+    await ragGroups.deleteOne({
+      _id: current._id,
+      tenantId: current.tenantId
+    });
+
+    await audit("RAG_GROUP_DELETED", req, {
+      safeDetails: {
+        tenantId: current.tenantId,
+        ragGroupId: current._id.toString()
+      }
+    });
+
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: "Failed to delete RAG Group" });
+  }
+});
+
+
+app.get("/api/rag-groups/:id/managers", async (req, res) => {
+  try {
+    if (!orgCanManage(req))
+      return res.status(403).json({ error: "RAG Group administration is not permitted" });
+
+    const _id = oid(req.params.id);
+    if (!_id) return res.status(400).json({ error: "Invalid RAG Group ID" });
+
+    const filter = isInstitutionAdmin(req.admin)
+      ? { _id, tenantId: actorTenant(req) }
+      : { _id };
+
+    const ragGroup = await ragGroups.findOne(filter);
+    if (!ragGroup)
+      return res.status(404).json({ error: "RAG Group not found" });
+
+    const managers = await ragGroupManagers.find({
+      tenantId: ragGroup.tenantId,
+      ragGroupId: ragGroup._id
+    }).toArray();
+
+    const userIds = managers
+      .map(x => oid(x.userId))
+      .filter(Boolean);
+
+    const managerUsers = userIds.length
+      ? await users.find(
+          { _id: { $in: userIds }, tenantId: ragGroup.tenantId },
+          { projection: { _id: 1, name: 1, username: 1, email: 1, role: 1 } }
+        ).toArray()
+      : [];
+
+    const userMap = new Map(
+      managerUsers.map(u => [String(u._id), u])
+    );
+
+    res.json({
+      managers: managers.map(m => ({
+        userId: String(m.userId),
+        permissions: Array.isArray(m.permissions) ? m.permissions : [],
+        user: userMap.get(String(m.userId)) || null
+      }))
+    });
+  } catch (e) {
+    console.error("[RAG-GROUP-MANAGERS-LIST]", e);
+    res.status(500).json({ error: "Failed to retrieve RAG Group managers" });
+  }
+});
+
+app.put("/api/rag-groups/:id/managers", async (req, res) => {
+  try {
+    if (!orgCanManage(req))
+      return res.status(403).json({ error: "RAG Group administration is not permitted" });
+
+    const _id = oid(req.params.id);
+    if (!_id) return res.status(400).json({ error: "Invalid RAG Group ID" });
+
+    const filter = isInstitutionAdmin(req.admin)
+      ? { _id, tenantId: actorTenant(req) }
+      : { _id };
+
+    const ragGroup = await ragGroups.findOne(filter);
+    if (!ragGroup)
+      return res.status(404).json({ error: "RAG Group not found" });
+
+    if (!Array.isArray(req.body.managers))
+      return res.status(400).json({ error: "managers must be an array" });
+
+    const requested = [];
+    const seen = new Set();
+
+    for (const item of req.body.managers) {
+      const userId = String(item?.userId || "").trim();
+      const userObjectId = oid(userId);
+
+      if (!userObjectId)
+        return res.status(400).json({ error: "Invalid manager user ID" });
+
+      if (seen.has(userId)) continue;
+      seen.add(userId);
+
+      const user = await users.findOne(
+        { _id: userObjectId, tenantId: ragGroup.tenantId },
+        { projection: { _id: 1, role: 1 } }
+      );
+
+      if (!user)
+        return res.status(404).json({ error: "One or more managers do not belong to this institution" });
+
+      const role = String(user.role || "").toUpperCase();
+
+      if (!["INSTRUCTOR", "INSTITUTION_ADMIN", "PLATFORM_ADMIN", "SUPERADMIN"].includes(role))
+        return res.status(400).json({
+          error: "RAG Managers must be Instructors or institution/platform administrators"
+        });
+
+      requested.push({
+        tenantId: ragGroup.tenantId,
+        ragGroupId: ragGroup._id,
+        userId,
+        permissions: Array.isArray(item?.permissions)
+          ? [...new Set(item.permissions.map(x => String(x).trim().toUpperCase()).filter(Boolean))]
+          : ["MANAGE_DOCUMENTS", "MANAGE_ACCESS"],
+        updatedAt: new Date()
+      });
+    }
+
+    await ragGroupManagers.deleteMany({
+      tenantId: ragGroup.tenantId,
+      ragGroupId: ragGroup._id
+    });
+
+    if (requested.length)
+      await ragGroupManagers.insertMany(
+        requested.map(x => ({
+          ...x,
+          createdAt: new Date()
+        }))
+      );
+
+    await audit("RAG_GROUP_MANAGERS_UPDATED", req, {
+      safeDetails: {
+        tenantId: ragGroup.tenantId,
+        ragGroupId: ragGroup._id.toString(),
+        managerCount: requested.length
+      }
+    });
+
+    res.json({
+      ok: true,
+      managers: requested.map(x => ({
+        userId: x.userId,
+        permissions: x.permissions
+      }))
+    });
+  } catch (e) {
+    console.error("[RAG-GROUP-MANAGERS-UPDATE]", e);
+    res.status(400).json({
+      error: e.message || "Failed to update RAG Group managers"
+    });
+  }
 });
 
 app.get("/api/rag-locations", async (req,res)=>{
