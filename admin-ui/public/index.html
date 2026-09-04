@@ -429,6 +429,42 @@ form{
     min-width:280px
   }
 }
+
+/* ============================================================
+   ADMIN FUNCTION TABS
+   ============================================================ */
+.admin-tabs{
+  display:flex;
+  gap:6px;
+  flex-wrap:wrap;
+  margin:0 0 16px;
+  padding:8px;
+  background:#f5f6f8;
+  border:1px solid #ddd;
+  border-radius:10px;
+}
+.admin-tab-button{
+  border:0;
+  background:transparent;
+  padding:9px 13px;
+  border-radius:7px;
+  cursor:pointer;
+  font-weight:600;
+}
+.admin-tab-button:hover{background:#e9edf2}
+.admin-tab-button.active{
+  background:#1f4f78;
+  color:white;
+}
+.admin-tab-panel{display:none}
+.admin-tab-panel.active{display:block}
+.admin-placeholder{
+  border:1px solid #ddd;
+  background:#fff;
+  border-radius:8px;
+  padding:18px;
+}
+
 </style>
 </head>
 
@@ -457,9 +493,34 @@ form{
 
 <main>
 
+<nav id="adminTabs" class="admin-tabs" aria-label="Administration functions">
+  <button type="button" class="admin-tab-button" data-admin-tab="institutions"
+          onclick="showAdminTab('institutions')">Institutions</button>
+
+  <button type="button" class="admin-tab-button" data-admin-tab="users"
+          onclick="showAdminTab('users')">Users</button>
+
+  <button type="button" class="admin-tab-button" data-admin-tab="groups"
+          onclick="showAdminTab('groups')">Groups & Structure</button>
+
+  <button type="button" class="admin-tab-button" data-admin-tab="rag"
+          onclick="showAdminTab('rag')">RAG</button>
+
+  <button type="button" class="admin-tab-button" data-admin-tab="models"
+          onclick="showAdminTab('models')">AI Models & Providers</button>
+
+  <button type="button" class="admin-tab-button" data-admin-tab="cost"
+          onclick="showAdminTab('cost')">Usage & Cost</button>
+
+  <button type="button" class="admin-tab-button" data-admin-tab="audit"
+          onclick="showAdminTab('audit')">Audit & Settings</button>
+</nav>
+
+
 <section
   id="institutionPanel"
-  class="panel hidden">
+  class="panel hidden admin-tab-panel"
+  data-admin-tab-panel="institutions">
 
   <div
     style="display:flex;justify-content:space-between;align-items:center;gap:12px">
@@ -495,6 +556,10 @@ form{
        class="institution-grid">
   </div>
 </section>
+
+<section id="usersPanel"
+         class="admin-tab-panel"
+         data-admin-tab-panel="users">
 
 <div class="toolbar">
 
@@ -539,6 +604,53 @@ form{
 <div id="status"></div>
 
 <div id="domainGroups"></div>
+
+</section>
+
+<section id="groupsTab"
+         class="admin-tab-panel"
+         data-admin-tab-panel="groups">
+  <div id="organizationGroupsHost"></div>
+</section>
+
+<section id="ragTab"
+         class="admin-tab-panel"
+         data-admin-tab-panel="rag">
+  <div id="organizationRagHost"></div>
+</section>
+
+<section id="modelsTab"
+         class="admin-tab-panel"
+         data-admin-tab-panel="models">
+  <div id="modelEntitlementHost" class="admin-placeholder">
+    <h2>AI Models & Providers</h2>
+    <div class="muted">
+      Configure tenant- and role-specific AI provider/model availability.
+    </div>
+  </div>
+</section>
+
+<section id="costTab"
+         class="admin-tab-panel"
+         data-admin-tab-panel="cost">
+  <div id="costPolicyHost" class="admin-placeholder">
+    <h2>Usage & Cost</h2>
+    <div class="muted">
+      Configure Economy, Balanced and Advanced model policies and usage controls.
+    </div>
+  </div>
+</section>
+
+<section id="auditTab"
+         class="admin-tab-panel"
+         data-admin-tab-panel="audit">
+  <div id="auditSettingsHost" class="admin-placeholder">
+    <h2>Audit & Platform Settings</h2>
+    <div class="muted">
+      Administrative audit, platform policy and operational controls.
+    </div>
+  </div>
+</section>
 
 </main>
 
@@ -3587,6 +3699,85 @@ async function logout() {
 
 </script>
 
+
+<script>
+(function(){
+  const ADMIN_TAB_KEY = 'aiScholarHubAdminTab';
+
+  window.showAdminTab = function(name){
+    const requested = String(name || 'users');
+
+    document.querySelectorAll('[data-admin-tab-panel]').forEach(panel => {
+      panel.classList.toggle(
+        'active',
+        panel.getAttribute('data-admin-tab-panel') === requested
+      );
+    });
+
+    document.querySelectorAll('.admin-tab-button').forEach(button => {
+      button.classList.toggle(
+        'active',
+        button.getAttribute('data-admin-tab') === requested
+      );
+    });
+
+    try { sessionStorage.setItem(ADMIN_TAB_KEY, requested); } catch (_) {}
+  };
+
+  window.refreshAdminTabVisibility = function(){
+    if (typeof currentMe === 'undefined' || !currentMe) return;
+
+    const r = String(currentMe.role || '').toUpperCase();
+
+    const platform =
+      currentMe.superAdmin === true ||
+      ['SUPERADMIN','PLATFORM_ADMIN','ADMIN'].includes(r);
+
+    const institutional =
+      platform || r === 'INSTITUTION_ADMIN';
+
+    const visibility = {
+      institutions: platform,
+      users: institutional,
+      groups: institutional,
+      rag: institutional,
+      models: platform,
+      cost: platform,
+      audit: platform
+    };
+
+    document.querySelectorAll('.admin-tab-button').forEach(button => {
+      const key = button.getAttribute('data-admin-tab');
+      button.style.display = visibility[key] ? '' : 'none';
+    });
+
+    let selected = null;
+    try { selected = sessionStorage.getItem(ADMIN_TAB_KEY); } catch (_) {}
+
+    if (!selected || !visibility[selected]) {
+      selected =
+        ['institutions','users','groups','rag','models','cost','audit']
+          .find(k => visibility[k]) || 'users';
+    }
+
+    showAdminTab(selected);
+  };
+
+  const waitForAdmin = () => {
+    if (typeof currentMe === 'undefined' || !currentMe) {
+      return setTimeout(waitForAdmin, 150);
+    }
+    refreshAdminTabVisibility();
+  };
+
+  if (document.readyState === 'loading')
+    document.addEventListener('DOMContentLoaded', waitForAdmin);
+  else
+    waitForAdmin();
+})();
+</script>
+
   <script src="/admin-org.js"></script>
+<script src="/admin-models.js"></script>
 </body>
 </html>

@@ -21,7 +21,29 @@ const db = client.db("LibreChat");
 const users = db.collection("users");
 const institutions = db.collection("institutions");
 const adminAudit = db.collection("adminAudit");
+
+const aiProviders = db.collection("aiProviders");
+const aiModels = db.collection("aiModels");
+const modelEntitlements = db.collection("modelEntitlements");
+
 const sessions = new Map();
+
+const MODEL_COST_TIERS = new Set([
+  "ECONOMY",
+  "BALANCED",
+  "ADVANCED"
+]);
+
+await Promise.all([
+  aiProviders.createIndex({ key: 1 }, { unique: true }),
+  aiModels.createIndex({ providerKey: 1, model: 1 }, { unique: true }),
+  aiModels.createIndex({ enabled: 1, costTier: 1 }),
+  modelEntitlements.createIndex(
+    { tenantId: 1, role: 1, agentId: 1 },
+    { unique: true }
+  ),
+  modelEntitlements.createIndex({ tenantId: 1, enabled: 1 })
+]);
 
 async function audit(action, req, details = {}) {
   try {
@@ -206,6 +228,49 @@ function canManageRagAccess(req, user) {
 
 function actorTenant(req) {
   return String(req.admin?.tenantId || "").trim() || null;
+}
+
+
+function cleanPolicyKey(value, label = "Key") {
+  const v = String(value || "").trim();
+  if (!v || !/^[A-Za-z0-9_.:-]{1,128}$/.test(v)) {
+    throw new Error(
+      `${label} must contain only letters, numbers, dot, underscore, colon or hyphen`
+    );
+  }
+  return v;
+}
+
+function cleanCostTier(value, fallback = "BALANCED") {
+  const v = String(value || fallback).trim().toUpperCase();
+  if (!MODEL_COST_TIERS.has(v))
+    throw new Error("Cost tier must be ECONOMY, BALANCED, or ADVANCED");
+  return v;
+}
+
+function cleanStringList(values) {
+  if (!Array.isArray(values)) return [];
+  return [...new Set(
+    values
+      .map(v => String(v || "").trim())
+      .filter(Boolean)
+  )];
+}
+
+function canManageModelPolicy(req) {
+  return isSuperAdmin(req.admin) ||
+    normalizedRole(req.admin) === "PLATFORM_ADMIN";
+}
+
+async function resolvePolicyTenant(req, requestedTenantId) {
+  if (!canManageModelPolicy(req)) return null;
+
+  const tenantId = String(requestedTenantId || "").trim();
+  if (!tenantId) return null;
+
+  return await institutionExists(tenantId)
+    ? tenantId
+    : null;
 }
 
 function userScope(req, extra = {}) {
@@ -2725,6 +2790,454 @@ app.delete("/api/rag-locations/:id", async(req,res)=>{
     res.json({ok:true});
   }catch(e){res.status(500).json({error:"Failed to delete RAG access point"});}
 });
+
+
+/* ============================================================
+ * AI PROVIDERS / MODELS / ENTITLEMENT POLICY
+ * ============================================================ */
+
+app.get("/api/ai-policy/catalog", async (req, res) => {
+  try {
+    if (!canManageModelPolicy(req))
+      return res.status(403).json({
+        error: "AI model policy administration is not permitted"
+      });
+
+    const tenantId = String(req.query.tenantId || "").trim();
+
+    const [providers, models, entitlements, tenantList] = await Promise.all([
+      aiProviders.find({}).sort({ name: 1 }).toArray(),
+      aiModels.find({}).sort({ providerKey: 1, label: 1, model: 1 }).toArray(),
+      tenantId
+        ? modelEntitlements
+            .find({ tenantId })
+            .sort({ role: 1, agentId: 1 })
+            .toArray()
+        : Promise.resolve([]),
+      institutions
+        .find({}, { projection: { _id: 1, name: 1, status: 1 } })
+        .sort({ name: 1 })
+        .toArray()
+    ]);
+
+    res.json({
+      providers,
+      models,
+      entitlements,
+      institutions: tenantList,
+      costTiers: [...MODEL_COST_TIERS],
+      roles: [
+        "USER",
+        "INSTRUCTOR",
+        "INSTITUTION_ADMIN",
+        "PLATFORM_ADMIN"
+      ]
+    });
+  } catch (e) {
+    console.error("[AI-POLICY-CATALOG]", e);
+    res.status(500).json({ error: "Failed to retrieve AI model policy" });
+  }
+});
+
+
+app.post("/api/ai-providers", async (req, res) => {
+  try {
+    if (!canManageModelPolicy(req))
+      return res.status(403).json({
+        error: "AI provider administration is not permitted"
+      });
+
+    const key = cleanPolicyKey(req.body.key, "Provider key");
+    const name = String(req.body.name || "").trim().slice(0, 200);
+
+    if (!name)
+      return res.status(400).json({ error: "Provider name is required" });
+
+    const now = new Date();
+
+    const doc = {
+      key,
+      name,
+      endpointType: String(req.body.endpointType || "custom")
+        .trim()
+        .slice(0, 100),
+      description: String(req.body.description || "")
+        .trim()
+        .slice(0, 1000),
+      enabled: req.body.enabled !== false,
+      costTier: cleanCostTier(req.body.costTier),
+      createdAt: now,
+      updatedAt: now
+    };
+
+    const result = await aiProviders.insertOne(doc);
+    doc._id = result.insertedId;
+
+    await audit("AI_PROVIDER_CREATED", req, {
+      safeDetails: {
+        providerKey: key,
+        name,
+        costTier: doc.costTier
+      }
+    });
+
+    res.status(201).json({ provider: doc });
+  } catch (e) {
+    if (e?.code === 11000)
+      return res.status(409).json({ error: "Provider key already exists" });
+
+    res.status(400).json({
+      error: e.message || "Failed to create AI provider"
+    });
+  }
+});
+
+
+app.patch("/api/ai-providers/:id", async (req, res) => {
+  try {
+    if (!canManageModelPolicy(req))
+      return res.status(403).json({
+        error: "AI provider administration is not permitted"
+      });
+
+    const _id = new ObjectId(req.params.id);
+    const current = await aiProviders.findOne({ _id });
+
+    if (!current)
+      return res.status(404).json({ error: "AI provider not found" });
+
+    const update = { updatedAt: new Date() };
+
+    if (req.body.name !== undefined)
+      update.name = String(req.body.name || "").trim().slice(0, 200);
+
+    if (req.body.description !== undefined)
+      update.description = String(req.body.description || "")
+        .trim()
+        .slice(0, 1000);
+
+    if (req.body.endpointType !== undefined)
+      update.endpointType = String(req.body.endpointType || "custom")
+        .trim()
+        .slice(0, 100);
+
+    if (req.body.enabled !== undefined)
+      update.enabled = req.body.enabled === true;
+
+    if (req.body.costTier !== undefined)
+      update.costTier = cleanCostTier(req.body.costTier);
+
+    const provider = await aiProviders.findOneAndUpdate(
+      { _id },
+      { $set: update },
+      { returnDocument: "after" }
+    );
+
+    await audit("AI_PROVIDER_UPDATED", req, {
+      safeDetails: { providerKey: current.key }
+    });
+
+    res.json({ provider });
+  } catch (e) {
+    res.status(400).json({
+      error: e.message || "Failed to update AI provider"
+    });
+  }
+});
+
+
+app.post("/api/ai-models", async (req, res) => {
+  try {
+    if (!canManageModelPolicy(req))
+      return res.status(403).json({
+        error: "AI model administration is not permitted"
+      });
+
+    const providerKey = cleanPolicyKey(
+      req.body.providerKey,
+      "Provider key"
+    );
+
+    const provider = await aiProviders.findOne({
+      key: providerKey
+    });
+
+    if (!provider)
+      return res.status(404).json({
+        error: "Provider does not exist"
+      });
+
+    const model = String(req.body.model || "").trim().slice(0, 200);
+    if (!model)
+      return res.status(400).json({ error: "Model identifier is required" });
+
+    const now = new Date();
+
+    const doc = {
+      providerKey,
+      model,
+      label: String(req.body.label || model).trim().slice(0, 200),
+      description: String(req.body.description || "")
+        .trim()
+        .slice(0, 1000),
+      costTier: cleanCostTier(
+        req.body.costTier,
+        provider.costTier || "BALANCED"
+      ),
+      enabled: req.body.enabled !== false,
+      contextWindow:
+        Number.isFinite(Number(req.body.contextWindow)) &&
+        Number(req.body.contextWindow) > 0
+          ? Number(req.body.contextWindow)
+          : null,
+      createdAt: now,
+      updatedAt: now
+    };
+
+    const result = await aiModels.insertOne(doc);
+    doc._id = result.insertedId;
+
+    await audit("AI_MODEL_CREATED", req, {
+      safeDetails: {
+        providerKey,
+        model,
+        costTier: doc.costTier
+      }
+    });
+
+    res.status(201).json({ model: doc });
+  } catch (e) {
+    if (e?.code === 11000)
+      return res.status(409).json({
+        error: "This provider/model combination already exists"
+      });
+
+    res.status(400).json({
+      error: e.message || "Failed to create AI model"
+    });
+  }
+});
+
+
+app.patch("/api/ai-models/:id", async (req, res) => {
+  try {
+    if (!canManageModelPolicy(req))
+      return res.status(403).json({
+        error: "AI model administration is not permitted"
+      });
+
+    const _id = new ObjectId(req.params.id);
+    const current = await aiModels.findOne({ _id });
+
+    if (!current)
+      return res.status(404).json({ error: "AI model not found" });
+
+    const update = { updatedAt: new Date() };
+
+    if (req.body.label !== undefined)
+      update.label = String(req.body.label || current.model)
+        .trim()
+        .slice(0, 200);
+
+    if (req.body.description !== undefined)
+      update.description = String(req.body.description || "")
+        .trim()
+        .slice(0, 1000);
+
+    if (req.body.costTier !== undefined)
+      update.costTier = cleanCostTier(req.body.costTier);
+
+    if (req.body.enabled !== undefined)
+      update.enabled = req.body.enabled === true;
+
+    if (req.body.contextWindow !== undefined) {
+      const n = Number(req.body.contextWindow);
+      update.contextWindow =
+        Number.isFinite(n) && n > 0 ? n : null;
+    }
+
+    const model = await aiModels.findOneAndUpdate(
+      { _id },
+      { $set: update },
+      { returnDocument: "after" }
+    );
+
+    await audit("AI_MODEL_UPDATED", req, {
+      safeDetails: {
+        providerKey: current.providerKey,
+        model: current.model
+      }
+    });
+
+    res.json({ model });
+  } catch (e) {
+    res.status(400).json({
+      error: e.message || "Failed to update AI model"
+    });
+  }
+});
+
+
+app.put("/api/model-entitlements", async (req, res) => {
+  try {
+    if (!canManageModelPolicy(req))
+      return res.status(403).json({
+        error: "Model entitlement administration is not permitted"
+      });
+
+    const tenantId = await resolvePolicyTenant(
+      req,
+      req.body.tenantId
+    );
+
+    if (!tenantId)
+      return res.status(400).json({
+        error: "A valid institution is required"
+      });
+
+    const role = String(req.body.role || "")
+      .trim()
+      .toUpperCase();
+
+    if (![
+      "USER",
+      "INSTRUCTOR",
+      "INSTITUTION_ADMIN",
+      "PLATFORM_ADMIN"
+    ].includes(role))
+      return res.status(400).json({
+        error: "Invalid entitlement role"
+      });
+
+    const agentId = String(req.body.agentId || "*").trim() || "*";
+
+    const allowedModels = cleanStringList(req.body.allowedModels);
+    const fallbackModels = cleanStringList(req.body.fallbackModels);
+
+    const allReferenced = [
+      ...new Set([
+        ...allowedModels,
+        ...fallbackModels,
+        String(req.body.defaultModel || "").trim()
+      ].filter(Boolean))
+    ];
+
+    if (allReferenced.length) {
+      const parts = allReferenced.map(v => {
+        const i = v.indexOf(":");
+        return i > 0
+          ? { providerKey: v.slice(0, i), model: v.slice(i + 1) }
+          : null;
+      });
+
+      if (parts.some(x => !x))
+        return res.status(400).json({
+          error: "Models must use provider:model format"
+        });
+
+      for (const ref of parts) {
+        const exists = await aiModels.findOne({
+          providerKey: ref.providerKey,
+          model: ref.model
+        });
+
+        if (!exists)
+          return res.status(400).json({
+            error: `Unknown model ${ref.providerKey}:${ref.model}`
+          });
+      }
+    }
+
+    const defaultModel = String(req.body.defaultModel || "").trim();
+
+    if (
+      defaultModel &&
+      allowedModels.length &&
+      !allowedModels.includes(defaultModel)
+    ) {
+      return res.status(400).json({
+        error: "Default model must be included in allowed models"
+      });
+    }
+
+    const now = new Date();
+
+    const entitlement = await modelEntitlements.findOneAndUpdate(
+      { tenantId, role, agentId },
+      {
+        $set: {
+          tenantId,
+          role,
+          agentId,
+          enabled: req.body.enabled !== false,
+          costTier: cleanCostTier(req.body.costTier),
+          allowedModels,
+          defaultModel: defaultModel || null,
+          fallbackModels,
+          updatedAt: now
+        },
+        $setOnInsert: {
+          createdAt: now
+        }
+      },
+      {
+        upsert: true,
+        returnDocument: "after"
+      }
+    );
+
+    await audit("MODEL_ENTITLEMENT_UPDATED", req, {
+      safeDetails: {
+        tenantId,
+        role,
+        agentId,
+        costTier: entitlement.costTier,
+        allowedModelCount: allowedModels.length
+      }
+    });
+
+    res.json({ entitlement });
+  } catch (e) {
+    res.status(400).json({
+      error: e.message || "Failed to update model entitlement"
+    });
+  }
+});
+
+
+app.delete("/api/model-entitlements/:id", async (req, res) => {
+  try {
+    if (!canManageModelPolicy(req))
+      return res.status(403).json({
+        error: "Model entitlement administration is not permitted"
+      });
+
+    const _id = new ObjectId(req.params.id);
+
+    const current = await modelEntitlements.findOne({ _id });
+    if (!current)
+      return res.status(404).json({
+        error: "Model entitlement not found"
+      });
+
+    await modelEntitlements.deleteOne({ _id });
+
+    await audit("MODEL_ENTITLEMENT_DELETED", req, {
+      safeDetails: {
+        tenantId: current.tenantId,
+        role: current.role,
+        agentId: current.agentId
+      }
+    });
+
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(400).json({
+      error: e.message || "Failed to delete model entitlement"
+    });
+  }
+});
+
 
 app.get("/api/users/export", async (_req, res) => {
   const rows = await users.find(userScope(_req), {

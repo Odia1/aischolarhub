@@ -209,3 +209,4 @@ librechat.works.yaml
 
 # Recovered Docker image filesystem — not source
 mcp-image-recovery/
+checkpoints/

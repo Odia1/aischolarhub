@@ -26,51 +26,98 @@
     `;
     document.head.appendChild(style);
 
-    const panel = document.createElement('section');
-    panel.id = 'organizationPanel';
-    panel.className = 'panel';
-    panel.innerHTML = `
+    const organizationPanel = document.createElement('section');
+    organizationPanel.id = 'organizationPanel';
+    organizationPanel.className = 'panel';
+    organizationPanel.innerHTML = `
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap">
-        <div><h2>Organization & RAG Access</h2><div class="muted" id="orgScopeText"></div></div>
+        <div>
+          <h2>Groups & Academic Structure</h2>
+          <div class="muted" id="orgScopeText"></div>
+        </div>
         <button type="button" onclick="loadOrganizationAdmin()">Refresh</button>
       </div>
+
       <div class="org-grid" style="margin-top:12px">
         <div class="org-card">
           <h3>Departments / Schools</h3>
           <div class="muted">Create and maintain institution departments or schools.</div>
-          <div class="org-toolbar"><button type="button" class="primary" onclick="openDepartmentForm()">+ Department</button></div>
+          <div class="org-toolbar">
+            <button type="button" class="primary" onclick="openDepartmentForm()">+ Department</button>
+          </div>
           <div id="departmentList" class="org-list"></div>
         </div>
+
         <div class="org-card">
           <h3>Courses / Classes</h3>
           <div class="muted">Create courses/classes and associate them with departments.</div>
-          <div class="org-toolbar"><button type="button" class="primary" onclick="openCourseForm()">+ Course</button></div>
+          <div class="org-toolbar">
+            <button type="button" class="primary" onclick="openCourseForm()">+ Course</button>
+          </div>
           <div id="courseList" class="org-list"></div>
         </div>
+
         <div class="org-card">
           <h3>Groups</h3>
-          <div class="muted">Create groups and manage users, departments and courses assigned to each group.</div>
-          <div class="org-toolbar"><button type="button" class="primary" onclick="openGroupForm()">+ Group</button></div>
+          <div class="muted">
+            Create Groups/Subgroups, manage membership and delegate Group Administrators.
+          </div>
+          <div class="org-toolbar">
+            <button type="button" class="primary" onclick="openGroupForm()">+ Group</button>
+          </div>
           <div id="groupList" class="org-list"></div>
         </div>
+      </div>`;
+
+    const ragPanel = document.createElement('section');
+    ragPanel.id = 'ragAdministrationPanel';
+    ragPanel.className = 'panel';
+    ragPanel.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap">
+        <div>
+          <h2>RAG Knowledge Administration</h2>
+          <div class="muted">
+            Manage institutional knowledge boundaries, access and delegated RAG Managers.
+          </div>
+        </div>
+        <button type="button" onclick="loadOrganizationAdmin()">Refresh</button>
+      </div>
+
+      <div class="org-grid" style="margin-top:12px">
         <div class="org-card">
           <h3>RAG Access Points</h3>
-          <div class="muted">Institution and personal scopes are automatic. Configure department, course and instructor scopes here.</div>
-          <div class="org-toolbar"><button type="button" class="primary" onclick="openRagForm()">+ RAG Access Point</button></div>
+          <div class="muted">
+            Institution and personal scopes are automatic. Configure department,
+            course and instructor scopes here.
+          </div>
+          <div class="org-toolbar">
+            <button type="button" class="primary" onclick="openRagForm()">+ RAG Access Point</button>
+          </div>
           <div id="ragLocationList" class="org-list"></div>
         </div>
+
         <div class="org-card">
           <h3>RAG Groups</h3>
-          <div class="muted">Create knowledge and security boundaries and associate them with organizational groups.</div>
-          <div class="org-toolbar"><button type="button" class="primary" onclick="openRagGroupForm()">+ RAG Group</button></div>
+          <div class="muted">
+            Create governed knowledge/security boundaries and associate them with
+            organizational groups, courses, departments or selected users.
+          </div>
+          <div class="org-toolbar">
+            <button type="button" class="primary" onclick="openRagGroupForm()">+ RAG Group</button>
+          </div>
           <div id="ragGroupList" class="org-list"></div>
         </div>
       </div>`;
 
-    const main = document.querySelector('main');
-    const toolbar = main?.querySelector('.toolbar');
-    if (toolbar) main.insertBefore(panel, toolbar);
-    else main?.prepend(panel);
+    const groupsHost = document.getElementById('organizationGroupsHost');
+    const ragHost = document.getElementById('organizationRagHost');
+
+    if (groupsHost) groupsHost.appendChild(organizationPanel);
+    else document.querySelector('main')?.appendChild(organizationPanel);
+
+    if (ragHost) ragHost.appendChild(ragPanel);
+    else document.querySelector('main')?.appendChild(ragPanel);
+
 
     const state = { departments: [], courses: [], groups: [], rag: [], ragGroups: [], users: [] };
     const esc2 = v => String(v ?? '').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#039;');
