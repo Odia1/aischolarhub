@@ -236,7 +236,10 @@ async function applyAcademicIntelligence(appConfig, options = {}) {
         String(spec?.name || '').trim()
       );
 
-      if (!agent) return true;
+      // When Academic Agents are configured for this tenant,
+      // only model specs explicitly represented by an enabled
+      // Academic Agent are exposed in the academic experience selector.
+      if (!agent) return false;
 
       const allowedRoles = Array.isArray(agent.allowedRoles)
         ? agent.allowedRoles.map(x => String(x).toUpperCase())
@@ -257,6 +260,17 @@ async function applyAcademicIntelligence(appConfig, options = {}) {
         ? [
             learnerState.currentObjective
               ? `Current learning objective: ${learnerState.currentObjective}`
+              : '',
+            learnerState.currentFocus
+              ? `Current learning focus: ${learnerState.currentFocus}`
+              : '',
+            Array.isArray(learnerState.evidence) &&
+            learnerState.evidence.length
+              ? `Recent learner evidence:\n${learnerState.evidence
+                  .slice(-3)
+                  .map(item => `- ${String(item?.learnerText || '').trim()}`)
+                  .filter(item => item !== '- ')
+                  .join('\n')}`
               : '',
             learnerState.masteryLevel
               ? `Current mastery level: ${learnerState.masteryLevel}`
@@ -298,6 +312,13 @@ async function applyAcademicIntelligence(appConfig, options = {}) {
 
       return {
         ...spec,
+
+        // Preserve spec.name as the stable internal model-spec identifier.
+        // Academic Agent name becomes the user-facing experience label.
+        label: String(agent.name || spec.label || spec.name || '').trim(),
+
+        academicAgentId: String(agent.agentId || '').trim(),
+
         preset: {
           ...(spec.preset || {}),
           promptPrefix:

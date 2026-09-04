@@ -2,7 +2,7 @@ services:
   api:
     container_name: AI_Scholar_Hub
 
-    image: aischolarhub-custom:dev-rag-digest-fix
+    image: seeds.azurecr.io/aischolarhub-custom:dev-6d4bf7627-rag-ui
 
 
 

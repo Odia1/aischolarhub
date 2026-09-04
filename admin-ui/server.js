@@ -2897,12 +2897,18 @@ app.post("/api/academic-agents/bootstrap", async (req, res) => {
       {
         tenantId,
         agentId: "SOCRATIC_TUTOR",
-        name: "Socratic Tutor",
+        name: "Undergraduate Socratic Tutor",
         description:
           "Adaptive higher-education tutor using guided discovery, misconception repair and active retrieval.",
         modelSpecName: "Undergrad Socratic Tutor",
         enabled: true,
         allowedRoles: ["USER", "INSTRUCTOR"],
+        ragPolicy: {
+          personalRag: "INHERIT_USER_ACCESS",
+          sharedScopeMode: "NONE",
+          ragGroupIds: []
+        },
+
         pedagogy: {
           mode: "SOCRATIC",
           diagnoseFirst: true,
@@ -2925,6 +2931,12 @@ app.post("/api/academic-agents/bootstrap", async (req, res) => {
         modelSpecName: "PhD & Post-Doc Research",
         enabled: true,
         allowedRoles: ["INSTRUCTOR", "INSTITUTION_ADMIN"],
+        ragPolicy: {
+          personalRag: "INHERIT_USER_ACCESS",
+          sharedScopeMode: "NONE",
+          ragGroupIds: []
+        },
+
         pedagogy: {
           mode: "RESEARCH",
           diagnoseFirst: true,
@@ -2943,13 +2955,24 @@ app.post("/api/academic-agents/bootstrap", async (req, res) => {
     let created = 0;
 
     for (const doc of defaults) {
+      const {
+        createdAt,
+        ...managedFields
+      } = doc;
+
       const result = await academicAgents.updateOne(
         {
           tenantId,
           agentId: doc.agentId
         },
         {
-          $setOnInsert: doc
+          $set: {
+            ...managedFields,
+            updatedAt: now
+          },
+          $setOnInsert: {
+            createdAt
+          }
         },
         {
           upsert: true

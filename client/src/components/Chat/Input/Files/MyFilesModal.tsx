@@ -104,28 +104,28 @@ export function MyFilesModal({
         className="w-11/12 bg-surface-dialog text-text-primary shadow-2xl"
       >
         <OGDialogHeader>
-          <div className="flex w-full items-center justify-between gap-3">
-            <OGDialogTitle>{localize('com_nav_my_files')}</OGDialogTitle>
-
-            <Button
-              type="button"
-              variant="outline"
-              disabled={filesLoading}
-              onClick={openFilePicker}
-            >
-              {localize('com_ui_upload_file_search')}
-            </Button>
-
-            <input
-              ref={fileInputRef}
-              type="file"
-              multiple={true}
-              tabIndex={-1}
-              style={{ display: 'none' }}
-              onChange={handlePersonalRagUpload}
-            />
-          </div>
+          <OGDialogTitle>{localize('com_nav_my_files')}</OGDialogTitle>
         </OGDialogHeader>
+
+        <div className="mb-4 flex items-center justify-end">
+          <Button
+            type="button"
+            variant="outline"
+            disabled={filesLoading}
+            onClick={openFilePicker}
+          >
+            {localize('com_ui_upload_file_search')}
+          </Button>
+
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple={true}
+            tabIndex={-1}
+            style={{ display: 'none' }}
+            onChange={handlePersonalRagUpload}
+          />
+        </div>
 
         <DataTable columns={columns} data={files} />
       </OGDialogContent>

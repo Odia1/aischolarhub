@@ -35,6 +35,9 @@ const { getStrategyFunctions } = require('~/server/services/Files/strategies');
 const { logViolation } = require('~/cache');
 const TextStream = require('./TextStream');
 const db = require('~/models');
+const {
+  updateLearnerStateFromTurn,
+} = require('~/server/services/AcademicIntelligence/learnerState');
 
 const collectHistoricalFileRefs = (message) => {
   const refs = [];
@@ -986,6 +989,32 @@ class BaseClient {
       },
       { context: 'api/app/clients/BaseClient.js - saveMessageToDatabase #saveMessage' },
     );
+
+    /*
+     * Academic Intelligence learner-state feedback loop.
+     *
+     * Run only after a successfully persisted assistant response.
+     * endpointOptions.spec is the stable ModelSpec identifier used by
+     * academicAgents.modelSpecName.
+     */
+    if (message?.isCreatedByUser === false && endpointOptions?.spec) {
+      const learnerMessage = Array.isArray(this.currentMessages)
+        ? [...this.currentMessages]
+            .reverse()
+            .find(
+              (item) =>
+                item?.isCreatedByUser === true &&
+                item?.messageId === message?.parentMessageId,
+            )
+        : null;
+
+      await updateLearnerStateFromTurn({
+        req: options?.req,
+        modelSpecName: endpointOptions.spec,
+        userMessage: learnerMessage,
+        assistantMessage: savedMessage || message,
+      });
+    }
 
     if (this.skipSaveConvo) {
       return { message: savedMessage };
