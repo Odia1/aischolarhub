@@ -435,34 +435,150 @@ form{
    ============================================================ */
 .admin-tabs{
   display:flex;
-  gap:6px;
-  flex-wrap:wrap;
-  margin:0 0 16px;
-  padding:8px;
-  background:#f5f6f8;
-  border:1px solid #ddd;
-  border-radius:10px;
+  align-items:flex-end;
+  gap:2px;
+  margin:0 0 20px;
+  padding:8px 12px 0;
+  background:#eef1f5;
+  border:1px solid #d8dde5;
+  border-bottom:1px solid #cbd2db;
+  border-radius:10px 10px 0 0;
+  overflow-x:auto;
+  overflow-y:hidden;
+  white-space:nowrap;
+  scrollbar-width:thin;
 }
+
 .admin-tab-button{
-  border:0;
+  position:relative;
+  flex:0 0 auto;
+  border:1px solid transparent;
+  border-bottom:0;
   background:transparent;
-  padding:9px 13px;
-  border-radius:7px;
+  color:#5b6573;
+  padding:12px 15px 11px;
+  border-radius:7px 7px 0 0;
   cursor:pointer;
-  font-weight:600;
+  font-weight:550;
+  line-height:1.2;
+  transition:
+    background-color .15s ease,
+    color .15s ease,
+    border-color .15s ease;
 }
-.admin-tab-button:hover{background:#e9edf2}
+
+.admin-tab-button:hover{
+  background:#e3e8ee;
+  color:#263544;
+}
+
 .admin-tab-button.active{
-  background:#1f4f78;
-  color:white;
+  background:#fff;
+  color:#1f4f78;
+  border-color:#cbd2db;
+  font-weight:700;
+  z-index:1;
 }
-.admin-tab-panel{display:none}
-.admin-tab-panel.active{display:block}
+
+.admin-tab-button.active::after{
+  content:"";
+  position:absolute;
+  left:13px;
+  right:13px;
+  bottom:0;
+  height:3px;
+  background:#1f4f78;
+  border-radius:3px 3px 0 0;
+}
+
+.admin-tab-button:focus-visible{
+  outline:2px solid #1f4f78;
+  outline-offset:-2px;
+}
+
+.admin-tab-panel{
+  display:none;
+}
+
+.admin-tab-panel.active{
+  display:block;
+}
+
 .admin-placeholder{
   border:1px solid #ddd;
   background:#fff;
   border-radius:8px;
   padding:18px;
+}
+
+@media(max-width:700px){
+  .admin-tabs{
+    padding-left:6px;
+    padding-right:6px;
+  }
+
+  .admin-tab-button{
+    padding-left:12px;
+    padding-right:12px;
+  }
+}
+
+
+/* ============================================================
+   PLANNED ADMIN CAPABILITIES
+   ============================================================ */
+.planned-placeholder{
+  border:1px dashed #c7ced8;
+  background:#fafbfd;
+  border-radius:10px;
+  padding:26px 28px;
+  min-height:150px;
+}
+
+.planned-header{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  margin-bottom:10px;
+}
+
+.planned-header h2{
+  margin:0;
+  font-size:18px;
+  color:#303b47;
+}
+
+.planned-badge{
+  display:inline-flex;
+  align-items:center;
+  padding:3px 9px;
+  border-radius:999px;
+  background:#eef2f6;
+  border:1px solid #d7dde5;
+  color:#596675;
+  font-size:11px;
+  font-weight:700;
+  letter-spacing:.35px;
+  text-transform:uppercase;
+}
+
+.planned-description{
+  margin:0 0 18px;
+  max-width:760px;
+  color:#59636f;
+  line-height:1.55;
+}
+
+.planned-scope{
+  margin:0;
+  padding-left:20px;
+  color:#687381;
+  font-size:13px;
+  line-height:1.8;
+}
+
+.planned-scope strong{
+  color:#46515e;
 }
 
 </style>
@@ -647,23 +763,51 @@ form{
 <section id="costTab"
          class="admin-tab-panel"
          data-admin-tab-panel="cost">
-  <div id="costPolicyHost" class="admin-placeholder">
-    <h2>Usage & Cost</h2>
-    <div class="muted">
-      Configure Economy, Balanced and Advanced model policies and usage controls.
+
+  <div class="planned-placeholder">
+    <div class="planned-header">
+      <h2>Usage &amp; Cost</h2>
+      <span class="planned-badge">Planned</span>
     </div>
+
+    <p class="planned-description">
+      Model policy, usage visibility and cost-management controls
+      will be administered here as AI Scholar Hub usage expands.
+    </p>
+
+    <ul class="planned-scope">
+      <li><strong>Model tiers:</strong> Economy, Balanced and Advanced policy controls</li>
+      <li><strong>Usage:</strong> institution, role and model consumption visibility</li>
+      <li><strong>Limits:</strong> quotas, budgets and policy-based usage controls</li>
+      <li><strong>Cost:</strong> provider and model cost monitoring</li>
+    </ul>
   </div>
+
 </section>
 
 <section id="auditTab"
          class="admin-tab-panel"
          data-admin-tab-panel="audit">
-  <div id="auditSettingsHost" class="admin-placeholder">
-    <h2>Audit & Platform Settings</h2>
-    <div class="muted">
-      Administrative audit, platform policy and operational controls.
+
+  <div class="planned-placeholder">
+    <div class="planned-header">
+      <h2>Audit &amp; Platform Settings</h2>
+      <span class="planned-badge">Planned</span>
     </div>
+
+    <p class="planned-description">
+      Administrative audit, platform policy and operational controls
+      will be consolidated here.
+    </p>
+
+    <ul class="planned-scope">
+      <li><strong>Audit:</strong> administrative actions, actors, targets and outcomes</li>
+      <li><strong>Security:</strong> privileged-access and administrative policy review</li>
+      <li><strong>Platform policy:</strong> global operational configuration</li>
+      <li><strong>Operations:</strong> platform-level health and administrative controls</li>
+    </ul>
   </div>
+
 </section>
 
 </main>
