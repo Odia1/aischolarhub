@@ -201,23 +201,36 @@ async function applyAcademicIntelligence(appConfig, options = {}) {
 
   const mongo = mongoose.connection.db;
 
-  const agents = await mongo.collection('academicAgents')
-    .find({
-      tenantId,
-      enabled: { $ne: false }
-    })
-    .toArray();
+  const academicStart = process.hrtime.bigint();
+
+  const [agents, learnerState] = await Promise.all([
+    mongo.collection('academicAgents')
+      .find({
+        tenantId,
+        enabled: { $ne: false }
+      })
+      .toArray(),
+
+    userId
+      ? mongo.collection('learnerStates').findOne({
+          tenantId,
+          userId
+        })
+      : Promise.resolve(null)
+  ]);
+
+  const academicMs =
+    Number(process.hrtime.bigint() - academicStart) / 1_000_000;
+
+  if (academicMs >= 25) {
+    logger.info(
+      `[PERF] component=academic-policy tenant=${tenantId} role=${role} durationMs=${academicMs.toFixed(1)}`
+    );
+  }
 
   if (!agents.length) {
     return appConfig;
   }
-
-  const learnerState = userId
-    ? await mongo.collection('learnerStates').findOne({
-        tenantId,
-        userId
-      })
-    : null;
 
   const agentMap = new Map(
     agents.map(agent => [
@@ -339,18 +352,38 @@ async function applyAcademicIntelligence(appConfig, options = {}) {
 }
 
 async function getAppConfig(options = {}) {
+  const policyStart = process.hrtime.bigint();
   let config = await getBaseAppConfig(options);
 
   try {
+    const entitlementStart = process.hrtime.bigint();
+
     config = await applyModelEntitlement(
       config,
       options
     );
 
+    const entitlementMs =
+      Number(process.hrtime.bigint() - entitlementStart) / 1_000_000;
+
+    const academicStart = process.hrtime.bigint();
+
     config = await applyAcademicIntelligence(
       config,
       options
     );
+
+    const academicMs =
+      Number(process.hrtime.bigint() - academicStart) / 1_000_000;
+
+    const totalMs =
+      Number(process.hrtime.bigint() - policyStart) / 1_000_000;
+
+    if (totalMs >= 25) {
+      logger.info(
+        `[PERF] component=config-policy tenant=${String(options?.tenantId || '')} role=${String(options?.role || '')} entitlementMs=${entitlementMs.toFixed(1)} academicMs=${academicMs.toFixed(1)} totalMs=${totalMs.toFixed(1)}`
+      );
+    }
 
     return config;
   } catch (error) {

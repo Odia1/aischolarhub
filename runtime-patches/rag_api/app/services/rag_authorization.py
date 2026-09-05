@@ -1,10 +1,23 @@
 import asyncio
+import time
 from typing import Iterable, List, Set, Tuple
 
 from bson import ObjectId
 from pymongo import MongoClient
 
-from app.config import ATLAS_MONGO_DB_URI
+from app.config import ATLAS_MONGO_DB_URI, logger
+
+
+# MongoClient is thread-safe and owns its own connection pool.
+# Keep one process-wide client rather than reconnecting for every RAG query.
+_MONGO_CLIENT = MongoClient(
+    ATLAS_MONGO_DB_URI,
+    maxPoolSize=50,
+    minPoolSize=1,
+    connect=False,
+    serverSelectionTimeoutMS=3000,
+)
+_MONGO_DB = _MONGO_CLIENT.get_default_database()
 
 
 def _strings(values: Iterable) -> Set[str]:
@@ -34,11 +47,10 @@ def _partition_sync(
     if not requested or not user_id or not tenant_id:
         return [], []
 
-    client = MongoClient(ATLAS_MONGO_DB_URI)
+    started = time.perf_counter()
+    db = _MONGO_DB
 
     try:
-        db = client.get_default_database()
-
         files = db["files"]
         rag_groups = db["ragGroups"]
         groups = db["groups"]
@@ -241,7 +253,15 @@ def _partition_sync(
         return legacy_ids, rag_ids
 
     finally:
-        client.close()
+        duration_ms = (time.perf_counter() - started) * 1000
+        if duration_ms >= 25:
+            logger.info(
+                "[PERF] component=rag-authorization "
+                "tenant=%s requestedFiles=%d durationMs=%.1f",
+                tenant_id,
+                len(requested),
+                duration_ms,
+            )
 
 
 async def partition_file_access(
