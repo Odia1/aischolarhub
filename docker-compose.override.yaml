@@ -50,4 +50,4 @@ services:
 
 
   rag_api:
-    image: seeds.azurecr.io/aischolarhub-rag-api:dev-rag-tenant-v1
+    image: seeds.azurecr.io/aischolarhub-rag-api:dev-20260905-1b904391d-release-b
