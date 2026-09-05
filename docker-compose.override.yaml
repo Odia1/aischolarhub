@@ -2,7 +2,7 @@ services:
   api:
     container_name: AI_Scholar_Hub
 
-    image: seeds.azurecr.io/aischolarhub-custom:dev-20260905-1b5e08fb2-perf-c1
+    image: seeds.azurecr.io/aischolarhub-custom:dev-20260905-a28be31f1-perf-c2
 
 
 
