@@ -2,7 +2,7 @@ services:
   api:
     container_name: AI_Scholar_Hub
 
-    image: seeds.azurecr.io/aischolarhub-custom:dev-20260904-0d1908e8c-release-b
+    image: seeds.azurecr.io/aischolarhub-custom:dev-20260905-1b5e08fb2-perf-c1
 
 
 
@@ -50,4 +50,4 @@ services:
 
 
   rag_api:
-    image: seeds.azurecr.io/aischolarhub-rag-api:dev-20260905-1b904391d-release-b
+    image: seeds.azurecr.io/aischolarhub-rag-api:dev-20260905-1b5e08fb2-perf-c1
