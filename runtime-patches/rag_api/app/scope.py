@@ -38,6 +38,20 @@ class ScopeFilter:
             predicates.append({"tenant_id": {"$eq": self.tenant_id}})
         return {"$and": predicates}
 
+    def preauthorized_predicate(
+        self, *clauses: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Apply tenant scope after file authorization was established upstream.
+
+        Used only for RAG-group files already authorized by
+        partition_file_access(). Unlike predicate(), this deliberately does
+        not add the personal owner clause.
+        """
+        predicates = list(clauses)
+        if self.tenant_id:
+            predicates.append({"tenant_id": {"$eq": self.tenant_id}})
+        return {"$and": predicates}
+
     def owns(self, owner: Optional[str]) -> bool:
         """Whether a stored row's recorded owner falls inside this scope.
 

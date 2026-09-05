@@ -2,3 +2,4 @@ FROM registry.librechat.ai/danny-avila/librechat-rag-api-dev@sha256:d64a4d173144
 
 COPY app/scope.py /app/app/scope.py
 COPY app/routes/document_routes.py /app/app/routes/document_routes.py
+COPY app/services/rag_authorization.py /app/app/services/rag_authorization.py
