@@ -14,13 +14,10 @@ const configMiddleware = async (req, res, next) => {
       path: req.path,
     });
 
-    try {
-      req.config = await getAppConfig({ tenantId: req.user?.tenantId });
-      next();
-    } catch (fallbackError) {
-      logger.error('Fallback config middleware error:', fallbackError);
-      next(fallbackError);
-    }
+    logger.error(
+      'Principal-scoped config resolution failed; refusing unscoped fallback'
+    );
+    next(error);
   }
 };
 

@@ -28,6 +28,21 @@ const modelEntitlements = db.collection("modelEntitlements");
 const academicAgents = db.collection("academicAgents");
 const learnerStates = db.collection("learnerStates");
 
+/*
+ * Persona routing is intentionally separate from model entitlement.
+ *
+ * modelEntitlements:
+ *   authorization -- which provider/models a tenant/role may use
+ *
+ * personaModelRoutes:
+ *   optimization -- which entitled provider/model a persona should use now
+ *
+ * personaPromptPolicies:
+ *   stable, versioned persona instructions independent of provider/model
+ */
+const personaModelRoutes = db.collection("personaModelRoutes");
+const personaPromptPolicies = db.collection("personaPromptPolicies");
+
 const sessions = new Map();
 
 const MODEL_COST_TIERS = new Set([
@@ -53,6 +68,32 @@ await Promise.all([
   learnerStates.createIndex(
     { tenantId: 1, userId: 1 },
     { unique: true }
+  ),
+
+  personaModelRoutes.createIndex(
+    { tenantId: 1, personaId: 1, routeId: 1 },
+    { unique: true }
+  ),
+  personaModelRoutes.createIndex(
+    { tenantId: 1, modelSpecName: 1, enabled: 1, priority: -1 }
+  ),
+
+  /*
+   * Prompt policies are versioned independently of model routing.
+   *
+   * Multiple historical versions may exist for the same persona.
+   * Runtime selection will choose the enabled/current policy rather
+   * than using document uniqueness as the version mechanism.
+   */
+  personaPromptPolicies.createIndex(
+    { tenantId: 1, personaId: 1, version: 1 },
+    { unique: true }
+  ),
+  personaPromptPolicies.createIndex(
+    { tenantId: 1, personaId: 1, enabled: 1, updatedAt: -1 }
+  ),
+  personaPromptPolicies.createIndex(
+    { tenantId: 1, modelSpecName: 1, enabled: 1 }
   )
 ]);
 
@@ -3385,6 +3426,596 @@ app.put("/api/learner-states/:userId", async (req, res) => {
 /* ============================================================
  * AI PROVIDERS / MODELS / ENTITLEMENT POLICY
  * ============================================================ */
+
+
+/* ============================================================================
+ * PERSONA MODEL ROUTING
+ *
+ * These routes define preferred runtime routing only.
+ * They MUST NOT grant model access. Authorization remains controlled by
+ * modelEntitlements.
+ * ========================================================================== */
+
+app.get("/api/persona-model-routes", async (req, res) => {
+  try {
+    if (!canManageModelPolicy(req))
+      return res.status(403).json({
+        error: "Persona model routing administration is not permitted"
+      });
+
+    const tenantId = await resolvePolicyTenant(
+      req,
+      req.query.tenantId
+    );
+
+    if (!tenantId)
+      return res.status(400).json({
+        error: "A valid institution is required"
+      });
+
+    const routes = await personaModelRoutes
+      .find({ tenantId })
+      .sort({
+        personaId: 1,
+        priority: -1,
+        routeId: 1
+      })
+      .toArray();
+
+    res.json({ routes });
+  } catch (e) {
+    console.error("[PERSONA-MODEL-ROUTES-GET]", e);
+    res.status(500).json({
+      error: "Failed to retrieve persona model routes"
+    });
+  }
+});
+
+
+app.post("/api/persona-model-routes", async (req, res) => {
+  try {
+    if (!canManageModelPolicy(req))
+      return res.status(403).json({
+        error: "Persona model routing administration is not permitted"
+      });
+
+    const tenantId = await resolvePolicyTenant(
+      req,
+      req.body.tenantId
+    );
+
+    if (!tenantId)
+      return res.status(400).json({
+        error: "A valid institution is required"
+      });
+
+    const personaId = cleanPolicyKey(
+      req.body.personaId,
+      "Persona ID"
+    ).toUpperCase();
+
+    const routeId = cleanPolicyKey(
+      req.body.routeId,
+      "Route ID"
+    ).toUpperCase();
+
+    const modelSpecName = String(
+      req.body.modelSpecName || ""
+    ).trim().slice(0, 200);
+
+    const providerKey = cleanPolicyKey(
+      req.body.providerKey,
+      "Provider key"
+    );
+
+    const model = String(
+      req.body.model || ""
+    ).trim().slice(0, 200);
+
+    if (!modelSpecName || !model)
+      return res.status(400).json({
+        error: "modelSpecName and model are required"
+      });
+
+    const provider = await aiProviders.findOne({
+      key: providerKey,
+      enabled: true
+    });
+
+    if (!provider)
+      return res.status(404).json({
+        error: "Enabled AI provider not found"
+      });
+
+    const modelDoc = await aiModels.findOne({
+      providerKey,
+      model,
+      enabled: true
+    });
+
+    if (!modelDoc)
+      return res.status(404).json({
+        error: "Enabled AI model not found"
+      });
+
+    const now = new Date();
+
+    const doc = {
+      tenantId,
+      personaId,
+      routeId,
+      modelSpecName,
+      providerKey,
+      model,
+      priority:
+        Number.isFinite(Number(req.body.priority))
+          ? Number(req.body.priority)
+          : 0,
+      enabled: req.body.enabled !== false,
+      description: String(req.body.description || "")
+        .trim()
+        .slice(0, 1000),
+      createdAt: now,
+      updatedAt: now
+    };
+
+    const result = await personaModelRoutes.insertOne(doc);
+    doc._id = result.insertedId;
+
+    await audit("PERSONA_MODEL_ROUTE_CREATED", req, {
+      safeDetails: {
+        tenantId,
+        personaId,
+        routeId,
+        modelSpecName,
+        providerKey,
+        model
+      }
+    });
+
+    res.status(201).json({ route: doc });
+  } catch (e) {
+    if (e?.code === 11000)
+      return res.status(409).json({
+        error: "This persona route ID already exists for the institution"
+      });
+
+    res.status(400).json({
+      error: e.message || "Failed to create persona model route"
+    });
+  }
+});
+
+
+app.patch("/api/persona-model-routes/:id", async (req, res) => {
+  try {
+    if (!canManageModelPolicy(req))
+      return res.status(403).json({
+        error: "Persona model routing administration is not permitted"
+      });
+
+    const _id = new ObjectId(req.params.id);
+    const current = await personaModelRoutes.findOne({ _id });
+
+    if (!current)
+      return res.status(404).json({
+        error: "Persona model route not found"
+      });
+
+    const update = {
+      updatedAt: new Date()
+    };
+
+    if (req.body.modelSpecName !== undefined)
+      update.modelSpecName = String(
+        req.body.modelSpecName || ""
+      ).trim().slice(0, 200);
+
+    if (req.body.providerKey !== undefined) {
+      const providerKey = cleanPolicyKey(
+        req.body.providerKey,
+        "Provider key"
+      );
+
+      const provider = await aiProviders.findOne({
+        key: providerKey,
+        enabled: true
+      });
+
+      if (!provider)
+        return res.status(404).json({
+          error: "Enabled AI provider not found"
+        });
+
+      update.providerKey = providerKey;
+    }
+
+    if (req.body.model !== undefined)
+      update.model = String(req.body.model || "")
+        .trim()
+        .slice(0, 200);
+
+    if (
+      req.body.providerKey !== undefined ||
+      req.body.model !== undefined
+    ) {
+      const providerKey =
+        update.providerKey || current.providerKey;
+      const model =
+        update.model || current.model;
+
+      const modelDoc = await aiModels.findOne({
+        providerKey,
+        model,
+        enabled: true
+      });
+
+      if (!modelDoc)
+        return res.status(404).json({
+          error: "Enabled AI model not found"
+        });
+    }
+
+    if (req.body.priority !== undefined) {
+      const n = Number(req.body.priority);
+      if (!Number.isFinite(n))
+        return res.status(400).json({
+          error: "priority must be numeric"
+        });
+      update.priority = n;
+    }
+
+    if (req.body.enabled !== undefined)
+      update.enabled = req.body.enabled === true;
+
+    if (req.body.description !== undefined)
+      update.description = String(
+        req.body.description || ""
+      ).trim().slice(0, 1000);
+
+    const route = await personaModelRoutes.findOneAndUpdate(
+      { _id },
+      { $set: update },
+      { returnDocument: "after" }
+    );
+
+    await audit("PERSONA_MODEL_ROUTE_UPDATED", req, {
+      safeDetails: {
+        tenantId: current.tenantId,
+        personaId: current.personaId,
+        routeId: current.routeId
+      }
+    });
+
+    res.json({ route });
+  } catch (e) {
+    res.status(400).json({
+      error: e.message || "Failed to update persona model route"
+    });
+  }
+});
+
+
+app.delete("/api/persona-model-routes/:id", async (req, res) => {
+  try {
+    if (!canManageModelPolicy(req))
+      return res.status(403).json({
+        error: "Persona model routing administration is not permitted"
+      });
+
+    const _id = new ObjectId(req.params.id);
+    const current = await personaModelRoutes.findOne({ _id });
+
+    if (!current)
+      return res.status(404).json({
+        error: "Persona model route not found"
+      });
+
+    await personaModelRoutes.deleteOne({ _id });
+
+    await audit("PERSONA_MODEL_ROUTE_DELETED", req, {
+      safeDetails: {
+        tenantId: current.tenantId,
+        personaId: current.personaId,
+        routeId: current.routeId
+      }
+    });
+
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(400).json({
+      error: e.message || "Failed to delete persona model route"
+    });
+  }
+});
+
+
+/* ============================================================================
+ * PERSONA PROMPT POLICIES
+ *
+ * Prompt content is versioned. Creating a new version never overwrites an
+ * existing version.
+ * ========================================================================== */
+
+app.get("/api/persona-prompt-policies", async (req, res) => {
+  try {
+    if (!canManageModelPolicy(req))
+      return res.status(403).json({
+        error: "Persona prompt policy administration is not permitted"
+      });
+
+    const tenantId = await resolvePolicyTenant(
+      req,
+      req.query.tenantId
+    );
+
+    if (!tenantId)
+      return res.status(400).json({
+        error: "A valid institution is required"
+      });
+
+    const policies = await personaPromptPolicies
+      .find({ tenantId })
+      .sort({
+        personaId: 1,
+        version: -1
+      })
+      .toArray();
+
+    res.json({ policies });
+  } catch (e) {
+    console.error("[PERSONA-PROMPT-POLICIES-GET]", e);
+    res.status(500).json({
+      error: "Failed to retrieve persona prompt policies"
+    });
+  }
+});
+
+
+app.post("/api/persona-prompt-policies", async (req, res) => {
+  try {
+    if (!canManageModelPolicy(req))
+      return res.status(403).json({
+        error: "Persona prompt policy administration is not permitted"
+      });
+
+    const tenantId = await resolvePolicyTenant(
+      req,
+      req.body.tenantId
+    );
+
+    if (!tenantId)
+      return res.status(400).json({
+        error: "A valid institution is required"
+      });
+
+    const personaId = cleanPolicyKey(
+      req.body.personaId,
+      "Persona ID"
+    ).toUpperCase();
+
+    const modelSpecName = String(
+      req.body.modelSpecName || ""
+    ).trim().slice(0, 200);
+
+    const prompt = String(
+      req.body.prompt || ""
+    ).trim();
+
+    if (!modelSpecName || !prompt)
+      return res.status(400).json({
+        error: "modelSpecName and prompt are required"
+      });
+
+    if (prompt.length > 50000)
+      return res.status(400).json({
+        error: "Prompt policy exceeds 50000 characters"
+      });
+
+    const latest = await personaPromptPolicies
+      .find({
+        tenantId,
+        personaId
+      })
+      .sort({ version: -1 })
+      .limit(1)
+      .toArray();
+
+    const version =
+      latest.length &&
+      Number.isFinite(Number(latest[0].version))
+        ? Number(latest[0].version) + 1
+        : 1;
+
+    const now = new Date();
+    const enabled = req.body.enabled !== false;
+
+    if (enabled) {
+      await personaPromptPolicies.updateMany(
+        {
+          tenantId,
+          personaId,
+          enabled: true
+        },
+        {
+          $set: {
+            enabled: false,
+            updatedAt: now
+          }
+        }
+      );
+    }
+
+    const doc = {
+      tenantId,
+      personaId,
+      modelSpecName,
+      version,
+      prompt,
+      enabled,
+      notes: String(req.body.notes || "")
+        .trim()
+        .slice(0, 2000),
+      createdAt: now,
+      updatedAt: now
+    };
+
+    const result = await personaPromptPolicies.insertOne(doc);
+    doc._id = result.insertedId;
+
+    await audit("PERSONA_PROMPT_POLICY_CREATED", req, {
+      safeDetails: {
+        tenantId,
+        personaId,
+        modelSpecName,
+        version,
+        enabled
+      }
+    });
+
+    res.status(201).json({ policy: doc });
+  } catch (e) {
+    if (e?.code === 11000)
+      return res.status(409).json({
+        error: "This prompt-policy version already exists"
+      });
+
+    res.status(400).json({
+      error: e.message || "Failed to create persona prompt policy"
+    });
+  }
+});
+
+
+app.patch("/api/persona-prompt-policies/:id", async (req, res) => {
+  try {
+    if (!canManageModelPolicy(req))
+      return res.status(403).json({
+        error: "Persona prompt policy administration is not permitted"
+      });
+
+    const _id = new ObjectId(req.params.id);
+    const current = await personaPromptPolicies.findOne({ _id });
+
+    if (!current)
+      return res.status(404).json({
+        error: "Persona prompt policy not found"
+      });
+
+    const update = {
+      updatedAt: new Date()
+    };
+
+    /*
+     * Versioned content is immutable.
+     * To change prompt text or modelSpecName, create a new version.
+     */
+    if (
+      req.body.prompt !== undefined ||
+      req.body.modelSpecName !== undefined ||
+      req.body.version !== undefined ||
+      req.body.personaId !== undefined ||
+      req.body.tenantId !== undefined
+    )
+      return res.status(400).json({
+        error:
+          "Versioned prompt content is immutable; create a new policy version instead"
+      });
+
+    if (req.body.notes !== undefined)
+      update.notes = String(req.body.notes || "")
+        .trim()
+        .slice(0, 2000);
+
+    if (req.body.enabled !== undefined) {
+      const enabled = req.body.enabled === true;
+
+      if (enabled) {
+        await personaPromptPolicies.updateMany(
+          {
+            tenantId: current.tenantId,
+            personaId: current.personaId,
+            enabled: true,
+            _id: { $ne: current._id }
+          },
+          {
+            $set: {
+              enabled: false,
+              updatedAt: new Date()
+            }
+          }
+        );
+      }
+
+      update.enabled = enabled;
+    }
+
+    const policy = await personaPromptPolicies.findOneAndUpdate(
+      { _id },
+      { $set: update },
+      { returnDocument: "after" }
+    );
+
+    await audit("PERSONA_PROMPT_POLICY_UPDATED", req, {
+      safeDetails: {
+        tenantId: current.tenantId,
+        personaId: current.personaId,
+        version: current.version,
+        enabled:
+          update.enabled !== undefined
+            ? update.enabled
+            : current.enabled
+      }
+    });
+
+    res.json({ policy });
+  } catch (e) {
+    res.status(400).json({
+      error: e.message || "Failed to update persona prompt policy"
+    });
+  }
+});
+
+
+app.delete("/api/persona-prompt-policies/:id", async (req, res) => {
+  try {
+    if (!canManageModelPolicy(req))
+      return res.status(403).json({
+        error: "Persona prompt policy administration is not permitted"
+      });
+
+    const _id = new ObjectId(req.params.id);
+    const current = await personaPromptPolicies.findOne({ _id });
+
+    if (!current)
+      return res.status(404).json({
+        error: "Persona prompt policy not found"
+      });
+
+    if (current.enabled === true)
+      return res.status(409).json({
+        error:
+          "Disable the active prompt-policy version before deleting it"
+      });
+
+    await personaPromptPolicies.deleteOne({ _id });
+
+    await audit("PERSONA_PROMPT_POLICY_DELETED", req, {
+      safeDetails: {
+        tenantId: current.tenantId,
+        personaId: current.personaId,
+        version: current.version
+      }
+    });
+
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(400).json({
+      error: e.message || "Failed to delete persona prompt policy"
+    });
+  }
+});
+
 
 app.get("/api/ai-policy/catalog", async (req, res) => {
   try {

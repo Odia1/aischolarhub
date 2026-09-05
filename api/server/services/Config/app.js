@@ -54,17 +54,43 @@ async function applyModelEntitlement(appConfig, options = {}) {
 
   const mongo = mongoose.connection.db;
 
-  const entitlement = await mongo
-    .collection('modelEntitlements')
-    .findOne({
+  const [entitlement, routes] = await Promise.all([
+    mongo.collection('modelEntitlements').findOne({
       tenantId,
       role,
       agentId: '*',
-      enabled: { $ne: false },
-    });
+      enabled: { $ne: false }
+    }),
+
+    mongo.collection('personaModelRoutes')
+      .find({
+        tenantId,
+        enabled: { $ne: false }
+      })
+      .sort({ priority: -1, routeId: 1 })
+      .toArray()
+  ]);
 
   if (!entitlement) {
-    return appConfig;
+    logger.warn(
+      `[modelEntitlements] tenant=${tenantId} role=${role} no enabled entitlement; exposing zero managed model specs`
+    );
+
+    return {
+      ...appConfig,
+      modelSpecs: {
+        ...(appConfig.modelSpecs || {}),
+        enforce: true,
+        prioritize: true,
+        list: []
+      },
+      interface: {
+        ...(appConfig.interface || {}),
+        modelSelect: false,
+        parameters: false,
+        presets: false
+      }
+    };
   }
 
   const allowedRefs = Array.isArray(entitlement.allowedModels)
@@ -73,35 +99,107 @@ async function applyModelEntitlement(appConfig, options = {}) {
         .filter(Boolean)
     : [];
 
+  const allowedRefSet = new Set(allowedRefs);
+
   const defaultRef = String(
     entitlement.defaultModel || ''
   ).trim();
 
   const providerKeys = [
-    ...new Set(
-      [...allowedRefs, defaultRef]
-        .filter(Boolean)
+    ...new Set([
+      ...allowedRefs
         .map(ref => {
           const i = ref.indexOf(':');
           return i > 0 ? ref.slice(0, i) : '';
         })
+        .filter(Boolean),
+
+      ...routes
+        .map(route => String(route.providerKey || '').trim())
         .filter(Boolean)
-    )
+    ])
   ];
 
-  const providers = providerKeys.length
-    ? await mongo.collection('aiProviders')
-        .find(
-          { key: { $in: providerKeys } },
-          { projection: { key: 1, name: 1 } }
-        )
-        .toArray()
-    : [];
+  const referencedPolicyRefs = [
+    ...new Set([
+      ...allowedRefs,
+      ...routes
+        .map(route => {
+          const providerKey =
+            String(route.providerKey || '').trim();
+
+          const model =
+            String(route.model || '').trim();
+
+          return providerKey && model
+            ? `${providerKey}:${model}`
+            : '';
+        })
+        .filter(Boolean)
+    ])
+  ];
+
+  const referencedModelPairs =
+    referencedPolicyRefs
+      .map(ref => {
+        const i = ref.indexOf(':');
+
+        return i > 0
+          ? {
+              providerKey: ref.slice(0, i),
+              model: ref.slice(i + 1)
+            }
+          : null;
+      })
+      .filter(Boolean);
+
+  const [providers, enabledModels] =
+    await Promise.all([
+      providerKeys.length
+        ? mongo.collection('aiProviders')
+            .find(
+              {
+                key: { $in: providerKeys },
+                enabled: { $ne: false }
+              },
+              {
+                projection: {
+                  key: 1,
+                  name: 1
+                }
+              }
+            )
+            .toArray()
+        : Promise.resolve([]),
+
+      referencedModelPairs.length
+        ? mongo.collection('aiModels')
+            .find(
+              {
+                enabled: { $ne: false },
+                $or: referencedModelPairs
+              },
+              {
+                projection: {
+                  providerKey: 1,
+                  model: 1
+                }
+              }
+            )
+            .toArray()
+        : Promise.resolve([])
+    ]);
+
+  const enabledPolicyRefs = new Set(
+    enabledModels.map(model =>
+      `${String(model.providerKey || '').trim()}:${String(model.model || '').trim()}`
+    )
+  );
 
   const providerMap = new Map(
-    providers.map(p => [
-      String(p.key || '').trim(),
-      String(p.name || p.key || '').trim()
+    providers.map(provider => [
+      String(provider.key || '').trim(),
+      String(provider.name || provider.key || '').trim()
     ])
   );
 
@@ -113,7 +211,6 @@ async function applyModelEntitlement(appConfig, options = {}) {
 
     const providerKey = ref.slice(0, i);
     const model = ref.slice(i + 1);
-
     const endpoint = providerMap.get(providerKey);
 
     if (!endpoint || !model) return null;
@@ -122,46 +219,141 @@ async function applyModelEntitlement(appConfig, options = {}) {
   };
 
   const allowedRuntime = new Set(
-    allowedRefs.map(runtimeRef).filter(Boolean)
+    allowedRefs
+      .filter(ref => enabledPolicyRefs.has(ref))
+      .map(runtimeRef)
+      .filter(Boolean)
   );
 
   const defaultRuntime = runtimeRef(defaultRef);
+
+  const routesBySpec = new Map();
+
+  for (const route of routes) {
+    const modelSpecName =
+      String(route.modelSpecName || '').trim();
+
+    const providerKey =
+      String(route.providerKey || '').trim();
+
+    const model =
+      String(route.model || '').trim();
+
+    if (!modelSpecName || !providerKey || !model)
+      continue;
+
+    const policyRef = `${providerKey}:${model}`;
+
+    // Routing preference can never expand authorization
+    // or reactivate a disabled catalog model.
+    if (
+      !allowedRefSet.has(policyRef) ||
+      !enabledPolicyRefs.has(policyRef)
+    )
+      continue;
+
+    const endpoint = providerMap.get(providerKey);
+    if (!endpoint)
+      continue;
+
+    if (!routesBySpec.has(modelSpecName))
+      routesBySpec.set(modelSpecName, []);
+
+    routesBySpec.get(modelSpecName).push({
+      endpoint,
+      model,
+      personaId:
+        String(route.personaId || '').trim(),
+      routeId:
+        String(route.routeId || '').trim()
+    });
+  }
 
   const specs = Array.isArray(appConfig?.modelSpecs?.list)
     ? appConfig.modelSpecs.list
     : [];
 
-  const filtered = specs
-    .filter(spec => {
-      const endpoint =
-        String(spec?.preset?.endpoint || '').trim();
+  let defaultAssigned = false;
 
-      const model =
-        String(spec?.preset?.model || '').trim();
-
-      return allowedRuntime.has(
-        `${endpoint}:${model}`
-      );
-    })
+  let filtered = specs
     .map(spec => {
-      const endpoint =
+      const specName =
+        String(spec?.name || '').trim();
+
+      const baseEndpoint =
         String(spec?.preset?.endpoint || '').trim();
 
-      const model =
+      const baseModel =
         String(spec?.preset?.model || '').trim();
 
-      const ref = `${endpoint}:${model}`;
+      const baseRuntime =
+        `${baseEndpoint}:${baseModel}`;
+
+      const route =
+        routesBySpec.get(specName)?.[0] || null;
+
+      let resolved = null;
+
+      if (route) {
+        resolved = {
+          ...spec,
+          personaId:
+            route.personaId ||
+            String(spec?.personaId || '').trim(),
+          personaRouteId:
+            route.routeId || null,
+          preset: {
+            ...(spec.preset || {}),
+            endpoint: route.endpoint,
+            model: route.model
+          }
+        };
+      } else if (allowedRuntime.has(baseRuntime)) {
+        resolved = spec;
+      }
+
+      if (!resolved)
+        return null;
+
+      const endpoint =
+        String(resolved?.preset?.endpoint || '').trim();
+
+      const model =
+        String(resolved?.preset?.model || '').trim();
+
+      const resolvedRuntime =
+        `${endpoint}:${model}`;
+
+      const shouldDefault =
+        !defaultAssigned &&
+        (
+          defaultRuntime
+            ? resolvedRuntime === defaultRuntime
+            : resolved.default === true
+        );
+
+      if (shouldDefault)
+        defaultAssigned = true;
 
       return {
-        ...spec,
-        default: defaultRuntime
-          ? ref === defaultRuntime
-          : spec.default === true
+        ...resolved,
+        default: shouldDefault
       };
-    });
+    })
+    .filter(Boolean);
+
+  if (
+    filtered.length &&
+    !filtered.some(spec => spec.default === true)
+  ) {
+    filtered = filtered.map((spec, index) => ({
+      ...spec,
+      default: index === 0
+    }));
+  }
 
   logger.info(
-    `[modelEntitlements] tenant=${tenantId} role=${role} allowed=${filtered.length}/${specs.length}`
+    `[modelEntitlements] tenant=${tenantId} role=${role} allowed=${filtered.length}/${specs.length} routes=${routes.length}`
   );
 
   return {
@@ -184,7 +376,6 @@ async function applyModelEntitlement(appConfig, options = {}) {
 }
 
 
-
 async function applyAcademicIntelligence(appConfig, options = {}) {
   const tenantId = String(options?.tenantId || '').trim();
   const userId = String(options?.userId || '').trim();
@@ -200,27 +391,39 @@ async function applyAcademicIntelligence(appConfig, options = {}) {
   }
 
   const mongo = mongoose.connection.db;
-
   const academicStart = process.hrtime.bigint();
 
-  const [agents, learnerState] = await Promise.all([
-    mongo.collection('academicAgents')
-      .find({
-        tenantId,
-        enabled: { $ne: false }
-      })
-      .toArray(),
-
-    userId
-      ? mongo.collection('learnerStates').findOne({
+  const [agents, learnerState, promptPolicies] =
+    await Promise.all([
+      mongo.collection('academicAgents')
+        .find({
           tenantId,
-          userId
+          enabled: { $ne: false }
         })
-      : Promise.resolve(null)
-  ]);
+        .toArray(),
+
+      userId
+        ? mongo.collection('learnerStates').findOne({
+            tenantId,
+            userId
+          })
+        : Promise.resolve(null),
+
+      mongo.collection('personaPromptPolicies')
+        .find({
+          tenantId,
+          enabled: true
+        })
+        .sort({
+          personaId: 1,
+          version: -1
+        })
+        .toArray()
+    ]);
 
   const academicMs =
-    Number(process.hrtime.bigint() - academicStart) / 1_000_000;
+    Number(process.hrtime.bigint() - academicStart) /
+    1_000_000;
 
   if (academicMs >= 25) {
     logger.info(
@@ -239,6 +442,69 @@ async function applyAcademicIntelligence(appConfig, options = {}) {
     ])
   );
 
+  const promptPolicyMap = new Map();
+
+  for (const policy of promptPolicies) {
+    const personaId =
+      String(policy.personaId || '').trim().toUpperCase();
+
+    if (personaId && !promptPolicyMap.has(personaId))
+      promptPolicyMap.set(personaId, policy);
+  }
+
+  const compact = (value, max) =>
+    String(value || '')
+      .trim()
+      .replace(/\s+/g, ' ')
+      .slice(0, max);
+
+  const learnerParts = learnerState
+    ? [
+        compact(learnerState.currentObjective, 400)
+          ? `Objective: ${compact(
+              learnerState.currentObjective,
+              400
+            )}`
+          : '',
+
+        compact(learnerState.currentFocus, 400)
+          ? `Focus: ${compact(
+              learnerState.currentFocus,
+              400
+            )}`
+          : '',
+
+        compact(learnerState.masteryLevel, 100)
+          ? `Mastery: ${compact(
+              learnerState.masteryLevel,
+              100
+            )}`
+          : '',
+
+        compact(learnerState.supportLevel, 100)
+          ? `Support: ${compact(
+              learnerState.supportLevel,
+              100
+            )}`
+          : '',
+
+        compact(learnerState.preferredLanguage, 100)
+          ? `Language: ${compact(
+              learnerState.preferredLanguage,
+              100
+            )}`
+          : ''
+      ].filter(Boolean)
+    : [];
+
+  const learnerContext =
+    learnerParts.length
+      ? [
+          '## CURRENT LEARNER CONTEXT',
+          ...learnerParts
+        ].join('\n')
+      : '';
+
   const specs = Array.isArray(appConfig?.modelSpecs?.list)
     ? appConfig.modelSpecs.list
     : [];
@@ -249,95 +515,116 @@ async function applyAcademicIntelligence(appConfig, options = {}) {
         String(spec?.name || '').trim()
       );
 
-      // When Academic Agents are configured for this tenant,
-      // only model specs explicitly represented by an enabled
-      // Academic Agent are exposed in the academic experience selector.
-      if (!agent) return false;
+      if (!agent)
+        return false;
 
-      const allowedRoles = Array.isArray(agent.allowedRoles)
-        ? agent.allowedRoles.map(x => String(x).toUpperCase())
-        : [];
+      const allowedRoles =
+        Array.isArray(agent.allowedRoles)
+          ? agent.allowedRoles.map(
+              x => String(x).toUpperCase()
+            )
+          : [];
 
-      return !allowedRoles.length || allowedRoles.includes(role);
+      return (
+        !allowedRoles.length ||
+        allowedRoles.includes(role)
+      );
     })
     .map(spec => {
       const agent = agentMap.get(
         String(spec?.name || '').trim()
       );
 
-      if (!agent) return spec;
+      if (!agent)
+        return spec;
 
-      const pedagogy = agent.pedagogy || {};
+      const personaId =
+        String(
+          agent.agentId || ''
+        ).trim().toUpperCase();
 
-      const adaptiveContext = learnerState
-        ? [
-            learnerState.currentObjective
-              ? `Current learning objective: ${learnerState.currentObjective}`
-              : '',
-            learnerState.currentFocus
-              ? `Current learning focus: ${learnerState.currentFocus}`
-              : '',
-            Array.isArray(learnerState.evidence) &&
-            learnerState.evidence.length
-              ? `Recent learner evidence:\n${learnerState.evidence
-                  .slice(-3)
-                  .map(item => `- ${String(item?.learnerText || '').trim()}`)
-                  .filter(item => item !== '- ')
-                  .join('\n')}`
-              : '',
-            learnerState.masteryLevel
-              ? `Current mastery level: ${learnerState.masteryLevel}`
-              : '',
-            learnerState.supportLevel
-              ? `Support level: ${learnerState.supportLevel}`
-              : '',
-            learnerState.preferredLanguage
-              ? `Preferred explanatory language: ${learnerState.preferredLanguage}`
-              : ''
-          ].filter(Boolean).join('\n')
-        : '';
+      const promptPolicy =
+        promptPolicyMap.get(personaId) || null;
 
-      const policy = [
-        '',
-        '## AI SCHOLAR HUB ACADEMIC AGENT POLICY',
-        `Academic Agent: ${agent.name || agent.agentId}`,
-        `Pedagogical mode: ${pedagogy.mode || 'ADAPTIVE'}`,
-        pedagogy.diagnoseFirst !== false
-          ? 'Diagnose the learner’s current understanding before substantial instruction.'
-          : '',
-        pedagogy.activeRetrieval !== false
-          ? 'Use active retrieval to verify understanding after important explanations.'
-          : '',
-        pedagogy.adaptiveDifficulty !== false
-          ? 'Adapt difficulty and scaffolding to demonstrated mastery.'
-          : '',
-        pedagogy.misconceptionRepair !== false
-          ? 'Identify and repair misconceptions rather than merely marking answers wrong.'
-          : '',
-        pedagogy.masteryTracking !== false
-          ? 'Use evidence from the conversation to reason about mastery, without invasive psychological profiling.'
-          : '',
-        pedagogy.strategy || '',
-        adaptiveContext
-          ? `\n## CURRENT LEARNER CONTEXT\n${adaptiveContext}`
-          : ''
-      ].filter(Boolean).join('\n');
+      let stablePolicy = '';
+
+      if (promptPolicy?.prompt) {
+        stablePolicy =
+          String(promptPolicy.prompt).trim();
+      } else {
+        const pedagogy = agent.pedagogy || {};
+
+        stablePolicy = [
+          `Academic Agent: ${
+            agent.name || agent.agentId
+          }`,
+
+          pedagogy.diagnoseFirst !== false
+            ? 'Diagnose understanding before substantial instruction.'
+            : '',
+
+          pedagogy.activeRetrieval !== false
+            ? 'Use active retrieval to verify understanding.'
+            : '',
+
+          pedagogy.adaptiveDifficulty !== false
+            ? 'Adapt difficulty and scaffolding to demonstrated mastery.'
+            : '',
+
+          pedagogy.misconceptionRepair !== false
+            ? 'Identify and repair misconceptions.'
+            : '',
+
+          pedagogy.masteryTracking !== false
+            ? 'Use conversational evidence to track mastery.'
+            : '',
+
+          compact(pedagogy.strategy, 1500)
+        ].filter(Boolean).join('\n');
+      }
+
+      const basePrompt =
+        String(
+          spec?.preset?.promptPrefix || ''
+        ).trim();
+
+      const promptPrefix = [
+        basePrompt,
+        stablePolicy,
+        learnerContext
+      ].filter(Boolean).join('\n\n');
+
+      logger.info(
+        `[academicIntelligence] tenant=${tenantId} role=${role} persona=${personaId} promptVersion=${promptPolicy?.version ?? 'fallback'} promptChars=${promptPrefix.length} learnerContext=${learnerContext ? 'yes' : 'no'}`
+      );
 
       return {
         ...spec,
 
-        // Preserve spec.name as the stable internal model-spec identifier.
-        // Academic Agent name becomes the user-facing experience label.
-        label: String(agent.name || spec.label || spec.name || '').trim(),
+        label: String(
+          agent.name ||
+          spec.label ||
+          spec.name ||
+          ''
+        ).trim(),
 
-        academicAgentId: String(agent.agentId || '').trim(),
+        academicAgentId:
+          String(agent.agentId || '').trim(),
+
+        personaId,
+
+        ...(promptPolicy
+          ? {
+              personaPromptVersion:
+                promptPolicy.version
+            }
+          : {}),
 
         preset: {
           ...(spec.preset || {}),
-          promptPrefix:
-            String(spec?.preset?.promptPrefix || '').trim() +
-            '\n\n' +
-            policy
+          ...(promptPrefix
+            ? { promptPrefix }
+            : {})
         }
       };
     });

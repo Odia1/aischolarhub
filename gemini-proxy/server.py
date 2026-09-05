@@ -1,7 +1,9 @@
 import itertools
 import json
 import os
+import re
 import threading
+import time
 from typing import Optional
 
 import httpx
@@ -15,14 +17,39 @@ GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai"
 
 PROXY_API_KEY = os.environ["GEMINI_PROXY_API_KEY"]
 
-GEMINI_KEYS = [
-    os.environ["GEMINI_KEY_1"],
-    os.environ["GEMINI_KEY_2"],
-    os.environ["GEMINI_KEY_3"],
+_gemini_key_vars = sorted(
+    (
+        name
+        for name in os.environ
+        if re.fullmatch(r"GEMINI_KEY_[1-9]\d*", name)
+    ),
+    key=lambda name: int(name.rsplit("_", 1)[1]),
+)
+
+_gemini_key_numbers = [
+    int(name.rsplit("_", 1)[1])
+    for name in _gemini_key_vars
 ]
 
+if (
+    not _gemini_key_numbers
+    or _gemini_key_numbers
+    != list(range(1, max(_gemini_key_numbers) + 1))
+):
+    raise RuntimeError(
+        "GEMINI_KEY_n variables must be contiguous starting with GEMINI_KEY_1"
+    )
+
+GEMINI_KEYS = [
+    os.environ[name].strip()
+    for name in _gemini_key_vars
+]
+
+if not all(GEMINI_KEYS):
+    raise RuntimeError("Gemini API keys must not be empty")
+
 if len(set(GEMINI_KEYS)) != len(GEMINI_KEYS):
-    raise RuntimeError("GEMINI_KEY_1, GEMINI_KEY_2 and GEMINI_KEY_3 must be different")
+    raise RuntimeError("All GEMINI_KEY_n values must be different")
 
 key_cycle = itertools.cycle(range(len(GEMINI_KEYS)))
 cycle_lock = threading.Lock()
@@ -45,6 +72,46 @@ def ordered_key_indices():
     first = next_key_index()
     return [(first + offset) % len(GEMINI_KEYS)
             for offset in range(len(GEMINI_KEYS))]
+
+
+
+def google_error_fields(response):
+    """Extract only sanitized Gemini error metadata; never log keys or request content."""
+    if response.status_code < 400:
+        return "", ""
+
+    try:
+        payload = response.json()
+        error = payload.get("error", {}) if isinstance(payload, dict) else {}
+        status = str(error.get("status", "") or "")[:80]
+        message = " ".join(str(error.get("message", "") or "").split())[:500]
+        return status, message
+    except Exception:
+        try:
+            text = " ".join(response.text.split())[:500]
+            return "UNPARSED_UPSTREAM_ERROR", text
+        except Exception:
+            return "UNPARSED_UPSTREAM_ERROR", ""
+
+
+def log_provider_attempt(model, key_index, status, elapsed_ms, response=None):
+    google_status = ""
+    google_message = ""
+
+    if response is not None:
+        google_status, google_message = google_error_fields(response)
+
+    print(
+        "GEMINI PROVIDER ATTEMPT "
+        f"provider=gemini "
+        f"model={model or '-'} "
+        f"keySlot={key_index + 1} "
+        f"status={status} "
+        f"elapsedMs={elapsed_ms:.1f} "
+        f"googleStatus={google_status!r} "
+        f"googleMessage={google_message!r}",
+        flush=True,
+    )
 
 
 def authorized(auth_header: Optional[str]) -> bool:
@@ -84,6 +151,11 @@ async def models(authorization: Optional[str] = Header(default=None)):
                 "object": "model",
                 "owned_by": "google",
             },
+            {
+                "id": "gemini-3.8-flash",
+                "object": "model",
+                "owned_by": "google",
+            },
         ],
     }
 
@@ -111,6 +183,7 @@ async def chat_completions(
         raise HTTPException(status_code=400, detail="Invalid JSON")
 
     is_streaming = bool(request_json.get("stream", False))
+    model = str(request_json.get("model", "") or "")
 
     # Restore Gemini thought signatures that LibreChat/LangChain omitted.
     #
@@ -171,7 +244,10 @@ async def chat_completions(
                     body=body,
                     headers=headers,
                     key_index=key_index,
+                    model=model,
                 )
+
+            attempt_start = time.perf_counter()
 
             async with httpx.AsyncClient(timeout=None) as client:
                 response = await client.post(
@@ -179,6 +255,15 @@ async def chat_completions(
                     content=body,
                     headers=headers,
                 )
+
+            elapsed_ms = (time.perf_counter() - attempt_start) * 1000
+            log_provider_attempt(
+                model,
+                key_index,
+                response.status_code,
+                elapsed_ms,
+                response,
+            )
 
             last_response = response
 
@@ -213,7 +298,21 @@ async def chat_completions(
                 ),
             )
 
-        except httpx.RequestError:
+        except httpx.RequestError as exc:
+            elapsed_ms = (
+                (time.perf_counter() - attempt_start) * 1000
+                if "attempt_start" in locals()
+                else 0.0
+            )
+            print(
+                "GEMINI PROVIDER ATTEMPT "
+                f"provider=gemini model={model or '-'} "
+                f"keySlot={key_index + 1} "
+                f"status=REQUEST_ERROR "
+                f"elapsedMs={elapsed_ms:.1f} "
+                f"errorType={type(exc).__name__}",
+                flush=True,
+            )
             # Try another key if the upstream request itself failed.
             continue
 
@@ -233,7 +332,12 @@ async def chat_completions(
     )
 
 
-async def stream_request(body: bytes, headers: dict, key_index: int):
+async def stream_request(
+    body: bytes,
+    headers: dict,
+    key_index: int,
+    model: str,
+):
     """
     Streaming request.
 
@@ -245,6 +349,8 @@ async def stream_request(body: bytes, headers: dict, key_index: int):
     client = httpx.AsyncClient(timeout=None)
 
     try:
+        attempt_start = time.perf_counter()
+
         upstream = await client.send(
             client.build_request(
                 "POST",
@@ -255,21 +361,33 @@ async def stream_request(body: bytes, headers: dict, key_index: int):
             stream=True,
         )
 
+        elapsed_ms = (time.perf_counter() - attempt_start) * 1000
+
         if upstream.status_code in (429, 503):
+            await upstream.aread()
+            log_provider_attempt(
+                model,
+                key_index,
+                upstream.status_code,
+                elapsed_ms,
+                upstream,
+            )
             await upstream.aclose()
             await client.aclose()
 
-            # Try remaining keys before giving up.
-            for next_index in [
-                (key_index + 1) % len(GEMINI_KEYS),
-                (key_index + 2) % len(GEMINI_KEYS),
-            ]:
+            # Try every remaining key before giving up.
+            for offset in range(1, len(GEMINI_KEYS)):
+                next_index = (
+                    key_index + offset
+                ) % len(GEMINI_KEYS)
                 retry_client = httpx.AsyncClient(timeout=None)
 
                 retry_headers = {
                     "Authorization": f"Bearer {GEMINI_KEYS[next_index]}",
                     "Content-Type": "application/json",
                 }
+
+                retry_start = time.perf_counter()
 
                 retry_upstream = await retry_client.send(
                     retry_client.build_request(
@@ -281,7 +399,16 @@ async def stream_request(body: bytes, headers: dict, key_index: int):
                     stream=True,
                 )
 
+                retry_elapsed_ms = (time.perf_counter() - retry_start) * 1000
+
                 if retry_upstream.status_code < 400:
+                    log_provider_attempt(
+                        model,
+                        next_index,
+                        retry_upstream.status_code,
+                        retry_elapsed_ms,
+                        retry_upstream,
+                    )
                     return StreamingResponse(
                         stream_response(
                             retry_upstream,
@@ -290,6 +417,15 @@ async def stream_request(body: bytes, headers: dict, key_index: int):
                         status_code=retry_upstream.status_code,
                         media_type="text/event-stream",
                     )
+
+                await retry_upstream.aread()
+                log_provider_attempt(
+                    model,
+                    next_index,
+                    retry_upstream.status_code,
+                    retry_elapsed_ms,
+                    retry_upstream,
+                )
 
                 await retry_upstream.aclose()
                 await retry_client.aclose()
@@ -321,6 +457,14 @@ async def stream_request(body: bytes, headers: dict, key_index: int):
                 status_code=status,
                 media_type=content_type,
             )
+
+        log_provider_attempt(
+            model,
+            key_index,
+            upstream.status_code,
+            elapsed_ms,
+            upstream,
+        )
 
         return StreamingResponse(
             stream_response(upstream, client),

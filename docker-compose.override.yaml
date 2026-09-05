@@ -2,6 +2,12 @@ services:
   api:
     container_name: AI_Scholar_Hub
 
+    build:
+      context: ${PROJECT_DIR}
+      dockerfile: Dockerfile
+      args:
+        NODE_MAX_OLD_SPACE_SIZE: "3072"
+
     image: seeds.azurecr.io/aischolarhub-custom:dev-20260905-694ca486e-perf-c2
 
 
