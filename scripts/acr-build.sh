@@ -1,222 +1,258 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# ============================================================
+# AI SCHOLAR HUB
+# Clean ACR build + DEV API deployment
+#
+# IMPORTANT:
+#   - Builds committed Git HEAD only.
+#   - Never auto-commits source.
+#   - Never traverses runtime data directories.
+#   - Creates Git deployment tag only after successful deploy.
+#
+# Usage:
+#   ./scripts/acr-build.sh release-b
+#   ./scripts/acr-build.sh release-c
+#
+# Optional:
+#   ACR_REGISTRY=seeds
+#   ACR_IMAGE=aischolarhub-custom
+# ============================================================
+
 REGISTRY="${ACR_REGISTRY:-seeds}"
 IMAGE="${ACR_IMAGE:-aischolarhub-custom}"
-CTX="/tmp/aischolarhub-acr-context"
+RELEASE_LABEL="${1:-}"
 
-echo "============================================================"
-echo " AI SCHOLAR HUB - COMMIT + ACR BUILD + DEV DEPLOY"
-echo "============================================================"
-
-# ------------------------------------------------------------
-# 1. Commit current source changes, if any
-# ------------------------------------------------------------
-
-echo
-echo "===== 1. GIT SOURCE CHECKPOINT ====="
-
-if [ -n "$(git status --porcelain)" ]; then
-    git add -A
-
-    COMMIT_MESSAGE="${COMMIT_MESSAGE:-DEV automated build checkpoint $(date '+%Y-%m-%d %H:%M:%S')}"
-
-    git commit -m "$COMMIT_MESSAGE"
-    echo "Created Git commit."
-else
-    echo "Working tree already clean; using existing HEAD."
-fi
-
-SHORT_SHA="$(git rev-parse --short=9 HEAD)"
-BRANCH="$(git rev-parse --abbrev-ref HEAD)"
-STAMP="$(date +%Y%m%d-%H%M%S)"
-
-# Optional explicit tag argument still supported.
-TAG="${1:-dev-${STAMP}-${SHORT_SHA}}"
-
-FULL_IMAGE="${REGISTRY}.azurecr.io/${IMAGE}:${TAG}"
-
-echo
-echo "Branch: $BRANCH"
-echo "Commit: $SHORT_SHA"
-echo "Tag:    $TAG"
-echo "Image:  $FULL_IMAGE"
-
-
-# ------------------------------------------------------------
-# 2. Prevent accidental duplicate Git tag
-# ------------------------------------------------------------
-
-echo
-echo "===== 2. VERIFY TAG ====="
-
-if git rev-parse "$TAG" >/dev/null 2>&1; then
-    echo "ERROR: Git tag already exists: $TAG"
+if [[ -z "$RELEASE_LABEL" ]]; then
+    echo "Usage: $0 <release-label>"
+    echo "Example: $0 release-b"
     exit 1
 fi
 
-echo "Tag is available."
+# Docker/Git tag-safe label.
+RELEASE_LABEL="$(
+    printf '%s' "$RELEASE_LABEL" |
+    tr '[:upper:]' '[:lower:]' |
+    tr -cs 'a-z0-9._-' '-'
+)"
+RELEASE_LABEL="${RELEASE_LABEL#-}"
+RELEASE_LABEL="${RELEASE_LABEL%-}"
 
+if [[ -z "$RELEASE_LABEL" ]]; then
+    echo "ERROR: Invalid release label."
+    exit 1
+fi
 
-# ------------------------------------------------------------
-# 3. Prepare clean ACR build context
-# ------------------------------------------------------------
+ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || {
+    echo "ERROR: Not inside a Git repository."
+    exit 1
+}
 
-echo
-echo "===== 3. PREPARE CLEAN BUILD CONTEXT ====="
+cd "$ROOT"
 
-rm -rf "$CTX"
-mkdir -p "$CTX"
-
-rsync -a \
-  --delete \
-  --exclude='ollama_data/' \
-  --exclude='data-node/' \
-  --exclude='uploads/' \
-  --exclude='logs/' \
-  --exclude='checkpoints/' \
-  --exclude='.git/' \
-  --exclude='node_modules/' \
-  ./ "$CTX/"
-
-echo "Build context prepared."
-
+echo "============================================================"
+echo " AI SCHOLAR HUB - CLEAN ACR BUILD + DEV DEPLOY"
+echo "============================================================"
 
 # ------------------------------------------------------------
-# 4. Remote ACR build
+# 1. Validate source state
 # ------------------------------------------------------------
 
 echo
-echo "===== 4. ACR REMOTE BUILD ====="
+echo "===== 1. VERIFY SOURCE ====="
+
+if [[ -n "$(git status --porcelain)" ]]; then
+    echo "ERROR: Working tree is not clean."
+    echo
+    git status --short
+    echo
+    echo "Commit or discard changes before deployment."
+    exit 1
+fi
+
+BRANCH="$(git branch --show-current)"
+COMMIT="$(git rev-parse HEAD)"
+SHORT_SHA="$(git rev-parse --short=9 HEAD)"
+STAMP="$(date -u +%Y%m%d)"
+
+TAG="dev-${STAMP}-${SHORT_SHA}-${RELEASE_LABEL}"
+FULL_IMAGE="${REGISTRY}.azurecr.io/${IMAGE}:${TAG}"
+
+echo "Branch : $BRANCH"
+echo "Commit : $COMMIT"
+echo "Tag    : $TAG"
+echo "Image  : $FULL_IMAGE"
+
+if [[ ! -f Dockerfile ]]; then
+    echo "ERROR: Dockerfile not found at repository root."
+    exit 1
+fi
+
+if ! command -v az >/dev/null 2>&1; then
+    echo "ERROR: Azure CLI is not installed."
+    exit 1
+fi
+
+if ! az account show >/dev/null 2>&1; then
+    echo "ERROR: Azure CLI is not authenticated."
+    exit 1
+fi
+
+if git rev-parse "refs/tags/$TAG" >/dev/null 2>&1; then
+    echo "ERROR: Git deployment tag already exists: $TAG"
+    exit 1
+fi
+
+# ------------------------------------------------------------
+# 2. Create immutable clean build context
+# ------------------------------------------------------------
+
+echo
+echo "===== 2. PREPARE CLEAN BUILD CONTEXT ====="
+
+CTX="$(mktemp -d /tmp/aischolarhub-acr.XXXXXX)"
+
+cleanup() {
+    rm -rf "$CTX"
+}
+trap cleanup EXIT INT TERM
+
+# This is deliberately NOT rsync.
+# git archive exports only committed files in HEAD.
+git archive --format=tar HEAD | tar -xf - -C "$CTX"
+
+if [[ ! -f "$CTX/Dockerfile" ]]; then
+    echo "ERROR: Dockerfile is not present in committed HEAD."
+    exit 1
+fi
+
+echo "Context prepared from committed Git HEAD only:"
+du -sh "$CTX"
+
+# ------------------------------------------------------------
+# 3. Remote ACR build
+# ------------------------------------------------------------
+
+echo
+echo "===== 3. ACR REMOTE BUILD ====="
 
 az acr build \
-  --registry "$REGISTRY" \
-  --image "${IMAGE}:${TAG}" \
-  "$CTX"
-
+    --registry "$REGISTRY" \
+    --image "${IMAGE}:${TAG}" \
+    --file Dockerfile \
+    "$CTX"
 
 # ------------------------------------------------------------
-# 5. Authenticate local Docker to ACR
+# 4. Pull exact image
 # ------------------------------------------------------------
 
 echo
-echo "===== 5. ACR LOGIN ====="
+echo "===== 4. ACR LOGIN / PULL ====="
 
 az acr login --name "$REGISTRY"
-
-
-# ------------------------------------------------------------
-# 6. Pull exact built image
-# ------------------------------------------------------------
-
-echo
-echo "===== 6. PULL IMAGE ====="
-
 docker pull "$FULL_IMAGE"
 
-
 # ------------------------------------------------------------
-# 7. Update DEV Compose image
+# 5. Update DEV Compose API image
 # ------------------------------------------------------------
 
 echo
-echo "===== 7. UPDATE DEV COMPOSE ====="
+echo "===== 5. UPDATE DEV COMPOSE ====="
 
-python3 - "$FULL_IMAGE" <<'PY'
+python3 - "$FULL_IMAGE" <<'PY2'
 from pathlib import Path
 import re
 import sys
 
 image = sys.argv[1]
 p = Path("docker-compose.override.yaml")
+
+if not p.exists():
+    raise SystemExit("ERROR: docker-compose.override.yaml not found")
+
 s = p.read_text()
 
-pattern = r'(?m)^(\s*image:\s*)(?:seeds\.azurecr\.io/)?aischolarhub-custom:[^\s]+'
+pattern = (
+    r'(?m)^(\s*image:\s*)'
+    r'(?:seeds\.azurecr\.io/)?aischolarhub-custom:[^\s]+'
+)
 
-match = re.search(pattern, s)
+matches = list(re.finditer(pattern, s))
 
-if not match:
+if len(matches) != 1:
     raise SystemExit(
-        "ERROR: Could not locate the API aischolarhub-custom image line"
+        f"ERROR: Expected exactly one aischolarhub-custom image line; "
+        f"found {len(matches)}"
     )
 
-replacement = match.group(1) + image
-s = s[:match.start()] + replacement + s[match.end():]
+m = matches[0]
+s = s[:m.start()] + m.group(1) + image + s[m.end():]
 
 p.write_text(s)
 
 print("Compose API image set to:")
 print(image)
-PY
+PY2
 
 grep -n 'image:.*aischolarhub-custom' docker-compose.override.yaml
 
-
 # ------------------------------------------------------------
-# 8. Recreate API only
+# 6. Recreate API only
 # ------------------------------------------------------------
 
 echo
-echo "===== 8. RECREATE API ONLY ====="
+echo "===== 6. RECREATE API ====="
 
 docker compose up -d --no-deps --force-recreate api
 
-
 # ------------------------------------------------------------
-# 9. Verify container/image
+# 7. Verify exact image
 # ------------------------------------------------------------
 
 echo
-echo "===== 9. VERIFY CONTAINER ====="
-
-docker compose ps api
+echo "===== 7. VERIFY DEPLOYED IMAGE ====="
 
 RUNNING_IMAGE="$(
-  docker inspect AI_Scholar_Hub --format '{{.Config.Image}}'
+    docker inspect AI_Scholar_Hub \
+        --format '{{.Config.Image}}' 2>/dev/null || true
 )"
 
-echo "Running image: $RUNNING_IMAGE"
+echo "Expected: $FULL_IMAGE"
+echo "Running : $RUNNING_IMAGE"
 
-if [ "$RUNNING_IMAGE" != "$FULL_IMAGE" ]; then
-    echo "ERROR: Running image does not match requested deployment."
-    echo "Expected: $FULL_IMAGE"
-    echo "Actual:   $RUNNING_IMAGE"
+if [[ "$RUNNING_IMAGE" != "$FULL_IMAGE" ]]; then
+    echo "ERROR: Deployed image does not match requested image."
     exit 1
 fi
 
-
 # ------------------------------------------------------------
-# 10. Readiness check
+# 8. Wait for API readiness
 # ------------------------------------------------------------
 
 echo
-echo "===== 10. VERIFY STARTUP ====="
+echo "===== 8. VERIFY API READINESS ====="
 
 READY=0
 
-for attempt in $(seq 1 30); do
+for attempt in $(seq 1 45); do
     STATUS="$(
-      docker inspect AI_Scholar_Hub \
-        --format '{{.State.Status}}' 2>/dev/null || true
+        docker inspect AI_Scholar_Hub \
+            --format '{{.State.Status}}' 2>/dev/null || true
     )"
 
-    if [ "$STATUS" != "running" ]; then
-        echo "Attempt $attempt: container status=$STATUS"
-        sleep 2
-        continue
-    fi
-
-    if docker logs --since 5m AI_Scholar_Hub 2>&1 | \
-       grep -q 'Server readiness checks passing'; then
+    if [[ "$STATUS" == "running" ]] &&
+       docker logs --since 5m AI_Scholar_Hub 2>&1 |
+           grep -q 'Server readiness checks passing'; then
         READY=1
         break
     fi
 
-    echo "Attempt $attempt: waiting for readiness..."
+    echo "Attempt $attempt: status=${STATUS:-unknown}; waiting..."
     sleep 2
 done
 
-if [ "$READY" -ne 1 ]; then
+if [[ "$READY" -ne 1 ]]; then
     echo
     echo "ERROR: API did not become ready."
     echo
@@ -227,40 +263,38 @@ fi
 
 echo "API readiness confirmed."
 
-
 # ------------------------------------------------------------
-# 11. Create matching Git deployment tag
+# 9. Record successful deployment
 # ------------------------------------------------------------
 
 echo
-echo "===== 11. CREATE GIT DEPLOYMENT TAG ====="
+echo "===== 9. CREATE DEPLOYMENT TAG ====="
 
 git tag -a "$TAG" \
-  -m "AI Scholar Hub DEV deployment
+    -m "AI Scholar Hub DEV deployment
+
 Image: $FULL_IMAGE
 Branch: $BRANCH
-Commit: $(git rev-parse HEAD)"
+Commit: $COMMIT"
 
 echo "Created Git tag: $TAG"
 
-
 # ------------------------------------------------------------
-# 12. Final verification
+# 10. Final record
 # ------------------------------------------------------------
 
 echo
-echo "===== 12. FINAL DEPLOYMENT RECORD ====="
-
+echo "============================================================"
+echo " DEPLOYMENT SUCCESSFUL"
+echo "============================================================"
 echo "Git branch : $BRANCH"
-echo "Git commit : $(git rev-parse HEAD)"
+echo "Git commit : $COMMIT"
 echo "Git tag    : $TAG"
 echo "ACR image  : $FULL_IMAGE"
 echo
 
-docker inspect AI_Scholar_Hub \
-  --format 'Container={{.Name}} Image={{.Config.Image}} ID={{.Image}} Status={{.State.Status}}'
+docker compose ps api
 
 echo
-echo "============================================================"
-echo " DEV DEPLOYMENT SUCCESSFUL"
-echo "============================================================"
+echo "To push the deployment tag to the remote repository:"
+echo "  git push origin \"$TAG\""

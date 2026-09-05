@@ -550,7 +550,7 @@ async def query_embeddings_by_file_id(
 
     try:
         user = getattr(request.state, "user", {}) or {}
-legacy_ids, rag_ids = await partition_file_access(
+        legacy_ids, rag_ids = await partition_file_access(
             str(user.get("id") or ""),
             str(user.get("tenantId") or ""),
             [body.file_id],
