@@ -95,17 +95,22 @@ mkdir -p "$CHECKPOINT_DIR"
 echo
 echo "===== DATABASE CHECKPOINT ====="
 if docker compose ps --services --status running | grep -qx mongodb; then
-  docker exec chat-mongodb sh -lc '
-    test -n "$MONGO_INITDB_ROOT_USERNAME"
-    test -n "$MONGO_INITDB_ROOT_PASSWORD"
+  MONGO_URI="$(docker exec AI_Scholar_Hub printenv MONGO_URI)"
 
-    mongodump \
-      --username "$MONGO_INITDB_ROOT_USERNAME" \
-      --password "$MONGO_INITDB_ROOT_PASSWORD" \
-      --authenticationDatabase admin \
-      --archive="/tmp/checkpoint.archive" \
-      --gzip
-  ' >/dev/null
+  if [[ -z "${MONGO_URI}" ]]; then
+    echo "FAIL: API container does not provide MONGO_URI"
+    exit 1
+  fi
+
+  docker exec \
+    -e MONGO_URI="${MONGO_URI}" \
+    chat-mongodb sh -lc '
+      mongodump \
+        --uri "${MONGO_URI}" \
+        --archive=/tmp/checkpoint.archive \
+        --gzip >/dev/null
+      test -s /tmp/checkpoint.archive
+    '
 
   docker cp \
     "chat-mongodb:/tmp/checkpoint.archive" \
@@ -117,6 +122,8 @@ if docker compose ps --services --status running | grep -qx mongodb; then
 
   sha256sum "$CHECKPOINT_DIR/mongodb.archive" \
     > "$CHECKPOINT_DIR/mongodb.archive.sha256"
+
+  unset MONGO_URI
 
   echo "PASS: MongoDB"
 else
