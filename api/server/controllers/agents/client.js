@@ -3405,11 +3405,37 @@ class AgentClient extends BaseClient {
           provider: this.options.agent?.provider,
           hasYouTubeVideo: this.injectedYouTubeVideo,
         });
+
+        const providerStatus = Number(
+          err?.status ??
+          err?.statusCode ??
+          err?.response?.status
+        );
+
+        const errorText = String(err?.message || '');
+
+        const isRateLimited =
+          providerStatus === 429 ||
+          /(?:^|\D)429(?:\D|$)|MODEL_RATE_LIMIT|rate.?limit/i.test(errorText);
+
+        const isTemporarilyUnavailable =
+          providerStatus === 503 ||
+          /(?:^|\D)503(?:\D|$)|service unavailable/i.test(errorText);
+
+        let userError =
+          'The AI service encountered a temporary problem. Please try again.';
+
+        if (isRateLimited) {
+          userError =
+            'The AI service is temporarily busy. Please try again in a moment.';
+        } else if (isTemporarilyUnavailable) {
+          userError =
+            'The AI service is temporarily unavailable. Please try again shortly.';
+        }
+
         this.contentParts.push({
           type: ContentTypes.ERROR,
-          [ContentTypes.ERROR]:
-            videoError ??
-            `An error occurred while processing the request${err?.message ? `: ${err.message}` : ''}`,
+          [ContentTypes.ERROR]: videoError ?? userError,
         });
       }
     } finally {

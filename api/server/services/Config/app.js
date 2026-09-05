@@ -353,7 +353,11 @@ async function applyAcademicIntelligence(appConfig, options = {}) {
 
 async function getAppConfig(options = {}) {
   const policyStart = process.hrtime.bigint();
+
+  const baseConfigStart = process.hrtime.bigint();
   let config = await getBaseAppConfig(options);
+  const baseConfigMs =
+    Number(process.hrtime.bigint() - baseConfigStart) / 1_000_000;
 
   try {
     const entitlementStart = process.hrtime.bigint();
@@ -381,7 +385,7 @@ async function getAppConfig(options = {}) {
 
     if (totalMs >= 25) {
       logger.info(
-        `[PERF] component=config-policy tenant=${String(options?.tenantId || '')} role=${String(options?.role || '')} entitlementMs=${entitlementMs.toFixed(1)} academicMs=${academicMs.toFixed(1)} totalMs=${totalMs.toFixed(1)}`
+        `[PERF] component=config-policy tenant=${String(options?.tenantId || '')} role=${String(options?.role || '')} baseConfigMs=${baseConfigMs.toFixed(1)} entitlementMs=${entitlementMs.toFixed(1)} academicMs=${academicMs.toFixed(1)} totalMs=${totalMs.toFixed(1)}`
       );
     }
 
