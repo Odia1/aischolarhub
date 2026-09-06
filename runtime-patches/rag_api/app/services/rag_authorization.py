@@ -2,7 +2,6 @@ import asyncio
 import time
 from typing import Iterable, List, Set, Tuple
 
-from bson import ObjectId
 from pymongo import MongoClient
 
 from app.config import ATLAS_MONGO_DB_URI, logger
@@ -17,6 +16,7 @@ _MONGO_CLIENT = MongoClient(
     connect=False,
     serverSelectionTimeoutMS=3000,
 )
+
 _MONGO_DB = _MONGO_CLIENT.get_default_database()
 
 
@@ -28,235 +28,110 @@ def _strings(values: Iterable) -> Set[str]:
     }
 
 
-def _oid(value):
-    try:
-        return ObjectId(str(value))
-    except Exception:
-        return None
-
-
 def _partition_sync(
     user_id: str,
     tenant_id: str,
     requested_file_ids: List[str],
+    authorized_file_ids: List[str],
 ) -> Tuple[List[str], List[str]]:
-    requested = list(dict.fromkeys(
-        str(x).strip() for x in requested_file_ids if str(x).strip()
-    ))
+    """
+    Partition requested files into two deliberately simple classes.
+
+    personal_ids
+        Files without an institutional knowledgeScope.
+
+        These remain protected by the existing vector-store owner predicate:
+            tenant + authenticated owner + file_id
+
+        This includes normal user uploads and existing agent knowledge-base
+        files. No institutional hierarchy is reconstructed here.
+
+    institutional_ids
+        Files carrying knowledgeScope.
+
+        These are returned ONLY when the file_id is also present in the
+        signed authorizedFileIds claim issued by the trusted AI Scholar Hub
+        backend.
+
+    SECURITY MODEL
+    --------------
+    The RAG service does not know what an institution, department, course,
+    class, or organizational group means.
+
+    AI Scholar Hub owns that authorization decision.
+
+    The RAG service merely verifies/enforces the resulting signed file
+    authorization before vector ranking.
+
+    This prevents authorization-policy drift between Node and Python and
+    removes the obsolete parallel ragGroups hierarchy.
+    """
+
+    requested = list(
+        dict.fromkeys(
+            str(x).strip()
+            for x in requested_file_ids
+            if str(x).strip()
+        )
+    )
 
     if not requested or not user_id or not tenant_id:
         return [], []
+
+    authorized = _strings(authorized_file_ids)
 
     started = time.perf_counter()
     db = _MONGO_DB
 
     try:
         files = db["files"]
-        rag_groups = db["ragGroups"]
-        groups = db["groups"]
-        group_courses = db["group_courses"]
-        group_departments = db["group_departments"]
-        course_instructors = db["course_instructors"]
 
-        # Files must belong to the tenant from the verified JWT.
-        file_docs = list(files.find(
-            {
-                "tenantId": tenant_id,
-                "file_id": {"$in": requested},
-            },
-            {
-                "_id": 0,
-                "file_id": 1,
-                "ragGroupIds": 1,
-            },
-        ))
-
-        legacy_ids: List[str] = []
-        candidate_files = []
-
-        for f in file_docs:
-            fid = str(f.get("file_id") or "")
-            rag_ids = _strings(f.get("ragGroupIds"))
-
-            if not rag_ids:
-                # Legacy/personal RAG remains owner-authorized later by
-                # ScopeFilter.predicate().
-                legacy_ids.append(fid)
-            else:
-                candidate_files.append((fid, rag_ids))
-
-        if not candidate_files:
-            return legacy_ids, []
-
-        # --------------------------------------------------------
-        # Determine organizational scope for this user.
-        # --------------------------------------------------------
-
-        direct_group_ids: Set[str] = set()
-
-        for g in groups.find(
-            {
-                "tenantId": tenant_id,
-                "memberIds": user_id,
-            },
-            {
-                "_id": 1,
-                "parentGroupId": 1,
-            },
-        ):
-            direct_group_ids.add(str(g["_id"]))
-
-        # Include ancestor groups so membership in a class/subgroup can
-        # satisfy a RAG Group granted to a parent organizational group.
-        effective_group_ids = set(direct_group_ids)
-        frontier = set(direct_group_ids)
-
-        while frontier:
-            object_ids = [_oid(x) for x in frontier]
-            object_ids = [x for x in object_ids if x is not None]
-
-            if not object_ids:
-                break
-
-            next_frontier: Set[str] = set()
-
-            for g in groups.find(
+        # Tenant always comes from the verified JWT.
+        #
+        # We inspect only enough metadata to determine whether a file is
+        # personal/legacy or institutionally scoped. No hierarchy or access
+        # policy is evaluated in this service.
+        file_docs = list(
+            files.find(
                 {
                     "tenantId": tenant_id,
-                    "_id": {"$in": object_ids},
+                    "file_id": {"$in": requested},
                 },
                 {
-                    "parentGroupId": 1,
+                    "_id": 0,
+                    "file_id": 1,
+                    "knowledgeScope": 1,
                 },
-            ):
-                parent = g.get("parentGroupId")
-                if parent:
-                    parent_s = str(parent)
-                    if parent_s not in effective_group_ids:
-                        effective_group_ids.add(parent_s)
-                        next_frontier.add(parent_s)
+            )
+        )
 
-            frontier = next_frontier
+        personal_ids: List[str] = []
+        institutional_ids: List[str] = []
 
-        course_ids: Set[str] = set()
-        department_ids: Set[str] = set()
+        for file_doc in file_docs:
+            file_id = str(file_doc.get("file_id") or "").strip()
+            if not file_id:
+                continue
 
-        if effective_group_ids:
-            group_oid_values = [_oid(x) for x in effective_group_ids]
-            group_oid_values = [x for x in group_oid_values if x is not None]
+            knowledge_scope = file_doc.get("knowledgeScope")
 
-            group_match_values = list(effective_group_ids) + group_oid_values
+            if not knowledge_scope:
+                # Existing uploads remain owner-scoped by ScopeFilter.
+                personal_ids.append(file_id)
+                continue
 
-            for row in group_courses.find(
-                {
-                    "tenantId": tenant_id,
-                    "groupId": {"$in": group_match_values},
-                },
-                {"courseId": 1},
-            ):
-                if row.get("courseId") is not None:
-                    course_ids.add(str(row["courseId"]))
+            # Institutional knowledge requires explicit signed authorization.
+            if file_id in authorized:
+                institutional_ids.append(file_id)
 
-            for row in group_departments.find(
-                {
-                    "tenantId": tenant_id,
-                    "groupId": {"$in": group_match_values},
-                },
-                {"departmentId": 1},
-            ):
-                if row.get("departmentId") is not None:
-                    department_ids.add(str(row["departmentId"]))
-
-        # Instructor/course relationship is another legitimate course scope.
-        for row in course_instructors.find(
-            {
-                "tenantId": tenant_id,
-                "userId": user_id,
-            },
-            {"courseId": 1},
-        ):
-            if row.get("courseId") is not None:
-                course_ids.add(str(row["courseId"]))
-
-        # --------------------------------------------------------
-        # Determine enabled RAG Groups visible to the user.
-        # --------------------------------------------------------
-
-        candidate_rag_group_ids = set()
-
-        for _, file_rag_ids in candidate_files:
-            candidate_rag_group_ids.update(file_rag_ids)
-
-        candidate_oids = [_oid(x) for x in candidate_rag_group_ids]
-        candidate_oids = [x for x in candidate_oids if x is not None]
-
-        authorized_rag_group_ids: Set[str] = set()
-
-        if candidate_oids:
-            for rg in rag_groups.find(
-                {
-                    "_id": {"$in": candidate_oids},
-                    "tenantId": tenant_id,
-                    "enabled": {"$ne": False},
-                },
-                {
-                    "_id": 1,
-                    "accessMode": 1,
-                    "groupIds": 1,
-                    "departmentIds": 1,
-                    "courseIds": 1,
-                    "userIds": 1,
-                },
-            ):
-                rg_id = str(rg["_id"])
-                mode = str(rg.get("accessMode") or "GROUP_ONLY").upper()
-
-                rg_users = _strings(rg.get("userIds"))
-                rg_groups = _strings(rg.get("groupIds"))
-                rg_courses = _strings(rg.get("courseIds"))
-                rg_departments = _strings(rg.get("departmentIds"))
-
-                direct_user_match = user_id in rg_users
-                group_match = bool(rg_groups & effective_group_ids)
-                course_match = bool(rg_courses & course_ids)
-                department_match = bool(rg_departments & department_ids)
-
-                allowed = False
-
-                if mode == "SELECTED_USERS":
-                    allowed = direct_user_match
-                elif mode in {
-                    "GROUP_ONLY",
-                    "GROUP_AND_DESCENDANTS",
-                    "SELECTED_GROUPS",
-                }:
-                    allowed = (
-                        direct_user_match
-                        or group_match
-                        or course_match
-                        or department_match
-                    )
-                else:
-                    # Unknown future mode: fail closed except for an explicit
-                    # direct user grant.
-                    allowed = direct_user_match
-
-                if allowed:
-                    authorized_rag_group_ids.add(rg_id)
-
-        rag_ids: List[str] = []
-
-        for fid, file_rag_ids in candidate_files:
-            if file_rag_ids & authorized_rag_group_ids:
-                rag_ids.append(fid)
-
-        return legacy_ids, rag_ids
+        return personal_ids, institutional_ids
 
     finally:
         duration_ms = (time.perf_counter() - started) * 1000
+
         if duration_ms >= 25:
             logger.info(
-                "[PERF] component=rag-authorization "
+                "[PERF] component=knowledge-authorization "
                 "tenant=%s requestedFiles=%d durationMs=%.1f",
                 tenant_id,
                 len(requested),
@@ -268,21 +143,26 @@ async def partition_file_access(
     user_id: str,
     tenant_id: str,
     requested_file_ids: List[str],
+    authorized_file_ids: List[str] = None,
 ) -> Tuple[List[str], List[str]]:
     """
-    Partition requested files into:
+    Return:
 
-      legacy_ids:
-          Personal/legacy files. Callers must still apply owner scope.
+      personal_ids
+          Files that still require the authenticated owner predicate.
 
-      rag_ids:
-          Files assigned to at least one enabled same-tenant RAG Group
-          authorized for this user. Ownership must not be re-applied, but
-          tenant scope must remain enforced.
+      institutional_ids
+          Institutionally scoped files explicitly authorized by the signed
+          authorizedFileIds JWT claim.
+
+    The function intentionally contains no institution/group/course/RAG
+    hierarchy logic.
     """
+
     return await asyncio.to_thread(
         _partition_sync,
         str(user_id or ""),
         str(tenant_id or ""),
         list(requested_file_ids or []),
+        list(authorized_file_ids or []),
     )

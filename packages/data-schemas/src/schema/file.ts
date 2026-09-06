@@ -3,6 +3,23 @@ import { FileContext, FileSources } from 'librechat-data-provider';
 import type { IMongoFile } from '~/types';
 import { codeEnvRefMapSchema, codeEnvRefSchema } from './codeEnvRef';
 
+const knowledgeScopeSchema = new Schema(
+  {
+    type: {
+      type: String,
+      enum: ['INSTITUTION', 'DEPARTMENT', 'COURSE', 'GROUP'],
+      required: true,
+    },
+    targetId: {
+      type: String,
+      required: true,
+    },
+  },
+  {
+    _id: false,
+  },
+);
+
 const file: Schema<IMongoFile> = new Schema(
   {
     user: {
@@ -153,6 +170,17 @@ const file: Schema<IMongoFile> = new Schema(
     tenantId: {
       type: String,
       index: true,
+    },
+
+    /**
+     * Institutional placement for shared academic knowledge.
+     *
+     * Ordinary uploads intentionally omit this field and remain protected by
+     * their existing owner (`user`) plus tenant boundary.
+     */
+    knowledgeScope: {
+      type: knowledgeScopeSchema,
+      default: undefined,
     },
     expiredAt: {
       /* Retention deadline for persisted files. The file sweep deletes the

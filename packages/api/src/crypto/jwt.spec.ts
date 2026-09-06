@@ -39,6 +39,29 @@ describe('agent trigger identity', () => {
     expect(isAgentTriggerRequest(request('invalid'))).toBe(false);
   });
 
+  it('signs institutional file authorization without changing caller identity', () => {
+    const token = generateShortLivedToken(
+      'user-1',
+      '5m',
+      'SEEDS',
+      {
+        authorizedFileIds: ['file-a', 'file-b', 'file-a'],
+      },
+    );
+
+    const payload = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString()) as {
+      id: string;
+      tenantId: string;
+      authorizedFileIds: string[];
+    };
+
+    expect(payload).toMatchObject({
+      id: 'user-1',
+      tenantId: 'SEEDS',
+      authorizedFileIds: ['file-a', 'file-b'],
+    });
+  });
+
   it('uses the dedicated trigger scope without changing ordinary tokens', () => {
     const trigger = generateAgentTriggerToken('user-1');
     const payload = JSON.parse(Buffer.from(trigger.split('.')[1], 'base64url').toString()) as {

@@ -1,6 +1,17 @@
 import { Document, Types } from 'mongoose';
 import type { CodeEnvRef, CodeEnvRefMap } from 'librechat-data-provider';
 
+export type KnowledgeScopeType =
+  | 'INSTITUTION'
+  | 'DEPARTMENT'
+  | 'COURSE'
+  | 'GROUP';
+
+export interface KnowledgeScope {
+  type: KnowledgeScopeType;
+  targetId: string;
+}
+
 export interface IMongoFile extends Omit<Document, 'model'> {
   user: Types.ObjectId;
   conversationId?: string;
@@ -79,4 +90,12 @@ export interface IMongoFile extends Omit<Document, 'model'> {
   createdAt?: Date;
   updatedAt?: Date;
   tenantId?: string;
+  /**
+   * Natural institutional location of shared academic knowledge.
+   *
+   * Absence means this is an ordinary owner-scoped file. PERSONAL is therefore
+   * represented by the existing `user` ownership field rather than by a second
+   * parallel scope system.
+   */
+  knowledgeScope?: KnowledgeScope;
 }

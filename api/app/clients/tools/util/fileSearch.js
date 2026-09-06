@@ -5,6 +5,9 @@ const { generateShortLivedToken, logAxiosError } = require('@librechat/api');
 const { Tools, EToolResources } = require('librechat-data-provider');
 const { filterFilesByAgentAccess } = require('~/server/services/Files/permissions');
 const { getFiles } = require('~/models');
+const {
+  resolveAuthorizedKnowledgeFiles,
+} = require('~/server/services/AcademicIntelligence/knowledgeScope');
 
 const fileSearchJsonSchema = {
   type: 'object',
@@ -31,7 +34,13 @@ const fileSearchJsonSchema = {
  * }>}
  */
 const primeFiles = async (options) => {
-  const { tool_resources, req, agentId, agentResourceType } = options;
+  const {
+    tool_resources,
+    req,
+    agentId,
+    agentResourceType,
+    academicAgentId,
+  } = options;
   const file_ids = tool_resources?.[EToolResources.file_search]?.file_ids ?? [];
   const agentResourceIds = new Set(file_ids);
   const resourceFiles = tool_resources?.[EToolResources.file_search]?.files ?? [];
@@ -55,6 +64,72 @@ const primeFiles = async (options) => {
 
   dbFiles = dbFiles.concat(resourceFiles);
 
+  let authorizedFileIds = [];
+
+  /*
+   * COURSE_KNOWLEDGE is the only hierarchy-aware file-search path.
+   *
+   * The authoritative resolver determines which institutional hierarchy
+   * locations the authenticated user may access, then maps those locations
+   * to Mongo file metadata carrying knowledgeScope.
+   *
+   * Other agents retain ordinary LibreChat file-search behavior.
+   */
+  if (
+    academicAgentId === 'COURSE_KNOWLEDGE' &&
+    req?.user?.id &&
+    req?.user?.tenantId
+  ) {
+    const knowledge = await resolveAuthorizedKnowledgeFiles({
+      tenantId: req.user.tenantId,
+      userId: req.user.id,
+      role: req.user.role,
+      agentId: 'COURSE_KNOWLEDGE',
+
+      /*
+       * No active academic group is currently transported through the
+       * LibreChat tool path. Null means the user's complete authorized
+       * hierarchy. A future activeGroupId may narrow this, never expand it.
+       */
+      activeGroupId: null,
+    });
+
+    const institutionalFiles = knowledge.files.map((file) => ({
+      ...file,
+
+      /*
+       * These are not LibreChat agent-owned knowledge-base files.
+       * Their authority comes from the signed authorizedFileIds claim,
+       * so they must not receive caller-asserted entity_id.
+       */
+      fromAgent: false,
+      fromInstitutionalKnowledge: true,
+    }));
+
+    authorizedFileIds = institutionalFiles.map(
+      (file) => file.file_id,
+    );
+
+    /*
+     * Merge without duplicating an already attached/resource file.
+     */
+    const seen = new Set(
+      dbFiles
+        .filter(Boolean)
+        .map((file) => String(file.file_id || ''))
+        .filter(Boolean),
+    );
+
+    for (const file of institutionalFiles) {
+      if (seen.has(file.file_id)) {
+        continue;
+      }
+
+      dbFiles.push(file);
+      seen.add(file.file_id);
+    }
+  }
+
   let toolContext = `- Note: Semantic search is available through the ${Tools.file_search} tool but no files are currently loaded. Request the user to upload documents to search through.`;
 
   const files = [];
@@ -73,10 +148,12 @@ const primeFiles = async (options) => {
       file_id: file.file_id,
       filename: file.filename,
       fromAgent: agentResourceIds.has(file.file_id),
+      fromInstitutionalKnowledge:
+        file.fromInstitutionalKnowledge === true,
     });
   }
 
-  return { files, toolContext };
+  return { files, toolContext, authorizedFileIds };
 };
 
 /**
@@ -88,13 +165,35 @@ const primeFiles = async (options) => {
  * @param {boolean} [options.fileCitations=false] - Whether to include citation instructions
  * @returns
  */
-const createFileSearchTool = async ({ userId, tenantId, files, entity_id, fileCitations = false }) => {
+const createFileSearchTool = async ({
+  userId,
+  tenantId,
+  files,
+  entity_id,
+  fileCitations = false,
+  authorizedFileIds = [],
+}) => {
   return tool(
     async ({ query }) => {
       if (files.length === 0) {
         return ['No files to search. Instruct the user to add files for the search.', undefined];
       }
-      const jwtToken = generateShortLivedToken(userId, '5m', tenantId);
+      /*
+       * Ordinary LibreChat file search keeps the existing five-minute token.
+       *
+       * Hierarchy-authorized institutional knowledge uses a one-minute token.
+       * The authorization itself is recomputed from Mongo before these file
+       * IDs are signed, so this short lifetime bounds the residual revocation
+       * window of an already-issued institutional credential.
+       */
+      const jwtToken = generateShortLivedToken(
+        userId,
+        authorizedFileIds.length ? '1m' : '5m',
+        tenantId,
+        authorizedFileIds.length
+          ? { authorizedFileIds }
+          : {},
+      );
       if (!jwtToken) {
         return ['There was an error authenticating the file search request.', undefined];
       }

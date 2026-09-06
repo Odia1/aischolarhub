@@ -13,15 +13,31 @@ type AgentTriggerRequest = {
  * @param {String} [expireIn='5m'] - The expiration time for the token.
  * @returns {String} - The generated JWT token.
  */
+export type ShortLivedTokenClaims = {
+  /**
+   * Institutional file IDs authorized upstream by AI Scholar Hub.
+   *
+   * This claim is deliberately narrow: it transports an authorization result;
+   * it does not transport or reconstruct the institution hierarchy itself.
+   */
+  authorizedFileIds?: string[];
+};
+
 export const generateShortLivedToken = (
   userId: string,
   expireIn: string = '5m',
   tenantId?: string,
+  claims: ShortLivedTokenClaims = {},
 ): string => {
+  const authorizedFileIds = Array.isArray(claims.authorizedFileIds)
+    ? [...new Set(claims.authorizedFileIds.map(String).filter(Boolean))]
+    : [];
+
   return jwt.sign(
     {
       id: userId,
       ...(tenantId ? { tenantId } : {}),
+      ...(authorizedFileIds.length ? { authorizedFileIds } : {}),
     },
     process.env.JWT_SECRET!,
     {

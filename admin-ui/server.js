@@ -26,7 +26,19 @@ const aiProviders = db.collection("aiProviders");
 const aiModels = db.collection("aiModels");
 const modelEntitlements = db.collection("modelEntitlements");
 const academicAgents = db.collection("academicAgents");
+const academicIntegrityPolicies = db.collection("academicIntegrityPolicies");
 const learnerStates = db.collection("learnerStates");
+
+/*
+ * learnerGuidanceProfiles:
+ *   persistent, user-correctable context used for education/career guidance.
+ *
+ * Keep this separate from learnerStates:
+ *   learnerStates            -> pedagogical/mastery state
+ *   learnerGuidanceProfiles  -> interests, preferences and practical constraints
+ */
+const learnerGuidanceProfiles =
+  db.collection("learnerGuidanceProfiles");
 
 /*
  * Persona routing is intentionally separate from model entitlement.
@@ -51,6 +63,31 @@ const MODEL_COST_TIERS = new Set([
   "ADVANCED"
 ]);
 
+const ACADEMIC_AGENT_TYPES = new Set([
+  "MODE",
+  "AGENT"
+]);
+
+const ACADEMIC_AUDIENCES = new Set([
+  "COLLEGE_FACULTY",
+  "RESEARCHER",
+  "UNDERGRADUATE",
+  "SCHOOL_TEACHER",
+  "SCHOOL_STUDENT"
+]);
+
+const ACADEMIC_AGENT_VISIBILITIES = new Set([
+  "INSTITUTION",
+  "PRIVATE"
+]);
+
+const RESEARCH_MATURITY_LEVELS = new Set([
+  "NOVICE",
+  "DEVELOPING",
+  "INDEPENDENT",
+  "ADVANCED"
+]);
+
 await Promise.all([
   aiProviders.createIndex({ key: 1 }, { unique: true }),
   aiModels.createIndex({ providerKey: 1, model: 1 }, { unique: true }),
@@ -65,10 +102,36 @@ await Promise.all([
     { unique: true }
   ),
   academicAgents.createIndex({ tenantId: 1, enabled: 1 }),
+  academicAgents.createIndex({
+    tenantId: 1,
+    agentType: 1,
+    enabled: 1
+  }),
+
+  academicIntegrityPolicies.createIndex(
+    { tenantId: 1, policyId: 1, version: 1 },
+    { unique: true }
+  ),
+  academicIntegrityPolicies.createIndex({
+    tenantId: 1,
+    policyId: 1,
+    enabled: 1,
+    version: -1
+  }),
+
   learnerStates.createIndex(
     { tenantId: 1, userId: 1 },
     { unique: true }
   ),
+
+  learnerGuidanceProfiles.createIndex(
+    { tenantId: 1, userId: 1 },
+    { unique: true }
+  ),
+  learnerGuidanceProfiles.createIndex({
+    tenantId: 1,
+    updatedAt: -1
+  }),
 
   personaModelRoutes.createIndex(
     { tenantId: 1, personaId: 1, routeId: 1 },
@@ -341,6 +404,128 @@ async function resolveAcademicTenant(req, requestedTenantId) {
   return await institutionExists(tenantId) ? tenantId : null;
 }
 
+function normalizeAcademicAgentType(value, fallback = "AGENT") {
+  const v = String(value || fallback).trim().toUpperCase();
+
+  if (!ACADEMIC_AGENT_TYPES.has(v))
+    throw new Error("Academic Agent type must be MODE or AGENT");
+
+  return v;
+}
+
+
+function normalizeAcademicAudiences(values) {
+  const out = cleanStringList(values)
+    .map(v => v.toUpperCase());
+
+  for (const value of out) {
+    if (!ACADEMIC_AUDIENCES.has(value))
+      throw new Error(`Unsupported Academic Agent audience: ${value}`);
+  }
+
+  return out;
+}
+
+
+function normalizeAcademicVisibility(value, fallback = "INSTITUTION") {
+  const v = String(value || fallback).trim().toUpperCase();
+
+  if (!ACADEMIC_AGENT_VISIBILITIES.has(v))
+    throw new Error(
+      "Academic Agent visibility must be INSTITUTION or PRIVATE"
+    );
+
+  return v;
+}
+
+
+function normalizeAcademicTools(values) {
+  return cleanStringList(values)
+    .map(v => v.slice(0, 200))
+    .slice(0, 100);
+}
+
+
+function normalizeAcademicMcpServers(values) {
+  return cleanStringList(values)
+    .map(v => v.slice(0, 200))
+    .slice(0, 50);
+}
+
+
+function normalizeAcademicWorkflow(value) {
+  const input =
+    value && typeof value === "object"
+      ? value
+      : {};
+
+  return {
+    type: String(input.type || "GUIDED")
+      .trim()
+      .toUpperCase()
+      .slice(0, 100),
+
+    steps: cleanStringList(input.steps)
+      .map(v => v.slice(0, 1000))
+      .slice(0, 50)
+  };
+}
+
+
+function normalizeAcademicModelPolicy(value) {
+  const input =
+    value && typeof value === "object"
+      ? value
+      : {};
+
+  return {
+    mode: String(input.mode || "PERSONA_ROUTE")
+      .trim()
+      .toUpperCase()
+      .slice(0, 100),
+
+    costTier: cleanCostTier(
+      input.costTier,
+      "BALANCED"
+    )
+  };
+}
+
+
+function normalizeResearchMaturityPolicy(value) {
+  const input =
+    value && typeof value === "object"
+      ? value
+      : {};
+
+  const levels =
+    cleanStringList(input.allowedLevels)
+      .map(v => v.toUpperCase());
+
+  const normalized =
+    levels.length
+      ? levels
+      : [
+          "NOVICE",
+          "DEVELOPING",
+          "INDEPENDENT",
+          "ADVANCED"
+        ];
+
+  for (const value of normalized) {
+    if (!RESEARCH_MATURITY_LEVELS.has(value))
+      throw new Error(
+        `Unsupported research maturity level: ${value}`
+      );
+  }
+
+  return {
+    adaptive: input.adaptive !== false,
+    allowedLevels: normalized
+  };
+}
+
+
 function normalizeAcademicRagPolicy(value) {
   const policy =
     value && typeof value === "object"
@@ -364,9 +549,13 @@ function normalizeAcademicRagPolicy(value) {
       "NONE"
     ).trim().toUpperCase();
 
-  if (!["NONE", "SELECTED_RAG_GROUPS"].includes(sharedScopeMode))
+  if (![
+    "NONE",
+    "SELECTED_RAG_GROUPS",
+    "CONTEXTUAL_HIERARCHY"
+  ].includes(sharedScopeMode))
     throw new Error(
-      "Academic Agent sharedScopeMode must be NONE or SELECTED_RAG_GROUPS"
+      "Academic Agent sharedScopeMode must be NONE, SELECTED_RAG_GROUPS, or CONTEXTUAL_HIERARCHY"
     );
 
   return {
@@ -2109,6 +2298,9 @@ app.post("/api/groups", async (req, res) => {
       updatedAt: now
     };
     const result = await groups.insertOne(doc); doc._id=result.insertedId;
+
+    // New membership/hierarchy nodes may change contextual RAG scope.
+
     await audit("GROUP_CREATED", req, { safeDetails: { tenantId, groupId: doc._id.toString(), name } });
     res.status(201).json({ group: doc });
   } catch (e) { if(e?.code===11000)return res.status(409).json({error:"Group name already exists in this institution"}); res.status(400).json({error:e.message||"Failed to create group"}); }
@@ -2148,6 +2340,8 @@ app.patch("/api/groups/:id", async (req, res) => {
       if(req.body.courseIds!==undefined)update.courseIds=rel.courses;
     }
     const result=await groups.findOneAndUpdate({_id:current._id,tenantId:current.tenantId},{$set:update},{returnDocument:"after"});
+
+    // Membership, ancestry, department, or course changes affect scope.
     await audit("GROUP_UPDATED",req,{safeDetails:{tenantId:current.tenantId,groupId:current._id.toString()}});
     res.json({group:result});
   } catch(e){if(e?.code===11000)return res.status(409).json({error:"Group name already exists in this institution"});res.status(400).json({error:e.message||"Failed to update group"});}
@@ -2173,6 +2367,9 @@ app.delete("/api/groups/:id", async (req,res)=>{
       groupAdmins.deleteMany({tenantId:current.tenantId,groupId:current._id}),
       groups.deleteOne({_id:current._id,tenantId:current.tenantId})
     ]);
+
+    // Removing a hierarchy node may revoke inherited RAG authorization.
+
     await audit("GROUP_DELETED",req,{safeDetails:{tenantId:current.tenantId,groupId:current._id.toString()}});
     res.json({ok:true});
   }catch(e){res.status(500).json({error:"Failed to delete group"});}
@@ -2358,6 +2555,36 @@ async function validateRagGroupReferences(tenantId, body) {
   return { groupIds, departmentIds, courseIds, userIds };
 }
 
+
+/*
+ * CONTEXTUAL_HIERARCHY RAG RESOLUTION
+ *
+ * Authorization model
+ * -------------------
+ *
+ * GROUP_ONLY
+ *   Match only the active/direct group itself.
+ *
+ * GROUP_AND_DESCENDANTS
+ *   A RAG group attached to an ancestor is inherited by users in
+ *   descendant groups.
+ *
+ * SELECTED_GROUPS
+ *   Match only explicitly selected groups in which the user has
+ *   direct membership/context.
+ *
+ * SELECTED_USERS
+ *   Match only explicitly selected users.
+ *
+ * Department/course references are explicit contextual anchors.
+ * They are derived only from the user's authorized group branch.
+ *
+ * IMPORTANT:
+ *   This function resolves candidate authorized RAG Group IDs.
+ *   The actual retrieval layer must still re-authorize the requested
+ *   RAG group before any document content is returned.
+ */
+
 app.get("/api/rag-groups", async (req, res) => {
   try {
     if (!orgCanManage(req))
@@ -2420,6 +2647,8 @@ app.post("/api/rag-groups", async (req, res) => {
 
     const result = await ragGroups.insertOne(doc);
     doc._id = result.insertedId;
+
+    // Newly created RAG policy must be reflected immediately.
 
     await audit("RAG_GROUP_CREATED", req, {
       safeDetails: {
@@ -2497,6 +2726,8 @@ app.patch("/api/rag-groups/:id", async (req, res) => {
       { $set: update },
       { returnDocument: "after" }
     );
+
+    // Access mode or targeting changes alter authorization immediately.
 
     await audit("RAG_GROUP_UPDATED", req, {
       safeDetails: {
@@ -2691,6 +2922,8 @@ app.delete("/api/rag-groups/:id", async (req, res) => {
       _id: current._id,
       tenantId: current.tenantId
     });
+
+    // Deleted RAG policy must disappear from resolved scope immediately.
 
     await audit("RAG_GROUP_DELETED", req, {
       safeDetails: {
@@ -2973,22 +3206,177 @@ app.post("/api/academic-agents/bootstrap", async (req, res) => {
 
     const now = new Date();
 
+    const integrityPolicyId = "SCHOLARLY_INTEGRITY_CORE";
+
+    await academicIntegrityPolicies.updateOne(
+      {
+        tenantId,
+        policyId: integrityPolicyId,
+        version: 1
+      },
+      {
+        $set: {
+          tenantId,
+          policyId: integrityPolicyId,
+          version: 1,
+          enabled: true,
+
+          principle:
+            "AI should reduce the mechanical burden of scholarship without removing the intellectual responsibility of the scholar.",
+
+          taskClasses: [
+            "LEARN_EXPLAIN",
+            "SEARCH_RETRIEVE",
+            "EVIDENCE_SYNTHESIS",
+            "SCHOLARLY_AUTHORSHIP",
+            "ASSESSMENT_ASSISTANCE",
+            "DATA_ANALYSIS",
+            "RESEARCH_DESIGN",
+            "CITATION_VERIFICATION",
+            "FABRICATION_REQUEST"
+          ],
+
+          scaffoldStrategies: [
+            "DIRECT_ASSIST",
+            "SOCRATIC",
+            "REQUIRE_ATTEMPT",
+            "EVIDENCE_FIRST",
+            "REQUIRE_RESEARCHER_DECISION",
+            "CRITIQUE_NOT_AUTHOR",
+            "REFUSE_FABRICATION"
+          ],
+
+          provenanceTypes: [
+            "VERIFIED_SOURCE",
+            "USER_PROVIDED",
+            "RAG_SOURCE",
+            "TOOL_RESULT",
+            "CALCULATION",
+            "MODEL_INFERENCE",
+            "UNVERIFIED"
+          ],
+
+          rules: {
+            prohibitFabricatedCitations: true,
+            prohibitFabricatedData: true,
+            prohibitFabricatedResults: true,
+            prohibitFalseSourceInspectionClaims: true,
+            distinguishEvidenceFromInference: true,
+            preserveContradictoryEvidence: true,
+            requireGapSearchScopeCaveat: true,
+            requireHumanScholarlyJudgment: true
+          },
+
+          updatedAt: now
+        },
+
+        $setOnInsert: {
+          createdAt: now
+        }
+      },
+      {
+        upsert: true
+      }
+    );
+
     const defaults = [
       {
         tenantId,
+        agentId: "K12_SOCRATIC_TUTOR",
+        agentType: "MODE",
+        name: "K-12 Socratic Tutor",
+        description:
+          "Age-appropriate Socratic tutoring for primary and secondary school learners.",
+        modelSpecName: "K-12 Socratic Tutor",
+        enabled: true,
+        allowedRoles: ["USER", "INSTRUCTOR"],
+        audiences: [
+          "SCHOOL_STUDENT",
+          "SCHOOL_TEACHER"
+        ],
+        integrityPolicyId,
+        tools: [],
+        mcpServers: [],
+        workflow: {
+          type: "PEDAGOGICAL_MODE",
+          steps: [
+            "Diagnose the learner's current understanding",
+            "Adapt language and difficulty to learner level",
+            "Use progressive Socratic scaffolding",
+            "Protect learner safety and privacy",
+            "Verify understanding through active retrieval"
+          ]
+        },
+        modelPolicy: {
+          mode: "PERSONA_ROUTE",
+          costTier: "ECONOMY"
+        },
+        researchMaturityPolicy: {
+          adaptive: true,
+          allowedLevels: [
+            "NOVICE",
+            "DEVELOPING"
+          ]
+        },
+        visibility: "INSTITUTION",
+        ragPolicy: {
+          personalRag: "INHERIT_USER_ACCESS",
+          sharedScopeMode: "NONE",
+          ragGroupIds: []
+        },
+        pedagogy: {
+          mode: "SOCRATIC",
+          diagnoseFirst: true,
+          activeRetrieval: true,
+          adaptiveDifficulty: true,
+          misconceptionRepair: true,
+          masteryTracking: true,
+          strategy:
+            "Use short age-appropriate steps, protect learner safety and privacy, encourage independent reasoning, and escalate sensitive matters to a trusted adult."
+        },
+        createdAt: now,
+        updatedAt: now
+      },
+
+      {
+        tenantId,
         agentId: "SOCRATIC_TUTOR",
+        agentType: "MODE",
         name: "Undergraduate Socratic Tutor",
         description:
           "Adaptive higher-education tutor using guided discovery, misconception repair and active retrieval.",
         modelSpecName: "Undergrad Socratic Tutor",
         enabled: true,
         allowedRoles: ["USER", "INSTRUCTOR"],
+        audiences: ["UNDERGRADUATE"],
+        integrityPolicyId,
+        tools: [],
+        mcpServers: [],
+        workflow: {
+          type: "PEDAGOGICAL_MODE",
+          steps: [
+            "Diagnose current understanding",
+            "Use progressive scaffolding",
+            "Verify learning through active retrieval"
+          ]
+        },
+        modelPolicy: {
+          mode: "PERSONA_ROUTE",
+          costTier: "BALANCED"
+        },
+        researchMaturityPolicy: {
+          adaptive: true,
+          allowedLevels: [
+            "NOVICE",
+            "DEVELOPING"
+          ]
+        },
+        visibility: "INSTITUTION",
         ragPolicy: {
           personalRag: "INHERIT_USER_ACCESS",
           sharedScopeMode: "NONE",
           ragGroupIds: []
         },
-
         pedagogy: {
           mode: "SOCRATIC",
           diagnoseFirst: true,
@@ -3002,21 +3390,52 @@ app.post("/api/academic-agents/bootstrap", async (req, res) => {
         createdAt: now,
         updatedAt: now
       },
+
       {
         tenantId,
         agentId: "RESEARCH_SYNTHESIZER",
+        agentType: "MODE",
         name: "Research Synthesizer",
         description:
-          "Advanced research assistant for literature synthesis, scholarly reasoning and research-method support.",
+          "Advanced research mode for literature synthesis, scholarly reasoning and research-method support.",
         modelSpecName: "PhD & Post-Doc Research",
         enabled: true,
         allowedRoles: ["USER", "INSTRUCTOR", "INSTITUTION_ADMIN"],
+        audiences: [
+          "COLLEGE_FACULTY",
+          "RESEARCHER",
+          "UNDERGRADUATE"
+        ],
+        integrityPolicyId,
+        tools: [],
+        mcpServers: [],
+        workflow: {
+          type: "PEDAGOGICAL_MODE",
+          steps: [
+            "Clarify the research question",
+            "Distinguish evidence from inference",
+            "Expose uncertainty",
+            "Compare competing explanations"
+          ]
+        },
+        modelPolicy: {
+          mode: "PERSONA_ROUTE",
+          costTier: "ADVANCED"
+        },
+        researchMaturityPolicy: {
+          adaptive: true,
+          allowedLevels: [
+            "DEVELOPING",
+            "INDEPENDENT",
+            "ADVANCED"
+          ]
+        },
+        visibility: "INSTITUTION",
         ragPolicy: {
           personalRag: "INHERIT_USER_ACCESS",
           sharedScopeMode: "NONE",
           ragGroupIds: []
         },
-
         pedagogy: {
           mode: "RESEARCH",
           diagnoseFirst: true,
@@ -3026,6 +3445,427 @@ app.post("/api/academic-agents/bootstrap", async (req, res) => {
           masteryTracking: false,
           strategy:
             "Clarify the research question, distinguish evidence from inference, expose uncertainty, compare competing explanations and preserve scholarly rigor."
+        },
+        createdAt: now,
+        updatedAt: now
+      },
+
+      {
+        tenantId,
+        agentId: "SEMANTIC_SCHOLAR_SEARCH",
+        agentType: "AGENT",
+        name: "Semantic Scholar Search",
+        description:
+          "Searches and inspects real scholarly papers using the Academic Research MCP and Semantic Scholar.",
+        modelSpecName: "PhD & Post-Doc Research",
+        enabled: true,
+        allowedRoles: ["USER", "INSTRUCTOR", "INSTITUTION_ADMIN"],
+        audiences: [
+          "COLLEGE_FACULTY",
+          "RESEARCHER",
+          "UNDERGRADUATE"
+        ],
+        integrityPolicyId,
+        tools: [
+          "search_papers",
+          "get_paper",
+          "get_author",
+          "get_citations"
+        ],
+        mcpServers: [
+          "academic-research"
+        ],
+        workflow: {
+          type: "TOOL_WORKFLOW",
+          steps: [
+            "Clarify the search question",
+            "Construct an explicit literature search",
+            "Retrieve real paper records",
+            "Inspect relevant papers",
+            "Return verifiable sources and search limitations"
+          ]
+        },
+        modelPolicy: {
+          mode: "PERSONA_ROUTE",
+          costTier: "BALANCED"
+        },
+        researchMaturityPolicy: {
+          adaptive: true,
+          allowedLevels: [
+            "DEVELOPING",
+            "INDEPENDENT",
+            "ADVANCED"
+          ]
+        },
+        visibility: "INSTITUTION",
+        ragPolicy: {
+          personalRag: "INHERIT_USER_ACCESS",
+          sharedScopeMode: "NONE",
+          ragGroupIds: []
+        },
+        pedagogy: {
+          mode: "RESEARCH",
+          diagnoseFirst: true,
+          activeRetrieval: false,
+          adaptiveDifficulty: true,
+          misconceptionRepair: false,
+          masteryTracking: false,
+          strategy:
+            "Search transparently. Never invent references. Separate retrieved evidence from model interpretation and state the limits of the search."
+        },
+        createdAt: now,
+        updatedAt: now
+      },
+
+      {
+        tenantId,
+        agentId: "LITERATURE_REVIEW",
+        agentType: "AGENT",
+        name: "Literature Review Agent",
+        description:
+          "Builds a source-grounded thematic literature synthesis from explicitly retrieved scholarly evidence.",
+        modelSpecName: "PhD & Post-Doc Research",
+        enabled: true,
+        allowedRoles: ["USER", "INSTRUCTOR", "INSTITUTION_ADMIN"],
+        audiences: [
+          "COLLEGE_FACULTY",
+          "RESEARCHER",
+          "UNDERGRADUATE"
+        ],
+        integrityPolicyId,
+        tools: [
+          "search_papers",
+          "get_paper",
+          "get_author",
+          "get_citations"
+        ],
+        mcpServers: [
+          "academic-research"
+        ],
+        workflow: {
+          type: "EVIDENCE_SYNTHESIS",
+          steps: [
+            "Clarify research question and scope",
+            "Search the scholarly literature",
+            "Retrieve and inspect relevant records",
+            "Deduplicate the evidence set",
+            "Group evidence into themes",
+            "Compare methods, datasets and findings",
+            "Preserve contradictory evidence",
+            "Produce a source-grounded synthesis",
+            "Report search limitations"
+          ]
+        },
+        modelPolicy: {
+          mode: "PERSONA_ROUTE",
+          costTier: "ADVANCED"
+        },
+        researchMaturityPolicy: {
+          adaptive: true,
+          allowedLevels: [
+            "DEVELOPING",
+            "INDEPENDENT",
+            "ADVANCED"
+          ]
+        },
+        visibility: "INSTITUTION",
+        ragPolicy: {
+          personalRag: "INHERIT_USER_ACCESS",
+          sharedScopeMode: "NONE",
+          ragGroupIds: []
+        },
+        pedagogy: {
+          mode: "RESEARCH",
+          diagnoseFirst: true,
+          activeRetrieval: false,
+          adaptiveDifficulty: true,
+          misconceptionRepair: true,
+          masteryTracking: false,
+          strategy:
+            "Require evidence before synthesis. Preserve contradictory findings. Distinguish verified evidence, inference and uncertainty. Do not fabricate citations."
+        },
+        createdAt: now,
+        updatedAt: now
+      },
+
+      {
+        tenantId,
+        agentId: "RESEARCH_GAP_FINDER",
+        agentType: "AGENT",
+        name: "Research Gap Finder",
+        description:
+          "Identifies candidate research gaps from an explicit evidence set without presenting search absence as proof of literature absence.",
+        modelSpecName: "PhD & Post-Doc Research",
+        enabled: true,
+        allowedRoles: ["USER", "INSTRUCTOR", "INSTITUTION_ADMIN"],
+        audiences: [
+          "COLLEGE_FACULTY",
+          "RESEARCHER",
+          "UNDERGRADUATE"
+        ],
+        integrityPolicyId,
+        tools: [
+          "search_papers",
+          "get_paper",
+          "get_citations"
+        ],
+        mcpServers: [
+          "academic-research"
+        ],
+        workflow: {
+          type: "RESEARCH_GAP_ANALYSIS",
+          steps: [
+            "Define the research domain and question",
+            "Build an explicit evidence set",
+            "Compare questions, methods, datasets and populations",
+            "Compare findings and limitations",
+            "Identify contradictions and underexplored areas",
+            "Generate candidate gaps",
+            "Rate confidence",
+            "State search scope and limitations",
+            "Require researcher judgment before treating a candidate gap as a research claim"
+          ]
+        },
+        modelPolicy: {
+          mode: "PERSONA_ROUTE",
+          costTier: "ADVANCED"
+        },
+        researchMaturityPolicy: {
+          adaptive: true,
+          allowedLevels: [
+            "DEVELOPING",
+            "INDEPENDENT",
+            "ADVANCED"
+          ]
+        },
+        visibility: "INSTITUTION",
+        ragPolicy: {
+          personalRag: "INHERIT_USER_ACCESS",
+          sharedScopeMode: "NONE",
+          ragGroupIds: []
+        },
+        pedagogy: {
+          mode: "RESEARCH",
+          diagnoseFirst: true,
+          activeRetrieval: false,
+          adaptiveDifficulty: true,
+          misconceptionRepair: true,
+          masteryTracking: false,
+          strategy:
+            "Treat gaps as evidence-based candidates, not declarations. Never equate absence from the retrieved search set with absence from the entire literature."
+        },
+        createdAt: now,
+        updatedAt: now
+      },
+
+      {
+        tenantId,
+        agentId: "EDUCATION_CAREER_PATHWAYS",
+        agentType: "AGENT",
+        name: "Education & Career Pathways",
+        description:
+          "Open-minded education and career exploration for school students and families, grounded in the learner's interests, developing skills, practical circumstances and regional opportunities.",
+        modelSpecName: "K-12 Socratic Tutor",
+        enabled: true,
+        allowedRoles: ["USER", "INSTRUCTOR"],
+        audiences: [
+          "SCHOOL_STUDENT",
+          "SCHOOL_TEACHER"
+        ],
+        integrityPolicyId,
+
+        tools: [],
+        mcpServers: [],
+
+        workflow: {
+          type: "LOCATION_AWARE_GUIDANCE",
+          steps: [
+            "Understand the learner's interests, curiosity, motivations and demonstrated skills",
+            "Ask reflective questions before narrowing possible pathways",
+            "Distinguish subjects the learner enjoys from subjects they are simply good at",
+            "Explore values, preferred work styles and activities that sustain the learner's interest",
+            "Identify external expectations or assumptions that may be influencing the decision",
+            "Resolve only the minimum useful geographic context",
+            "Explore multiple meaningfully different education and career pathways",
+            "Consider economic and geographic constraints without suppressing aspiration",
+            "Investigate affordable, scholarship-supported and alternative access routes",
+            "Compare local, regional, relocation and remote possibilities where relevant",
+            "Use current verified information for changing facts",
+            "Identify uncertainties and information the student or family should verify",
+            "Support parent-student dialogue without taking sides",
+            "Leave the final decision with the learner and family"
+          ]
+        },
+
+        modelPolicy: {
+          mode: "PERSONA_ROUTE",
+          costTier: "ECONOMY"
+        },
+
+        researchMaturityPolicy: {
+          adaptive: true,
+          allowedLevels: [
+            "NOVICE",
+            "DEVELOPING"
+          ]
+        },
+
+        visibility: "INSTITUTION",
+
+        ragPolicy: {
+          personalRag: "INHERIT_USER_ACCESS",
+          sharedScopeMode: "CONTEXTUAL_HIERARCHY"
+        },
+
+        locationPolicy: {
+          required: true,
+          precision: "REGIONAL",
+          allowExactAddress: false,
+          preferredSources: [
+            "ACTIVE_SCHOOL_CONTEXT",
+            "USER_DECLARED_LOCATION",
+            "INSTITUTION_REGION"
+          ]
+        },
+
+        contextPolicy: {
+          profileCollection: "learnerGuidanceProfiles",
+          persistUserDeclaredContext: true,
+          userCorrectable: true,
+          distinguishDeclaredFromInferred: true,
+
+          profileSections: [
+            "EDUCATION_STAGE",
+            "INTERESTS",
+            "DEMONSTRATED_SKILLS",
+            "MOTIVATIONS",
+            "VALUES",
+            "WORK_STYLE",
+            "LANGUAGE_PREFERENCES",
+            "AFFORDABILITY",
+            "FINANCIAL_AID_IMPORTANCE",
+            "GEOGRAPHIC_CONSTRAINTS",
+            "RELOCATION_PREFERENCE",
+            "TRAVEL_RADIUS",
+            "FAMILY_RESPONSIBILITIES"
+          ],
+
+          economicConstraintRule:
+            "Use economic constraints to search for feasible access routes, scholarships and alternatives; never use them to lower the learner's assumed potential.",
+
+          geographicConstraintRule:
+            "Use geography to organize realistic access options; do not hide broader possibilities merely because they require travel or relocation."
+        },
+
+        guidancePolicy: {
+          explorationBeforeRecommendation: true,
+          expandOptionsBeforeNarrowing: true,
+          askCriticalQuestions: true,
+          challengeUnexaminedAssumptions: true,
+
+          prohibitPrescriptiveCareerSteering: true,
+          prohibitSinglePathOptimization: true,
+          prohibitDeterministicAptitudeClaims: true,
+          prohibitSocioeconomicStereotyping: true,
+
+          exploreInterests: true,
+          exploreDemonstratedSkills: true,
+          exploreMotivationAndPassion: true,
+          exploreValuesAndPreferredWorkStyle: true,
+
+          requireMultipleMeaningfullyDifferentPathways: true,
+          requireAlternativePlans: true,
+          distinguishPossibilityFromRecommendation: true,
+
+          considerAffordability: true,
+          considerGeographicAccess: true,
+          searchForAccessSolutionsBeforeEliminatingPath: true,
+
+          encourageStudentAgency: true,
+          supportParentStudentDialogue: true,
+
+          prohibitAdmissionGuarantees: true,
+          prohibitEmploymentGuarantees: true,
+
+          identifyMissingInformation: true,
+          recommendVerificationSteps: true,
+
+          requireCurrentDataForAdmissions: true,
+          requireCurrentDataForScholarships: true,
+          requireCurrentDataForInstitutionAvailability: true,
+          distinguishFactsFromGuidance: true
+        },
+
+        pedagogy: {
+          mode: "EXPLAINER",
+          diagnoseFirst: true,
+          activeRetrieval: true,
+          adaptiveDifficulty: true,
+          misconceptionRepair: true,
+          masteryTracking: false,
+          strategy:
+            "Explore rather than prescribe. Sense the learner's interests, developing skills, curiosity, motivation and values through thoughtful questions. Open the learner's eyes to unfamiliar possibilities, examine practical constraints without allowing those constraints to define the learner's potential, compare multiple realistic pathways using current information, and preserve learner ownership of major education and career decisions."
+        },
+
+        createdAt: now,
+        updatedAt: now
+      },
+
+      {
+        tenantId,
+        agentId: "COURSE_KNOWLEDGE",
+        agentType: "AGENT",
+        name: "Course Knowledge Agent",
+        description:
+          "Provides guided learning from authorized course or class knowledge while preserving group and institution RAG boundaries.",
+        modelSpecName: "Undergrad Socratic Tutor",
+        enabled: true,
+        allowedRoles: ["USER", "INSTRUCTOR"],
+        audiences: [
+          "COLLEGE_FACULTY",
+          "UNDERGRADUATE",
+          "SCHOOL_TEACHER",
+          "SCHOOL_STUDENT"
+        ],
+        integrityPolicyId,
+        tools: [],
+        mcpServers: [],
+        workflow: {
+          type: "AUTHORIZED_RAG_LEARNING",
+          steps: [
+            "Resolve the user's authorized course or class scope",
+            "Retrieve only permitted course knowledge",
+            "Explain using an appropriate academic mode",
+            "Use progressive scaffolding for assessed learning",
+            "Identify when the requested answer is outside the approved knowledge scope"
+          ]
+        },
+        modelPolicy: {
+          mode: "PERSONA_ROUTE",
+          costTier: "BALANCED"
+        },
+        researchMaturityPolicy: {
+          adaptive: true,
+          allowedLevels: [
+            "NOVICE",
+            "DEVELOPING"
+          ]
+        },
+        visibility: "INSTITUTION",
+        ragPolicy: {
+          personalRag: "INHERIT_USER_ACCESS",
+          sharedScopeMode: "CONTEXTUAL_HIERARCHY",
+          ragGroupIds: []
+        },
+        pedagogy: {
+          mode: "SOCRATIC",
+          diagnoseFirst: true,
+          activeRetrieval: true,
+          adaptiveDifficulty: true,
+          misconceptionRepair: true,
+          masteryTracking: true,
+          strategy:
+            "Use only authorized course knowledge. Prefer explanation, questioning and progressive hints over completing assessed work for the learner."
         },
         createdAt: now,
         updatedAt: now
@@ -3124,9 +3964,24 @@ app.post("/api/academic-agents", async (req, res) => {
         .trim()
         .slice(0, 2000),
       modelSpecName,
+      agentType: normalizeAcademicAgentType(req.body.agentType),
       enabled: req.body.enabled !== false,
       allowedRoles: cleanStringList(req.body.allowedRoles)
         .map(x => x.toUpperCase()),
+      audiences: normalizeAcademicAudiences(req.body.audiences),
+      integrityPolicyId: cleanPolicyKey(
+        req.body.integrityPolicyId || "SCHOLARLY_INTEGRITY_CORE",
+        "Integrity policy ID"
+      ).toUpperCase(),
+      tools: normalizeAcademicTools(req.body.tools),
+      mcpServers: normalizeAcademicMcpServers(req.body.mcpServers),
+      workflow: normalizeAcademicWorkflow(req.body.workflow),
+      modelPolicy: normalizeAcademicModelPolicy(req.body.modelPolicy),
+      researchMaturityPolicy:
+        normalizeResearchMaturityPolicy(
+          req.body.researchMaturityPolicy
+        ),
+      visibility: normalizeAcademicVisibility(req.body.visibility),
       ragPolicy: normalizeAcademicRagPolicy(req.body.ragPolicy),
       pedagogy: normalizePedagogy(req.body.pedagogy),
       createdAt: now,
@@ -3201,6 +4056,46 @@ app.patch("/api/academic-agents/:id", async (req, res) => {
       update.allowedRoles = cleanStringList(
         req.body.allowedRoles
       ).map(x => x.toUpperCase());
+
+    if (req.body.agentType !== undefined)
+      update.agentType =
+        normalizeAcademicAgentType(req.body.agentType);
+
+    if (req.body.audiences !== undefined)
+      update.audiences =
+        normalizeAcademicAudiences(req.body.audiences);
+
+    if (req.body.integrityPolicyId !== undefined)
+      update.integrityPolicyId = cleanPolicyKey(
+        req.body.integrityPolicyId,
+        "Integrity policy ID"
+      ).toUpperCase();
+
+    if (req.body.tools !== undefined)
+      update.tools =
+        normalizeAcademicTools(req.body.tools);
+
+    if (req.body.mcpServers !== undefined)
+      update.mcpServers =
+        normalizeAcademicMcpServers(req.body.mcpServers);
+
+    if (req.body.workflow !== undefined)
+      update.workflow =
+        normalizeAcademicWorkflow(req.body.workflow);
+
+    if (req.body.modelPolicy !== undefined)
+      update.modelPolicy =
+        normalizeAcademicModelPolicy(req.body.modelPolicy);
+
+    if (req.body.researchMaturityPolicy !== undefined)
+      update.researchMaturityPolicy =
+        normalizeResearchMaturityPolicy(
+          req.body.researchMaturityPolicy
+        );
+
+    if (req.body.visibility !== undefined)
+      update.visibility =
+        normalizeAcademicVisibility(req.body.visibility);
 
     if (req.body.ragPolicy !== undefined)
       update.ragPolicy = normalizeAcademicRagPolicy(

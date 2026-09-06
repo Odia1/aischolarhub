@@ -451,6 +451,22 @@ const initializeClient = async ({
       ? appConfig.modelSpecs.list.find((modelSpec) => modelSpec.name === endpointOption.spec)
       : null;
 
+  /*
+   * AI Scholar Hub Academic Agent identity
+   * ---------------------------------------
+   *
+   * `academicAgentId` is assigned by the governed ModelSpec configuration,
+   * not inferred from the generic LibreChat Agent document.
+   *
+   * Annotate only this request's in-memory primary agent. This gives startup
+   * and deferred tool loading one authoritative identity without persisting
+   * another copy or making subagents inherit the primary academic role.
+   */
+  if (primaryAgent && selectedModelSpec?.academicAgentId) {
+    primaryAgent.academicAgentId =
+      String(selectedModelSpec.academicAgentId).trim();
+  }
+
   if (
     primaryAgent &&
     isEphemeralAgentId(primaryAgent.id) &&

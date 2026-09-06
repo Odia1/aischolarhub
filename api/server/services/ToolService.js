@@ -1201,6 +1201,12 @@ async function loadToolDefinitionsWrapper({
         tool_resources,
         agentId: agent.id,
         agentResourceType,
+
+        /*
+         * Runtime-only governed Academic Agent identity.
+         * Only an explicitly selected Academic ModelSpec may populate this.
+         */
+        academicAgentId: agent.academicAgentId,
       });
       if (toolContext) {
         dynamicToolContextMap[Tools.file_search] = toolContext;

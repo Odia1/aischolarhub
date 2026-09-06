@@ -550,17 +550,21 @@ async def query_embeddings_by_file_id(
 
     try:
         user = getattr(request.state, "user", {}) or {}
-        legacy_ids, rag_ids = await partition_file_access(
+        personal_ids, institutional_ids = await partition_file_access(
             str(user.get("id") or ""),
             str(user.get("tenantId") or ""),
             [body.file_id],
+            user.get("authorizedFileIds") or [],
         )
 
-        if body.file_id in rag_ids:
+        if body.file_id in institutional_ids:
+            # Institutional authorization was resolved by AI Scholar Hub and
+            # carried here as a signed JWT claim. Tenant scope remains mandatory.
             query_filter = scope.preauthorized_predicate(
                 file_clause(body.file_id)
             )
-        elif body.file_id in legacy_ids:
+        elif body.file_id in personal_ids:
+            # Ordinary uploads remain owner + tenant scoped.
             query_filter = scope.predicate(
                 file_clause(body.file_id)
             )
@@ -1492,25 +1496,28 @@ async def query_embeddings_by_file_ids(request: Request, body: QueryMultipleBody
     try:
         user = getattr(request.state, "user", {}) or {}
 
-        legacy_ids, rag_ids = await partition_file_access(
+        personal_ids, institutional_ids = await partition_file_access(
             str(user.get("id") or ""),
             str(user.get("tenantId") or ""),
             body.file_ids,
+            user.get("authorizedFileIds") or [],
         )
 
         branches = []
 
-        if legacy_ids:
+        if personal_ids:
             branches.append({
                 "$and": [
-                    files_clause(legacy_ids),
+                    files_clause(personal_ids),
                     scope.owner_clause(),
                 ]
             })
 
-        if rag_ids:
+        if institutional_ids:
+            # These IDs were authorized upstream and signed into the JWT.
+            # Tenant scope is still applied below before vector ranking.
             branches.append(
-                files_clause(rag_ids)
+                files_clause(institutional_ids)
             )
 
         if not branches:
