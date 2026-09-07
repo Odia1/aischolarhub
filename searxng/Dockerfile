@@ -1,0 +1,2 @@
+FROM searxng/searxng@sha256:1dab138ea70a8ceb4d1c182f5c8f256088406c1742b99e279976157dbe1e9759
+COPY settings.yml /etc/searxng/settings.yml

@@ -11,7 +11,26 @@ interface:
   agents: true
   fileSearch: true
   fileCitations: true
+  webSearch: true
   
+
+webSearch:
+  searchProvider: "searxng"
+  searxngInstanceUrl: "${SEARXNG_INSTANCE_URL}"
+  allowedAddresses:
+    - "searxng:8080"
+  searxngSearchOptions:
+    engines:
+      - google
+      - bing
+      - brave
+      - startpage
+      - qwant
+    language: "en"
+    timeout: 12000
+  rerankerType: "none"
+  safeSearch: 1
+
 mcpSettings:
   allowedDomains:
     - "api.openalex.org"
