@@ -175,7 +175,7 @@
          <textarea name="description" maxlength="1000" placeholder="Description (optional)">${esc2(existing?.description||'')}</textarea>
          <label class="muted">Parent Group (optional)</label>
          <select name="parentGroupId"><option value="">Top-level group</option>${options(groupChildren(id(existing)),selectedParent)}</select>
-         <label class="muted">Members (users/instructors)</label>
+         <label class="muted">Members (users and instructors only)</label>
          <select name="memberIds" multiple>${options(state.users,selectedMembers)}</select>
          <label class="muted">Departments / Schools</label>
          <select name="departmentIds" multiple>${options(state.departments,selectedDepartments)}</select>
@@ -190,6 +190,7 @@
               method:existing?'PATCH':'POST',
               headers:{'Content-Type':'application/json'},
               body:JSON.stringify({
+                tenantId:scope(),
                 name:f.name.value,
                 description:f.description.value,
                 parentGroupId:f.parentGroupId.value||null,
@@ -813,14 +814,14 @@
           api(`/api/groups${q}`),
           api(`/api/rag-locations${q}`),
           api(`/api/rag-groups${q}`),
-          api('/api/users?limit=100')
+          api(`/api/organization-members${q}`)
         ]);
         state.departments=d.departments||[];
         state.courses=c.courses||[];
         state.groups=g.groups||[];
         state.rag=(r.locations||[]).filter(x=>x.type!=='PERSONAL');
         state.ragGroups=rg.ragGroups||[];
-        state.users=Array.isArray(u)?u:[];
+        state.users=Array.isArray(u.users)?u.users:[];
         document.getElementById('orgScopeText').textContent=`Institution scope: ${scope()||'Platform-wide'}`;
         render();
       }catch(e){console.error('[organization-admin]',e);const n=document.getElementById('orgScopeText');if(n)n.textContent=e.message}

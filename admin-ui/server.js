@@ -2611,10 +2611,45 @@ app.put("/api/courses/:id/instructors", async (req, res) => {
   } catch (e) { res.status(400).json({ error: e.message || "Failed to update course instructors" }); }
 });
 
+app.get("/api/organization-members", async (req, res) => {
+  try {
+    if (!orgCanManage(req)) {
+      return res.status(403).json({
+        error: "Organization administration is not permitted"
+      });
+    }
+
+    const tenantId = await requireOrgTenant(req, res);
+    if (!tenantId) return;
+
+    const result = await users.find(
+      {
+        tenantId,
+        role: { $in: ["USER", "Instructor"] }
+      },
+      {
+        projection: {
+          name: 1,
+          email: 1,
+          role: 1,
+          tenantId: 1
+        }
+      }
+    ).sort({ name: 1, email: 1 }).toArray();
+
+    res.json({ users: result });
+  } catch (e) {
+    console.error("[organization-members]", e);
+    res.status(500).json({
+      error: "Failed to retrieve organization members"
+    });
+  }
+});
+
 app.get("/api/groups", async (req, res) => {
   try {
     if (!orgCanManage(req)) return res.status(403).json({ error: "Organization administration is not permitted" });
-    const tenantId = await requireOrgTenant(req, res); if (!tenantId);
+    const tenantId = await requireOrgTenant(req, res); if (!tenantId) return;
 
     const result = await groups.find({ tenantId }).sort({ name: 1 }).toArray();
 
@@ -2718,10 +2753,36 @@ async function validateGroupParent(tenantId, groupId, parentGroupId) {
 
 async function validateGroupRelations(tenantId, memberIds, departmentIds, courseIds) {
   const members = [];
+  const rejectedMembers = [];
+
   for (const id of [...new Set((memberIds || []).map(String))]) {
-    const _id = oid(id); if (!_id) continue;
-    const u = await users.findOne({ _id, tenantId, role: { $in: ["USER", "Instructor"] } }, { projection: { _id: 1 } });
-    if (u) members.push(u._id.toString());
+    const _id = oid(id);
+
+    if (!_id) {
+      rejectedMembers.push(id);
+      continue;
+    }
+
+    const u = await users.findOne(
+      {
+        _id,
+        tenantId,
+        role: { $in: ["USER", "Instructor"] }
+      },
+      { projection: { _id: 1 } }
+    );
+
+    if (u) {
+      members.push(u._id.toString());
+    } else {
+      rejectedMembers.push(id);
+    }
+  }
+
+  if (rejectedMembers.length) {
+    throw new Error(
+      "Group members must be users or instructors in this institution"
+    );
   }
   const departmentsValid = [];
   for (const id of [...new Set((departmentIds || []).map(String))]) { const _id=oid(id); if (_id && await departments.findOne({_id,tenantId},{projection:{_id:1}})) departmentsValid.push(_id.toString()); }
