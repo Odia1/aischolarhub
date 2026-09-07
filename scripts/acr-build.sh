@@ -169,7 +169,15 @@ image = sys.argv[1]
 p = Path("docker-compose.override.yaml")
 
 if not p.exists():
-    raise SystemExit("ERROR: docker-compose.override.yaml not found")
+    p.write_text(
+        "services:\n"
+        "  api:\n"
+        f"    image: {image}\n"
+    )
+    print("Created docker-compose.override.yaml")
+    print("Compose API image set to:")
+    print(image)
+    raise SystemExit(0)
 
 s = p.read_text()
 
@@ -206,6 +214,13 @@ echo "===== 6. RECREATE API ====="
 
 docker compose up -d --no-deps --force-recreate api
 
+API_CONTAINER_ID="$(docker compose ps -q api)"
+
+if [[ -z "$API_CONTAINER_ID" ]]; then
+    echo "ERROR: Compose did not return an API container ID."
+    return 1 2>/dev/null || false
+fi
+
 # ------------------------------------------------------------
 # 7. Verify exact image
 # ------------------------------------------------------------
@@ -214,7 +229,7 @@ echo
 echo "===== 7. VERIFY DEPLOYED IMAGE ====="
 
 RUNNING_IMAGE="$(
-    docker inspect AI_Scholar_Hub \
+    docker inspect "$API_CONTAINER_ID" \
         --format '{{.Config.Image}}' 2>/dev/null || true
 )"
 
@@ -237,12 +252,12 @@ READY=0
 
 for attempt in $(seq 1 45); do
     STATUS="$(
-        docker inspect AI_Scholar_Hub \
+        docker inspect "$API_CONTAINER_ID" \
             --format '{{.State.Status}}' 2>/dev/null || true
     )"
 
     if [[ "$STATUS" == "running" ]] &&
-       docker logs --since 5m AI_Scholar_Hub 2>&1 |
+       docker logs --since 5m "$API_CONTAINER_ID" 2>&1 |
            grep -q 'Server readiness checks passing'; then
         READY=1
         break
@@ -257,7 +272,7 @@ if [[ "$READY" -ne 1 ]]; then
     echo "ERROR: API did not become ready."
     echo
     echo "===== RECENT API LOGS ====="
-    docker logs --since 5m AI_Scholar_Hub 2>&1 | tail -150
+    docker logs --since 5m "$API_CONTAINER_ID" 2>&1 | tail -150
     exit 1
 fi
 

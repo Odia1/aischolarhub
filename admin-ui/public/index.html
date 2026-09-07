@@ -623,7 +623,7 @@ form{
           onclick="showAdminTab('rag')">RAG</button>
 
   <button type="button" class="admin-tab-button" data-admin-tab="models"
-          onclick="showAdminTab('models')">AI Models & Providers</button>
+          onclick="showAdminTab('models')">AI Experience Policy</button>
 
   <button type="button" class="admin-tab-button" data-admin-tab="agents"
           onclick="showAdminTab('agents')">Academic Agents</button>
@@ -684,7 +684,7 @@ form{
 
   <input
     id="search"
-    placeholder="Search name, username or email">
+    placeholder="Search account, email or institution">
 
   <select id="role">
     <option value="">All roles</option>
@@ -742,7 +742,7 @@ form{
          class="admin-tab-panel"
          data-admin-tab-panel="models">
   <div id="modelEntitlementHost" class="admin-placeholder">
-    <h2>AI Models & Providers</h2>
+    <h2>AI Experience Policy</h2>
     <div class="muted">
       Configure tenant- and role-specific AI provider/model availability.
     </div>
@@ -2563,8 +2563,25 @@ function renderDomain(
   content.className =
     "domain-content";
 
+  /*
+   * When a user has actively searched, expose the matching institution
+   * contents immediately. Outside search mode, retain the existing compact
+   * collapsed directory view.
+   */
+  const searchActive =
+    String(search?.value || "").trim().length > 0;
+
   content.hidden =
-    true;
+    !searchActive;
+
+  if (searchActive) {
+    header
+      .querySelector(
+        ".domain-arrow"
+      )
+      .textContent =
+      "▼";
+  }
 
   header.onclick =
     () => {
@@ -3937,7 +3954,7 @@ async function logout() {
 </script>
 
   <script src="/admin-org.js"></script>
-<script src="/admin-models.js?v=release-b-20260904-1"></script>
+<script src="/admin-models.js?v=experience-policy-20260907-3"></script>
 <script src="/admin-agents.js?v=release-b-20260904-1"></script>
 </body>
 </html>

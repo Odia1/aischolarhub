@@ -31,14 +31,16 @@ services:
       PROXY: "${PROXY:-}"
       HTTP_PROXY: "${HTTP_PROXY:-}"
       HTTPS_PROXY: "${HTTPS_PROXY:-}"
-      NO_PROXY: "${NO_PROXY:-localhost,127.0.0.1,::1},mongodb,meilisearch,rag_api,vectordb,gemini-proxy,academic-research-mcp,ollama,host.docker.internal"
+      NO_PROXY: "${NO_PROXY:-localhost,127.0.0.1,::1},mongodb,meilisearch,rag_api,vectordb,model-router,gemini-proxy,academic-research-mcp,ollama,host.docker.internal"
       http_proxy: "${http_proxy:-}"
       https_proxy: "${https_proxy:-}"
-      no_proxy: "${no_proxy:-localhost,127.0.0.1,::1},mongodb,meilisearch,rag_api,vectordb,gemini-proxy,academic-research-mcp,ollama,host.docker.internal"
+      no_proxy: "${no_proxy:-localhost,127.0.0.1,::1},mongodb,meilisearch,rag_api,vectordb,model-router,gemini-proxy,academic-research-mcp,ollama,host.docker.internal"
 
     volumes:
       - ./.env:/app/.env
       - ./librechat.yaml:/app/librechat.yaml
+      - ./api/server/services/Config/app.js:/app/api/server/services/Config/app.js:ro
+      - ./api/server/services/AcademicIntelligence/knowledgeScope.js:/app/api/server/services/AcademicIntelligence/knowledgeScope.js:ro
       - ./images:/app/client/public/images
       - ./uploads:/app/uploads
       - ./logs:/app/logs
@@ -48,6 +50,7 @@ services:
     depends_on:
       - mongodb
       - rag_api
+      - model-router
       - gemini-proxy
 
 
@@ -103,7 +106,7 @@ services:
 
   rag_api:
     container_name: aih-dev-rag
-    image: seeds.azurecr.io/aischolarhub-rag-api:dev-20260905-1b5e08fb2-perf-c1
+    image: seeds.azurecr.io/aischolarhub-rag-api:dev-20260906-647d29295-agents-rag-rc1
     restart: always
 
     env_file:
@@ -131,6 +134,40 @@ services:
 
     expose:
       - "8000"
+
+
+  model-router:
+    container_name: aih-dev-model-router
+    build:
+      context: ./model-router
+      dockerfile: Dockerfile
+    image: aih-model-router:class-routing-v1
+    restart: always
+
+    env_file:
+      - .env
+
+    environment:
+      MONGO_URI: "mongodb://${MONGO_INITDB_ROOT_USERNAME}:${MONGO_INITDB_ROOT_PASSWORD}@mongodb:27017/LibreChat?authSource=admin"
+      ASH_MODEL_ROUTER_API_KEY: "${ASH_MODEL_ROUTER_API_KEY:-}"
+      GEMINI_PROXY_API_KEY: "${GEMINI_PROXY_API_KEY}"
+
+    expose:
+      - "8000"
+
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5)"
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+    depends_on:
+      - mongodb
 
 
   academic-research-mcp:
@@ -177,12 +214,20 @@ services:
 
     environment:
       MONGO_URI: "mongodb://${MONGO_INITDB_ROOT_USERNAME}:${MONGO_INITDB_ROOT_PASSWORD}@mongodb:27017/LibreChat?authSource=admin"
+      JWT_SECRET: "${JWT_SECRET}"
+      LIBRECHAT_INTERNAL_URL: "http://api:3080"
+      RAG_API_URL: "http://rag_api:8000"
+      ASH_MODEL_ROUTER_API_KEY: "${ASH_MODEL_ROUTER_API_KEY:-}"
+      GEMINI_PROXY_API_KEY: "${GEMINI_PROXY_API_KEY}"
 
     volumes:
       - ./admin-ui:/app
 
     depends_on:
+      - api
       - mongodb
+      - rag_api
+      - model-router
 
 
 volumes:

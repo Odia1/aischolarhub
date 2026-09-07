@@ -113,6 +113,24 @@ endpoints:
         fetch: false
       titleConvo: true
 
+    - name: "AI Scholar Free Router"
+      apiKey: "${GEMINI_PROXY_API_KEY}"
+      baseURL: "http://model-router:8000/v1/"
+      iconURL: "/images/favicon-16x16.png"
+      actions: true
+      headers:
+        X-AIS-Conversation-ID: "{{LIBRECHAT_BODY_CONVERSATIONID}}"
+        X-AIS-User-ID: "{{LIBRECHAT_USER_ID}}"
+      models:
+        default:
+          - "class-a"
+          - "class-b"
+        fetch: false
+      titleConvo: true
+      modelDisplayLabel: "AI Scholar Free Router"
+
+    # Temporary rollback endpoint. Existing database overrides may still
+    # reference this name while persona-to-class mappings are migrated.
     - name: "Gemini Academic Assistant"
       apiKey: "${GEMINI_PROXY_API_KEY}"
       baseURL: "http://gemini-proxy:8000/v1/"
@@ -163,8 +181,8 @@ modelSpecs:
       
       preset:
 
-        endpoint: "Gemini Academic Assistant"
-        model: "gemini-3.5-flash"
+        endpoint: "AI Scholar Free Router"
+        model: "class-b"
         modelLabel: "Socratic Tutor"
 # THIS IS YOUR CUSTOM WELCOME MESSAGE FOR NEW CHATS:
         greeting: "Welcome to AI Scholar Hub — an educational initiative of SEEDS. How can I help up with your study today?"
@@ -186,8 +204,8 @@ modelSpecs:
 
       preset:
 
-        endpoint: "Gemini Academic Assistant"
-        model: "gemini-3.7-flash"
+        endpoint: "AI Scholar Free Router"
+        model: "class-a"
         modelLabel: "Research Synthesizer"
 
         greeting: "Welcome to AI Scholar Hub — an educational initiative of SEEDS. What research concept are you working on today?"
@@ -198,8 +216,8 @@ modelSpecs:
         Tutoring young learners and school students using the Socratic method.
 
       preset:
-        endpoint: "Gemini Academic Assistant"
-        model: "gemini-3.5-flash-lite"
+        endpoint: "AI Scholar Free Router"
+        model: "class-b"
         modelLabel: "Socratic Academic Assistant"
 
         greeting: "Welcome to AI Scholar Hub — an educational initiative of SEEDS. What grade are you in, and what subject or problem would you like help with today?"

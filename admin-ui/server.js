@@ -2,6 +2,7 @@ import express from "express";
 import { MongoClient, ObjectId } from "mongodb";
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
+import multer from "multer";
 
 const app = express();
 const PORT = process.env.PORT || 3090;
@@ -13,6 +14,14 @@ const SUPERADMIN_EMAIL = "ppatra@seedsnet.org";
 app.use(express.json({ limit: "5mb" }));
 app.use(express.urlencoded({ extended: false }));
 app.use(express.static("public"));
+
+const ragDocumentUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    files: 1,
+    fileSize: 20 * 1024 * 1024
+  }
+});
 
 const client = new MongoClient(process.env.MONGO_URI);
 await client.connect();
@@ -63,9 +72,108 @@ const MODEL_COST_TIERS = new Set([
   "ADVANCED"
 ]);
 
+const AIS_CLASS_CATALOG = [
+  {
+    providerKey: "ais-free-router",
+    providerName: "AI Scholar Free Router",
+    endpointType: "custom",
+    providerCostTier: "BALANCED",
+    model: "class-a",
+    label: "Class A — Advanced Academic",
+    costTier: "ADVANCED"
+  },
+  {
+    providerKey: "ais-free-router",
+    providerName: "AI Scholar Free Router",
+    endpointType: "custom",
+    providerCostTier: "BALANCED",
+    model: "class-b",
+    label: "Class B — General Academic",
+    costTier: "BALANCED"
+  },
+  {
+    providerKey: "azure-undergraduate",
+    providerName: "Azure OpenAI Undergrad Tutor",
+    endpointType: "custom",
+    providerCostTier: "ADVANCED",
+    model: "gpt-4.1-mini",
+    label: "Class C — Premium General",
+    costTier: "ADVANCED"
+  },
+  {
+    providerKey: "azure-research",
+    providerName: "Azure OpenAI Scholar Research",
+    endpointType: "custom",
+    providerCostTier: "ADVANCED",
+    model: "gpt-5.4-mini",
+    label: "Class C — Premium Advanced",
+    costTier: "ADVANCED"
+  }
+];
+
+// Operational inventory only. This is returned exclusively by model-policy
+// endpoints guarded by canManageModelPolicy; never include credentials,
+// account IDs, endpoint URLs, or secret fragments here.
+const AIS_CLASS_COMPOSITION = [
+  {
+    classId: "CLASS_A",
+    label: "Class A — Advanced Academic",
+    routes: [
+      { provider: "Google", model: "gemini-3.7-flash", mode: "STANDARD" },
+      { provider: "Groq", model: "openai/gpt-oss-120b", mode: "STANDARD" },
+      { provider: "Cloudflare", model: "@cf/meta/llama-3.3-70b-instruct-fp8-fast", mode: "STANDARD" },
+      { provider: "Cloudflare", model: "@cf/meta/llama-3.1-70b-instruct-fp8-fast", mode: "FALLBACK" }
+    ]
+  },
+  {
+    classId: "CLASS_B",
+    label: "Class B — General Academic",
+    routes: [
+      { provider: "Google", model: "gemini-3.5-flash", mode: "STANDARD" },
+      { provider: "Google", model: "gemini-3.5-flash-lite", mode: "STANDARD" },
+      { provider: "Groq", model: "qwen/qwen3.8-27b", mode: "STANDARD" },
+      { provider: "Cloudflare", model: "@cf/qwen/qwen3.8-27b", mode: "STANDARD" },
+      { provider: "Cloudflare", model: "@cf/google/gemma-4-26b-a4b-it", mode: "STANDARD" },
+      { provider: "Cloudflare", model: "@cf/meta/llama-3.1-8b-instruct-fast", mode: "STANDARD" }
+    ]
+  },
+  {
+    classId: "CLASS_C_GENERAL",
+    label: "Class C — Premium General",
+    routes: [
+      { provider: "Azure OpenAI", model: "gpt-4.1-mini", mode: "PREMIUM" }
+    ]
+  },
+  {
+    classId: "CLASS_C_ADVANCED",
+    label: "Class C — Premium Advanced",
+    routes: [
+      { provider: "Azure OpenAI", model: "gpt-5.4-mini", mode: "PREMIUM" }
+    ]
+  },
+  {
+    classId: "OPENROUTER_RESERVE",
+    label: "Reserve Capacity",
+    routes: [
+      { provider: "OpenRouter", model: "No approved stable route", mode: "RESERVED" }
+    ]
+  }
+];
+
 const ACADEMIC_AGENT_TYPES = new Set([
   "MODE",
   "AGENT"
+]);
+
+const CORE_ACADEMIC_AGENT_IDS = new Set([
+  "K12_SOCRATIC_TUTOR",
+  "SOCRATIC_TUTOR",
+  "RESEARCH_SYNTHESIZER",
+  "SEMANTIC_SCHOLAR_SEARCH",
+  "LITERATURE_REVIEW",
+  "RESEARCH_GAP_FINDER",
+  "EDUCATION_CAREER_PATHWAYS",
+  "COURSE_KNOWLEDGE"
 ]);
 
 const ACADEMIC_AUDIENCES = new Set([
@@ -88,7 +196,116 @@ const RESEARCH_MATURITY_LEVELS = new Set([
   "ADVANCED"
 ]);
 
+async function ensureManagedClassCatalog() {
+  const now = new Date();
+  const providersByKey = new Map();
+
+  for (const entry of AIS_CLASS_CATALOG) {
+    if (!providersByKey.has(entry.providerKey))
+      providersByKey.set(entry.providerKey, entry);
+  }
+
+  await Promise.all([
+    ...[...providersByKey.values()].map(entry =>
+      aiProviders.updateOne(
+        { key: entry.providerKey },
+        {
+          $set: {
+            name: entry.providerName,
+            endpointType: entry.endpointType,
+            costTier: entry.providerCostTier,
+            managed: true,
+            enabled: true,
+            updatedAt: now
+          },
+          $setOnInsert: {
+            description: "Managed AI Scholar Hub model class provider",
+            createdAt: now
+          }
+        },
+        { upsert: true }
+      )
+    ),
+    ...AIS_CLASS_CATALOG.map(entry =>
+      aiModels.updateOne(
+        { providerKey: entry.providerKey, model: entry.model },
+        {
+          $set: {
+            label: entry.label,
+            costTier: entry.costTier,
+            managed: true,
+            enabled: true,
+            updatedAt: now
+          },
+          $setOnInsert: {
+            description: "Managed AI Scholar Hub experience class",
+            contextWindow: null,
+            createdAt: now
+          }
+        },
+        { upsert: true }
+      )
+    )
+  ]);
+}
+
+async function ensureSuperadminEntitlements() {
+  const tenantList = await institutions
+    .find({ status: { $ne: "disabled" } }, { projection: { _id: 1 } })
+    .toArray();
+  if (!tenantList.length) return 0;
+
+  const now = new Date();
+  const result = await modelEntitlements.bulkWrite(
+    tenantList.map(tenant => ({
+      updateOne: {
+        filter: {
+          tenantId: String(tenant._id),
+          role: "SUPERADMIN",
+          agentId: "*"
+        },
+        update: {
+          $setOnInsert: {
+            tenantId: String(tenant._id),
+            role: "SUPERADMIN",
+            agentId: "*",
+            allowedModels: [
+              "ais-free-router:class-a",
+              "ais-free-router:class-b"
+            ],
+            defaultModel: "ais-free-router:class-b",
+            fallbackModels: ["ais-free-router:class-a"],
+            costTier: "BALANCED",
+            enabled: true,
+            createdAt: now,
+            updatedAt: now
+          }
+        },
+        upsert: true
+      }
+    }))
+  );
+
+  return result.upsertedCount;
+}
+
 await Promise.all([
+  /*
+   * Institutional domains are globally exclusive tenant identifiers.
+   *
+   * Application validation provides useful conflict messages, while this
+   * unique multikey index closes the race where two concurrent requests
+   * could otherwise claim the same domain for different institutions.
+   */
+  institutions.createIndex(
+    { domains: 1 },
+    {
+      unique: true,
+      partialFilterExpression: { domains: { $type: "string" } },
+      name: "domains_1_unique"
+    }
+  ),
+
   aiProviders.createIndex({ key: 1 }, { unique: true }),
   aiModels.createIndex({ providerKey: 1, model: 1 }, { unique: true }),
   aiModels.createIndex({ enabled: 1, costTier: 1 }),
@@ -159,6 +376,30 @@ await Promise.all([
     { tenantId: 1, modelSpecName: 1, enabled: 1 }
   )
 ]);
+
+// Idempotent startup initialization: administrators should never need to
+// understand or manually trigger database catalog bootstrapping.
+await ensureManagedClassCatalog();
+const superadminEntitlementsCreated = await ensureSuperadminEntitlements();
+if (superadminEntitlementsCreated) {
+  await adminAudit.insertOne({
+    timestamp: new Date(),
+    actorUserId: null,
+    actorEmail: null,
+    actorName: "AI Scholar Hub",
+    actorRole: "SYSTEM",
+    actorSuperAdmin: false,
+    action: "SUPERADMIN_ENTITLEMENTS_AUTO_PROVISIONED",
+    targetUserId: null,
+    targetEmail: SUPERADMIN_EMAIL,
+    targetRole: "SUPERADMIN",
+    result: "success",
+    source: "AI Scholar Hub Admin UI",
+    ipAddress: null,
+    userAgent: null,
+    details: { created: superadminEntitlementsCreated }
+  });
+}
 
 async function audit(action, req, details = {}) {
   try {
@@ -292,6 +533,139 @@ async function institutionExists(tenantId) {
   const id = String(tenantId || "").trim();
   if (!id) return false;
   return !!(await institutions.findOne({ _id: id }, { projection: { _id: 1 } }));
+}
+
+/*
+ * Institutional email domains are tenant identity data.
+ *
+ * The institution record is the authoritative owner of its domains.
+ * User records may consume that ownership, but must never create or infer it.
+ */
+function normalizeInstitutionDomains(value) {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value)) {
+    throw new Error("Institution domains must be an array");
+  }
+
+  const normalized = [...new Set(
+    value
+      .map(domain =>
+        String(domain || "")
+          .trim()
+          .toLowerCase()
+          .replace(/^@/, "")
+      )
+      .filter(Boolean)
+  )].sort();
+
+  const domainPattern =
+    /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/;
+
+  for (const domain of normalized) {
+    if (!domainPattern.test(domain)) {
+      throw new Error(`Invalid institutional domain: ${domain}`);
+    }
+  }
+
+  return normalized;
+}
+
+function emailDomain(email) {
+  const normalized = String(email || "").trim().toLowerCase();
+  const at = normalized.lastIndexOf("@");
+  return at > 0 ? normalized.slice(at + 1) : "";
+}
+
+async function assertEmailMatchesInstitution(email, institutionId) {
+  const tenantId = String(institutionId || "").trim();
+  const domain = emailDomain(email);
+
+  if (!tenantId) {
+    const err = new Error("Institution is required for institution-scoped users");
+    err.statusCode = 400;
+    throw err;
+  }
+
+  if (!domain) {
+    const err = new Error("A valid email address is required");
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const institution = await institutions.findOne(
+    { _id: tenantId },
+    { projection: { _id: 1, name: 1, status: 1, domains: 1 } }
+  );
+
+  if (!institution) {
+    const err = new Error("Selected institution does not exist");
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const domains = normalizeInstitutionDomains(institution.domains || []) || [];
+
+  if (!domains.includes(domain)) {
+    const err = new Error(
+      `Email domain "${domain}" does not belong to institution "${tenantId}"`
+    );
+    err.statusCode = 409;
+    throw err;
+  }
+
+  return institution;
+}
+
+async function assertInstitutionDomainsAvailable(institutionId, domains) {
+  if (!domains?.length) return;
+
+  const conflict = await institutions.findOne({
+    _id: { $ne: institutionId },
+    domains: { $in: domains }
+  }, {
+    projection: { _id: 1, name: 1, domains: 1 }
+  });
+
+  if (conflict) {
+    const conflictingDomain = domains.find(domain =>
+      Array.isArray(conflict.domains) &&
+      conflict.domains.includes(domain)
+    );
+
+    const err = new Error(
+      `Domain "${conflictingDomain || "requested domain"}" already belongs to institution "${conflict._id}"`
+    );
+    err.statusCode = 409;
+    throw err;
+  }
+}
+
+async function assertDomainsNotInUseBeforeRemoval(institutionId, existingDomains, newDomains) {
+  const removed = (existingDomains || []).filter(
+    domain => !(newDomains || []).includes(domain)
+  );
+
+  if (!removed.length) return;
+
+  const usersStillUsingDomain = await users.findOne({
+    tenantId: institutionId,
+    email: {
+      $regex: `@(?:${removed.map(domain =>
+        domain.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+      ).join("|")})$`,
+      $options: "i"
+    }
+  }, {
+    projection: { _id: 1, email: 1 }
+  });
+
+  if (usersStillUsingDomain) {
+    const err = new Error(
+      `Cannot remove an institutional domain while assigned users still use it (${usersStillUsingDomain.email})`
+    );
+    err.statusCode = 409;
+    throw err;
+  }
 }
 
 function targetTenantForRequest(req, requestedTenantId) {
@@ -879,10 +1253,35 @@ app.get("/api/users", async (req, res) => {
     const filter = userScope(req);
 
     if (q) {
+      /*
+       * User search is tenant-aware and server-side.
+       *
+       * Institution Admins remain constrained by userScope(req), while
+       * platform-level administrators may search by institution name/ID
+       * without loading the entire directory into the browser.
+       */
+      const escapedQ = q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const institutionMatches = await institutions.find(
+        {
+          $or: [
+            { _id: { $regex: escapedQ, $options: "i" } },
+            { name: { $regex: escapedQ, $options: "i" } }
+          ]
+        },
+        { projection: { _id: 1 } }
+      ).limit(100).toArray();
+
+      const matchingTenantIds = institutionMatches
+        .map(x => String(x._id || "").trim())
+        .filter(Boolean);
+
       filter.$or = [
-        { name: { $regex: q, $options: "i" } },
-        { username: { $regex: q, $options: "i" } },
-        { email: { $regex: q, $options: "i" } }
+        { name: { $regex: escapedQ, $options: "i" } },
+        { username: { $regex: escapedQ, $options: "i" } },
+        { email: { $regex: escapedQ, $options: "i" } },
+        ...(matchingTenantIds.length
+          ? [{ tenantId: { $in: matchingTenantIds } }]
+          : [])
       ];
     }
     const roles = roleParam.split(",").map(x => x.trim()).filter(Boolean);
@@ -917,31 +1316,17 @@ app.get("/api/institutions", async (req, res) => {
       { role: "INSTITUTION_ADMIN", tenantId: { $exists: true, $ne: null } },
       { projection: { name: 1, email: 1, tenantId: 1 } }
     ).toArray();
-    const allTenantUsers = await users.find(
-      { tenantId: { $exists: true, $nin: [null, ""] } },
-      { projection: { email: 1, tenantId: 1 } }
-    ).toArray();
     const byTenant = new Map();
-    const domainsByTenant = new Map();
     for (const admin of admins) {
       const key = String(admin.tenantId || "");
       if (!byTenant.has(key)) byTenant.set(key, []);
       byTenant.get(key).push({ _id: admin._id, name: admin.name, email: admin.email });
     }
-    for (const user of allTenantUsers) {
-      const tenantId = String(user.tenantId || "").trim();
-      const email = String(user.email || "").trim().toLowerCase();
-      const at = email.lastIndexOf("@");
-      if (!tenantId || at <= 0) continue;
-      const domain = email.slice(at + 1);
-      if (!domainsByTenant.has(tenantId)) domainsByTenant.set(tenantId, new Set());
-      domainsByTenant.get(tenantId).add(domain);
-    }
     res.json({
       institutions: list.map(x => ({
         ...x,
         admins: byTenant.get(String(x._id)) || [],
-        domains: [...(domainsByTenant.get(String(x._id)) || new Set())].sort()
+        domains: normalizeInstitutionDomains(x.domains || []) || []
       }))
     });
   } catch (e) {
@@ -957,13 +1342,30 @@ app.post("/api/institutions", async (req, res) => {
   if (!/^[-a-zA-Z0-9_.]{1,128}$/.test(id) || !name || name.length > 200)
     return res.status(400).json({ error: "Valid institution id and name are required" });
   try {
+    const domains = normalizeInstitutionDomains(req.body.domains) || [];
+    await assertInstitutionDomainsAvailable(id, domains);
+
     const now = new Date();
-    const doc = { _id: id, name, status: "enabled", createdAt: now, updatedAt: now };
+    const doc = {
+      _id: id,
+      name,
+      status: "enabled",
+      domains,
+      createdAt: now,
+      updatedAt: now
+    };
     await institutions.insertOne(doc);
     await audit("INSTITUTION_CREATED", req, { safeDetails: { institutionId: id, name } });
     res.status(201).json({ institution: doc });
   } catch (e) {
-    if (e?.code === 11000) return res.status(409).json({ error: "Institution already exists" });
+    if (e?.code === 11000)
+      return res.status(409).json({
+        error: "Institution or institutional domain already exists"
+      });
+
+    if (e?.statusCode)
+      return res.status(e.statusCode).json({ error: e.message });
+
     console.error("[institution-create]", e);
     res.status(500).json({ error: "Failed to create institution" });
   }
@@ -984,11 +1386,45 @@ app.patch("/api/institutions/:id", async (req, res) => {
     update.status = req.body.status;
   }
   try {
-    const result = await institutions.findOneAndUpdate({ _id: id }, { $set: update }, { returnDocument: "after" });
+    if (req.body.domains !== undefined) {
+      const institution = await institutions.findOne(
+        { _id: id },
+        { projection: { domains: 1 } }
+      );
+
+      if (!institution)
+        return res.status(404).json({ error: "Institution not found" });
+
+      const domains = normalizeInstitutionDomains(req.body.domains);
+
+      await assertInstitutionDomainsAvailable(id, domains);
+
+      await assertDomainsNotInUseBeforeRemoval(
+        id,
+        normalizeInstitutionDomains(institution.domains || []) || [],
+        domains
+      );
+
+      update.domains = domains;
+    }
+
+    const result = await institutions.findOneAndUpdate(
+      { _id: id },
+      { $set: update },
+      { returnDocument: "after" }
+    );
     if (!result) return res.status(404).json({ error: "Institution not found" });
     await audit("INSTITUTION_UPDATED", req, { safeDetails: { institutionId: id, fields: Object.keys(update).filter(k => k !== "updatedAt") } });
     res.json({ institution: result });
   } catch (e) {
+    if (e?.code === 11000)
+      return res.status(409).json({
+        error: "Institutional domain already belongs to another institution"
+      });
+
+    if (e?.statusCode)
+      return res.status(e.statusCode).json({ error: e.message });
+
     console.error("[institution-update]", e);
     res.status(500).json({ error: "Failed to update institution" });
   }
@@ -1113,10 +1549,7 @@ app.post("/api/users", async (req, res) => {
       : (role === "PLATFORM_ADMIN" ? null : requestedTenantId);
 
     if (role === "USER" || role === "Instructor" || role === "INSTITUTION_ADMIN") {
-      if (!tenantId)
-        return res.status(400).json({ error: "Institution is required for institution-scoped users" });
-      if (!(await institutionExists(tenantId)))
-        return res.status(400).json({ error: "Selected institution does not exist" });
+      await assertEmailMatchesInstitution(email, tenantId);
     }
 
     /*
@@ -1328,27 +1761,31 @@ app.patch("/api/users/:id", async (req, res) => {
         const tenantId = isInstitutionAdmin(req.admin)
           ? actorTenant(req)
           : String(req.body.tenantId || user.tenantId || "").trim();
-        if (!tenantId || !(await institutionExists(tenantId)))
-          return res.status(400).json({ error: "A valid institution is required for Institution Admin" });
+
+        await assertEmailMatchesInstitution(user.email, tenantId);
         update.tenantId = tenantId;
+
       } else if (role === "USER" || role === "Instructor") {
         const tenantId = isInstitutionAdmin(req.admin)
           ? actorTenant(req)
           : (req.body.tenantId !== undefined
             ? String(req.body.tenantId || "").trim()
             : String(user.tenantId || "").trim());
-        if (!tenantId || !(await institutionExists(tenantId)))
-          return res.status(400).json({ error: "A valid institution is required for institution-scoped users" });
+
+        await assertEmailMatchesInstitution(user.email, tenantId);
         update.tenantId = tenantId;
       }
     }
 
     if (req.body.tenantId !== undefined && !isInstitutionAdmin(req.admin) && req.body.role === undefined) {
       const tenantId = String(req.body.tenantId || "").trim();
-      if (tenantId && !(await institutionExists(tenantId)))
-        return res.status(400).json({ error: "Selected institution does not exist" });
-      if (tenantId) update.tenantId = tenantId;
-      else delete update.tenantId;
+
+      if (tenantId) {
+        await assertEmailMatchesInstitution(user.email, tenantId);
+        update.tenantId = tenantId;
+      } else {
+        delete update.tenantId;
+      }
     }
 
     if (req.body.password) {
@@ -1602,6 +2039,18 @@ app.post("/api/users/bulk", async (req, res) => {
           errors.push(`Row ${rowNo}: institution "${effectiveTenantId}" is disabled`);
           continue;
         }
+
+        /*
+         * Bulk enrollment is subject to the same tenant identity boundary
+         * as single-user administration. The CSV cannot assign an email
+         * domain to an institution that does not own that domain.
+         */
+        try {
+          await assertEmailMatchesInstitution(email, effectiveTenantId);
+        } catch (e) {
+          errors.push(`Row ${rowNo}: ${e.message}`);
+          continue;
+        }
       }
 
       if (ragAccess === true) {
@@ -1806,7 +2255,7 @@ const ragGroupManagers = db.collection("ragGroupManagers");
 const ragFiles = db.collection("files");
 
 const ORG_ID_RE = /^[-a-zA-Z0-9_.]{1,128}$/;
-const RAG_TYPES = new Set(["DEPARTMENT", "COURSE", "INSTRUCTOR"]);
+const RAG_TYPES = new Set(["DEPARTMENT", "COURSE", "GROUP"]);
 
 function orgTenant(req, requestedTenantId = null) {
   if (isInstitutionAdmin(req.admin)) return actorTenant(req);
@@ -1950,6 +2399,7 @@ async function ensureOrgIndexes() {
     ragGroups.createIndex({ tenantId: 1, departmentIds: 1 }),
     ragGroups.createIndex({ tenantId: 1, courseIds: 1 }),
     ragGroups.createIndex({ tenantId: 1, userIds: 1 }),
+    ragGroups.createIndex({ tenantId: 1, ragLocationIds: 1 }),
     ragFiles.createIndex({ tenantId: 1, ragGroupIds: 1 }),
     ragGroupManagers.createIndex({ tenantId: 1, ragGroupId: 1, userId: 1 }, { unique: true }),
     ragGroupManagers.createIndex({ tenantId: 1, ragGroupId: 1 }),
@@ -2041,8 +2491,14 @@ app.delete("/api/departments/:id", async (req, res) => {
     const tenantId = current.tenantId;
     const coursesUsing = await courses.countDocuments({ tenantId, departmentId: current._id });
     if (coursesUsing) return res.status(409).json({ error: "Department has courses. Move or remove its courses before deleting it." });
+    const ragLocation = await ragLocations.findOne(
+      { tenantId, type: "DEPARTMENT", targetId: current._id.toString() },
+      { projection: { _id: 1 } }
+    );
+    if (ragLocation) return res.status(409).json({
+      error: "Department has a RAG Access Point. Remove its documents and Access Group assignments, then delete the Access Point first."
+    });
     await groupDepartments.deleteMany({ tenantId, departmentId: current._id });
-    await ragLocations.deleteMany({ tenantId, type: "DEPARTMENT", targetId: current._id.toString() });
     await departments.deleteOne({ _id: current._id, tenantId });
     await audit("DEPARTMENT_DELETED", req, { safeDetails: { tenantId, departmentId: current._id.toString() } });
     res.json({ ok: true });
@@ -2111,9 +2567,15 @@ app.delete("/api/courses/:id", async (req, res) => {
     if (!orgCanManage(req)) return res.status(403).json({ error: "Organization administration is not permitted" });
     const current = await getScopedCourse(req, req.params.id); if (!current) return res.status(404).json({ error: "Course not found" });
     const tenantId = current.tenantId;
+    const ragLocation = await ragLocations.findOne(
+      { tenantId, type: "COURSE", targetId: current._id.toString() },
+      { projection: { _id: 1 } }
+    );
+    if (ragLocation) return res.status(409).json({
+      error: "Course has a RAG Access Point. Remove its documents and Access Group assignments, then delete the Access Point first."
+    });
     await courseInstructors.deleteMany({ tenantId, courseId: current._id });
     await groupCourses.deleteMany({ tenantId, courseId: current._id });
-    await ragLocations.deleteMany({ tenantId, type: "COURSE", targetId: current._id.toString() });
     await courses.deleteOne({ _id: current._id, tenantId });
     await audit("COURSE_DELETED", req, { safeDetails: { tenantId, courseId: current._id.toString() } });
     res.json({ ok: true });
@@ -2361,6 +2823,23 @@ app.delete("/api/groups/:id", async (req,res)=>{
       });
     }
 
+    const [ragLocation,ragAccessGroup]=await Promise.all([
+      ragLocations.findOne({
+        tenantId:current.tenantId,
+        type:"GROUP",
+        targetId:String(current._id)
+      },{projection:{_id:1}}),
+      ragGroups.findOne({
+        tenantId:current.tenantId,
+        groupIds:String(current._id)
+      },{projection:{_id:1}})
+    ]);
+    if(ragLocation||ragAccessGroup){
+      return res.status(409).json({
+        error:"Group is used by RAG policy. Remove its RAG Access Point and Access Group assignments first."
+      });
+    }
+
     await Promise.all([
       groupCourses.deleteMany({tenantId:current.tenantId,groupId:current._id}),
       groupDepartments.deleteMany({tenantId:current.tenantId,groupId:current._id}),
@@ -2502,11 +2981,49 @@ function cleanIdList(values) {
   )];
 }
 
+function signRagToken(userId, tenantId) {
+  const secret = String(process.env.JWT_SECRET || "");
+  if (!secret)
+    throw new Error("Document upload signing is not configured");
+
+  const now = Math.floor(Date.now() / 1000);
+  const encode = value => Buffer
+    .from(JSON.stringify(value))
+    .toString("base64url");
+  const header = encode({ alg: "HS256", typ: "JWT" });
+  const payload = encode({
+    id: String(userId),
+    tenantId: String(tenantId),
+    iat: now,
+    exp: now + 300
+  });
+  const content = `${header}.${payload}`;
+  const signature = crypto
+    .createHmac("sha256", secret)
+    .update(content)
+    .digest("base64url");
+
+  return `${content}.${signature}`;
+}
+
+async function readUpstreamJson(response, fallback) {
+  const data = await response.json().catch(() => ({}));
+  if (response.ok) return data;
+
+  const message = String(
+    data.error || data.message || data.detail || fallback
+  );
+  const error = new Error(message);
+  error.statusCode = response.status;
+  throw error;
+}
+
 async function validateRagGroupReferences(tenantId, body) {
   const groupIds = cleanIdList(body.groupIds);
   const departmentIds = cleanIdList(body.departmentIds);
   const courseIds = cleanIdList(body.courseIds);
   const userIds = cleanIdList(body.userIds);
+  const ragLocationIds = cleanIdList(body.ragLocationIds);
 
   const groupObjects = groupIds.map(oid).filter(Boolean);
   const departmentObjects = departmentIds.map(oid).filter(Boolean);
@@ -2519,7 +3036,18 @@ async function validateRagGroupReferences(tenantId, body) {
   if (courseIds.length !== courseObjects.length)
     throw new Error("One or more Course IDs are invalid");
 
-  const [groupsFound, departmentsFound, coursesFound] = await Promise.all([
+  const institutionLocationId = `institution:${tenantId}`;
+  const configuredLocationIds = ragLocationIds.filter(
+    value => value !== institutionLocationId
+  );
+  const configuredLocationObjects = configuredLocationIds
+    .map(oid)
+    .filter(Boolean);
+
+  if (configuredLocationObjects.length !== configuredLocationIds.length)
+    throw new Error("One or more RAG Access Point IDs are invalid");
+
+  const [groupsFound, departmentsFound, coursesFound, locationsFound] = await Promise.all([
     groupObjects.length
       ? groups.countDocuments({ _id: { $in: groupObjects }, tenantId })
       : 0,
@@ -2528,6 +3056,13 @@ async function validateRagGroupReferences(tenantId, body) {
       : 0,
     courseObjects.length
       ? courses.countDocuments({ _id: { $in: courseObjects }, tenantId })
+      : 0,
+    configuredLocationObjects.length
+      ? ragLocations.countDocuments({
+          _id: { $in: configuredLocationObjects },
+          tenantId,
+          enabled: { $ne: false }
+        })
       : 0
   ]);
 
@@ -2537,6 +3072,8 @@ async function validateRagGroupReferences(tenantId, body) {
     throw new Error("One or more Departments do not belong to this institution");
   if (coursesFound !== courseObjects.length)
     throw new Error("One or more Courses do not belong to this institution");
+  if (locationsFound !== configuredLocationObjects.length)
+    throw new Error("One or more RAG Access Points do not belong to this institution");
 
   if (userIds.length) {
     const userObjects = userIds.map(oid).filter(Boolean);
@@ -2552,7 +3089,7 @@ async function validateRagGroupReferences(tenantId, body) {
       throw new Error("One or more Users do not belong to this institution");
   }
 
-  return { groupIds, departmentIds, courseIds, userIds };
+  return { groupIds, departmentIds, courseIds, userIds, ragLocationIds };
 }
 
 
@@ -2594,22 +3131,7 @@ app.get("/api/rag-groups", async (req, res) => {
     if (!tenantId) return;
 
     const result = await ragGroups.find({ tenantId }).sort({ name: 1 }).toArray();
-
-    const counts = await ragGroupManagers.aggregate([
-      { $match: { tenantId } },
-      { $group: { _id: "$ragGroupId", count: { $sum: 1 } } }
-    ]).toArray();
-
-    const countMap = new Map(
-      counts.map(x => [String(x._id), x.count])
-    );
-
-    res.json({
-      ragGroups: result.map(r => ({
-        ...r,
-        managerCount: countMap.get(String(r._id)) || 0
-      }))
-    });
+    res.json({ ragGroups: result });
   } catch (e) {
     console.error("[RAG-GROUPS-LIST]", e);
     res.status(500).json({ error: "Failed to retrieve RAG Groups" });
@@ -2709,13 +3231,17 @@ app.patch("/api/rag-groups/:id", async (req, res) => {
       req.body.groupIds !== undefined ||
       req.body.departmentIds !== undefined ||
       req.body.courseIds !== undefined ||
-      req.body.userIds !== undefined
+      req.body.userIds !== undefined ||
+      req.body.ragLocationIds !== undefined
     ) {
       const refs = await validateRagGroupReferences(current.tenantId, {
         groupIds: req.body.groupIds !== undefined ? req.body.groupIds : current.groupIds,
         departmentIds: req.body.departmentIds !== undefined ? req.body.departmentIds : current.departmentIds,
         courseIds: req.body.courseIds !== undefined ? req.body.courseIds : current.courseIds,
-        userIds: req.body.userIds !== undefined ? req.body.userIds : current.userIds
+        userIds: req.body.userIds !== undefined ? req.body.userIds : current.userIds,
+        ragLocationIds: req.body.ragLocationIds !== undefined
+          ? req.body.ragLocationIds
+          : current.ragLocationIds
       });
 
       Object.assign(update, refs);
@@ -2764,28 +3290,52 @@ async function canManageRagDocuments(req, ragGroup) {
   return !!assignment;
 }
 
-app.get("/api/rag-groups/:id/documents", async (req, res) => {
+async function resolveRagLocation(req, rawId) {
+  const requestedTenantId = String(
+    req.body?.tenantId || req.query?.tenantId || ""
+  ).trim();
+  const tenantId = orgTenant(req, requestedTenantId);
+  if (!tenantId || !(await institutionExists(tenantId))) return null;
+
+  const locationId = String(rawId || "").trim();
+  if (locationId === `institution:${tenantId}`) {
+    return {
+      id: locationId,
+      tenantId,
+      type: "INSTITUTION",
+      targetId: tenantId,
+      name: tenantId,
+      automatic: true,
+      enabled: true
+    };
+  }
+
+  const _id = oid(locationId);
+  if (!_id) return null;
+  return ragLocations.findOne({
+    _id,
+    tenantId,
+    type: { $in: [...RAG_TYPES] },
+    enabled: { $ne: false }
+  });
+}
+
+app.get("/api/rag-locations/:id/documents", async (req, res) => {
   try {
-    const _id = oid(req.params.id);
-    if (!_id)
-      return res.status(400).json({ error: "Invalid RAG Group ID" });
-
-    const ragGroup = await ragGroups.findOne(
-      isInstitutionAdmin(req.admin)
-        ? { _id, tenantId: actorTenant(req) }
-        : { _id }
-    );
-
-    if (!ragGroup)
-      return res.status(404).json({ error: "RAG Group not found" });
-
-    if (!(await canManageRagDocuments(req, ragGroup)))
+    if (!orgCanManage(req))
       return res.status(403).json({ error: "RAG document management is not permitted" });
+
+    const location = await resolveRagLocation(req, req.params.id);
+    if (!location)
+      return res.status(404).json({ error: "RAG Access Point not found" });
 
     const documents = await ragFiles.find(
       {
-        tenantId: ragGroup.tenantId,
-        ragGroupIds: String(ragGroup._id)
+        tenantId: location.tenantId,
+        "knowledgeScope.type": location.type,
+        "knowledgeScope.targetId": String(location.targetId),
+        enabled: { $ne: false },
+        published: { $ne: false }
       },
       {
         projection: {
@@ -2796,10 +3346,248 @@ app.get("/api/rag-groups/:id/documents", async (req, res) => {
 
     res.json({ documents });
   } catch (e) {
-    console.error("[RAG-GROUP-DOCUMENTS]", e);
+    console.error("[RAG-LOCATION-DOCUMENTS]", e);
     res.status(500).json({ error: "Failed to retrieve RAG documents" });
   }
 });
+
+app.delete("/api/rag-locations/:id/documents/:fileId", async (req, res) => {
+  try {
+    if (!orgCanManage(req))
+      return res.status(403).json({ error: "RAG document management is not permitted" });
+
+    const location = await resolveRagLocation(req, req.params.id);
+    if (!location)
+      return res.status(404).json({ error: "RAG Access Point not found" });
+
+    const document = await ragFiles.findOneAndUpdate(
+      {
+        file_id: String(req.params.fileId || ""),
+        tenantId: location.tenantId,
+        "knowledgeScope.type": location.type,
+        "knowledgeScope.targetId": String(location.targetId)
+      },
+      {
+        $set: {
+          published: false,
+          enabled: false,
+          removedFromRagAt: new Date(),
+          updatedAt: new Date()
+        },
+        $unset: { knowledgeScope: "" }
+      },
+      { returnDocument: "before" }
+    );
+
+    if (!document)
+      return res.status(404).json({ error: "RAG document not found" });
+
+    await audit("RAG_ACCESS_POINT_DOCUMENT_REMOVED", req, {
+      safeDetails: {
+        tenantId: location.tenantId,
+        ragLocationId: String(location.id || location._id),
+        fileId: document.file_id,
+        filename: document.filename
+      }
+    });
+
+    res.json({ ok: true });
+  } catch (e) {
+    console.error("[RAG-DOCUMENT-REMOVE]", e);
+    res.status(400).json({
+      error: e.message || "Failed to remove RAG document"
+    });
+  }
+});
+
+app.post(
+  "/api/rag-locations/:id/documents",
+  ragDocumentUpload.single("file"),
+  async (req, res) => {
+    let uploadedFile = null;
+    let cleanupContext = null;
+
+    try {
+      if (!orgCanManage(req))
+        return res.status(403).json({
+          error: "RAG document management is not permitted"
+        });
+
+      const location = await resolveRagLocation(req, req.params.id);
+      if (!location)
+        return res.status(404).json({ error: "RAG Access Point not found" });
+
+      if (!req.file)
+        return res.status(400).json({ error: "Select a document to upload" });
+
+      const filenameExtension = String(req.file.originalname || "")
+        .toLowerCase()
+        .match(/\.[a-z0-9]+$/)?.[0];
+      const allowedMimeTypes = new Set([
+        "application/pdf",
+        "text/plain",
+        "text/markdown"
+      ]);
+      const allowedExtensions = new Set([".pdf", ".txt", ".md", ".markdown"]);
+      if (
+        !allowedMimeTypes.has(String(req.file.mimetype || "").toLowerCase()) ||
+        !allowedExtensions.has(filenameExtension)
+      ) {
+        return res.status(400).json({
+          error: "Only PDF, plain-text, and Markdown documents are supported"
+        });
+      }
+
+      const digest = crypto
+        .createHash("sha256")
+        .update(req.file.buffer)
+        .digest("hex");
+      const duplicate = await ragFiles.findOne(
+        { tenantId: location.tenantId, digest },
+        { projection: { filename: 1 } }
+      );
+
+      if (duplicate)
+        return res.status(409).json({
+          error: `This institution already contains the document “${duplicate.filename}”.`
+        });
+
+      const token = signRagToken(req.admin._id, location.tenantId);
+      cleanupContext = {
+        token,
+        libreChatBase: String(
+          process.env.LIBRECHAT_INTERNAL_URL || "http://api:3080"
+        ).replace(/\/$/, ""),
+        ragBase: String(
+          process.env.RAG_API_URL || "http://rag_api:8000"
+        ).replace(/\/$/, "")
+      };
+      const uploadBody = new FormData();
+      const requestedFileId = crypto.randomUUID();
+      const filename = String(req.file.originalname || "document")
+        .replace(/[\r\n]/g, " ")
+        .slice(0, 240);
+      const blob = new Blob([req.file.buffer], {
+        type: req.file.mimetype || "application/octet-stream"
+      });
+
+      uploadBody.set("endpoint", "AI Scholar Free Router");
+      uploadBody.set("endpointType", "custom");
+      uploadBody.set("file_id", requestedFileId);
+      uploadBody.set("message_file", "true");
+      uploadBody.set("file", blob, encodeURIComponent(filename));
+
+      const uploadResponse = await fetch(`${cleanupContext.libreChatBase}/api/files`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: uploadBody,
+        signal: AbortSignal.timeout(120000)
+      });
+      uploadedFile = await readUpstreamJson(
+        uploadResponse,
+        "LibreChat could not store the document"
+      );
+
+      const fileId = String(uploadedFile.file_id || "");
+      if (!fileId)
+        throw new Error("LibreChat did not return a document ID");
+
+      const embeddingBody = new FormData();
+      embeddingBody.set("file_id", fileId);
+      embeddingBody.set("file", blob, encodeURIComponent(filename));
+
+      const embeddingResponse = await fetch(`${cleanupContext.ragBase}/embed`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: embeddingBody,
+        signal: AbortSignal.timeout(120000)
+      });
+      const embedding = await readUpstreamJson(
+        embeddingResponse,
+        "The document could not be indexed"
+      );
+
+      if (embedding.status !== true)
+        throw new Error("The document could not be indexed");
+
+      const document = await ragFiles.findOneAndUpdate(
+        {
+          file_id: fileId,
+          tenantId: location.tenantId,
+          user: req.admin._id
+        },
+        {
+          $set: {
+            digest,
+            embedded: true,
+            enabled: true,
+            published: true,
+            knowledgeScope: {
+              type: location.type,
+              targetId: String(location.targetId)
+            },
+            updatedAt: new Date()
+          },
+          $unset: { expiresAt: "" }
+        },
+        { returnDocument: "after" }
+      );
+
+      if (!document)
+        throw new Error("Stored document metadata could not be finalized");
+
+      await audit("RAG_ACCESS_POINT_DOCUMENT_UPLOADED", req, {
+        safeDetails: {
+          tenantId: location.tenantId,
+          ragLocationId: String(location.id || location._id),
+          knowledgeScope: {
+            type: location.type,
+            targetId: String(location.targetId)
+          },
+          fileId,
+          filename: document.filename,
+          bytes: document.bytes
+        }
+      });
+
+      res.status(201).json({ document });
+    } catch (e) {
+      console.error("[RAG-DOCUMENT-UPLOAD]", e);
+
+      if (uploadedFile?.file_id && cleanupContext) {
+        await Promise.allSettled([
+          fetch(`${cleanupContext.ragBase}/documents`, {
+            method: "DELETE",
+            headers: {
+              Authorization: `Bearer ${cleanupContext.token}`,
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify([uploadedFile.file_id]),
+            signal: AbortSignal.timeout(15000)
+          }),
+          fetch(`${cleanupContext.libreChatBase}/api/files`, {
+            method: "DELETE",
+            headers: {
+              Authorization: `Bearer ${cleanupContext.token}`,
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+              files: [{
+                file_id: uploadedFile.file_id,
+                filepath: uploadedFile.filepath
+              }]
+            }),
+            signal: AbortSignal.timeout(15000)
+          })
+        ]);
+      }
+
+      res.status(Number(e.statusCode) || 400).json({
+        error: e.message || "Failed to upload RAG Access Point document"
+      });
+    }
+  }
+);
 
 app.patch("/api/rag-files/:fileId/rag-groups", async (req, res) => {
   try {
@@ -3086,12 +3874,20 @@ app.get("/api/rag-locations", async (req,res)=>{
   try{
     if(!orgCanManage(req))return res.status(403).json({error:"RAG location administration is not permitted"});
     const tenantId=await requireOrgTenant(req,res);if(!tenantId)return;
-    const [institution,configured,personalUsers]=await Promise.all([
+    const [institution,configured,personalUsers,documentCounts]=await Promise.all([
       institutions.findOne({_id:tenantId},{projection:{_id:1,name:1,status:1}}),
       ragLocations.find({tenantId, type:{$in:[...RAG_TYPES]}}).sort({type:1,name:1}).toArray(),
-      users.find({tenantId,role:{$in:["USER","Instructor"]}},{projection:{_id:1,name:1,email:1,role:1}}).sort({name:1}).toArray()
+      users.find({tenantId,role:{$in:["USER","Instructor"]}},{projection:{_id:1,name:1,email:1,role:1}}).sort({name:1}).toArray(),
+      ragFiles.aggregate([
+        {$match:{tenantId,embedded:true,"knowledgeScope.type":{$exists:true}}},
+        {$group:{
+          _id:{type:"$knowledgeScope.type",targetId:"$knowledgeScope.targetId"},
+          count:{$sum:1}
+        }}
+      ]).toArray()
     ]);
-    const locations=[{id:`institution:${tenantId}`,type:"INSTITUTION",name:institution?.name||tenantId,targetId:tenantId,automatic:true,enabled:institution?.status!=="disabled"},...configured];
+    const countMap=new Map(documentCounts.map(x=>[`${x._id.type}:${x._id.targetId}`,x.count]));
+    const locations=[{id:`institution:${tenantId}`,type:"INSTITUTION",name:institution?.name||tenantId,targetId:tenantId,automatic:true,enabled:institution?.status!=="disabled"},...configured].map(x=>({...x,documentCount:countMap.get(`${x.type}:${x.targetId}`)||0}));
     for(const u of personalUsers) locations.push({id:`user:${u._id}`,type:"PERSONAL",name:`${u.name||u.email} — Personal`,targetId:u._id.toString(),userId:u._id.toString(),email:u.email,role:u.role,automatic:true,enabled:true});
     res.json({locations, configurableTypes:[...RAG_TYPES]});
   }catch(e){console.error("[RAG-LOCATIONS-LIST]",e);res.status(500).json({error:"Failed to retrieve RAG access points"});}
@@ -3102,12 +3898,12 @@ app.post("/api/rag-locations", async(req,res)=>{
     if(!orgCanManage(req))return res.status(403).json({error:"RAG location administration is not permitted"});
     const tenantId=await requireOrgTenant(req,res);if(!tenantId)return;
     const type=String(req.body.type||"").trim().toUpperCase();
-    if(!RAG_TYPES.has(type))return res.status(400).json({error:"Only Department, Course, and Instructor RAG access points are administrator-configurable"});
+    if(!RAG_TYPES.has(type))return res.status(400).json({error:"Only Department, Course, and Group RAG access points are administrator-configurable"});
     const targetId=String(req.body.targetId||"").trim();if(!targetId)return res.status(400).json({error:"targetId is required"});
     let target=null;
     if(type==="DEPARTMENT"){const _id=oid(targetId);if(!_id) return res.status(400).json({error:"Invalid department ID"});target=await departments.findOne({_id,tenantId});}
     if(type==="COURSE"){const _id=oid(targetId);if(!_id) return res.status(400).json({error:"Invalid course ID"});target=await courses.findOne({_id,tenantId});}
-    if(type==="INSTRUCTOR"){const _id=oid(targetId);if(!_id)return res.status(400).json({error:"Invalid instructor ID"});target=await users.findOne({_id,tenantId,role:"Instructor"},{projection:{_id:1,name:1,email:1}});}
+    if(type==="GROUP"){const _id=oid(targetId);if(!_id)return res.status(400).json({error:"Invalid group ID"});target=await groups.findOne({_id,tenantId},{projection:{_id:1,name:1}});}
     if(!target)return res.status(404).json({error:"RAG target was not found in this institution"});
     const name=String(req.body.name||target.name||target.email||target.code||targetId).trim().slice(0,200);
     const now=new Date();
@@ -3143,6 +3939,18 @@ app.delete("/api/rag-locations/:id", async(req,res)=>{
     const filter=isInstitutionAdmin(req.admin)?{_id,tenantId:actorTenant(req)}:{_id};
     const current=await ragLocations.findOne(filter);if(!current)return res.status(404).json({error:"RAG access point not found"});
     if(current.automatic)return res.status(400).json({error:"Automatic RAG access points cannot be deleted"});
+    const [accessGroupCount,documentCount]=await Promise.all([
+      ragGroups.countDocuments({tenantId:current.tenantId,ragLocationIds:String(current._id)}),
+      ragFiles.countDocuments({
+        tenantId:current.tenantId,
+        "knowledgeScope.type":current.type,
+        "knowledgeScope.targetId":String(current.targetId),
+        enabled:{$ne:false},
+        published:{$ne:false}
+      })
+    ]);
+    if(accessGroupCount)return res.status(409).json({error:"Remove this access point from its RAG Access Groups before deleting it"});
+    if(documentCount)return res.status(409).json({error:"Remove this access point's documents before deleting it"});
     await ragLocations.deleteOne({_id:current._id,tenantId:current.tenantId});
     await audit("RAG_LOCATION_DELETED",req,{safeDetails:{tenantId:current.tenantId,type:current.type,targetId:current.targetId,ragLocationId:current._id.toString()}});
     res.json({ok:true});
@@ -3172,6 +3980,13 @@ app.get("/api/academic-agents", async (req, res) => {
         error: "A valid institution is required"
       });
 
+    const created = await ensureCoreAcademicAgents(tenantId);
+    if (created) {
+      await audit("ACADEMIC_AGENTS_AUTO_PROVISIONED", req, {
+        safeDetails: { tenantId, created }
+      });
+    }
+
     const agents = await academicAgents
       .find({ tenantId })
       .sort({ name: 1 })
@@ -3187,23 +4002,7 @@ app.get("/api/academic-agents", async (req, res) => {
 });
 
 
-app.post("/api/academic-agents/bootstrap", async (req, res) => {
-  try {
-    if (!canManageAcademicAgents(req))
-      return res.status(403).json({
-        error: "Academic Agent administration is not permitted"
-      });
-
-    const tenantId = await resolveAcademicTenant(
-      req,
-      req.body.tenantId
-    );
-
-    if (!tenantId)
-      return res.status(400).json({
-        error: "A valid institution is required"
-      });
-
+async function ensureCoreAcademicAgents(tenantId) {
     const now = new Date();
 
     const integrityPolicyId = "SCHOLARLY_INTEGRITY_CORE";
@@ -3215,7 +4014,7 @@ app.post("/api/academic-agents/bootstrap", async (req, res) => {
         version: 1
       },
       {
-        $set: {
+        $setOnInsert: {
           tenantId,
           policyId: integrityPolicyId,
           version: 1,
@@ -3267,10 +4066,7 @@ app.post("/api/academic-agents/bootstrap", async (req, res) => {
             requireHumanScholarlyJudgment: true
           },
 
-          updatedAt: now
-        },
-
-        $setOnInsert: {
+          updatedAt: now,
           createdAt: now
         }
       },
@@ -3875,23 +4671,14 @@ app.post("/api/academic-agents/bootstrap", async (req, res) => {
     let created = 0;
 
     for (const doc of defaults) {
-      const {
-        createdAt,
-        ...managedFields
-      } = doc;
-
       const result = await academicAgents.updateOne(
         {
           tenantId,
           agentId: doc.agentId
         },
         {
-          $set: {
-            ...managedFields,
-            updatedAt: now
-          },
           $setOnInsert: {
-            createdAt
+            ...doc
           }
         },
         {
@@ -3902,12 +4689,26 @@ app.post("/api/academic-agents/bootstrap", async (req, res) => {
       if (result.upsertedCount) created++;
     }
 
-    await audit("ACADEMIC_AGENTS_BOOTSTRAPPED", req, {
-      safeDetails: {
-        tenantId,
-        created
-      }
-    });
+    return created;
+}
+
+app.post("/api/academic-agents/bootstrap", async (req, res) => {
+  try {
+    if (!canManageAcademicAgents(req))
+      return res.status(403).json({
+        error: "Academic Agent administration is not permitted"
+      });
+
+    const tenantId = await resolveAcademicTenant(req, req.body.tenantId);
+    if (!tenantId)
+      return res.status(400).json({ error: "A valid institution is required" });
+
+    const created = await ensureCoreAcademicAgents(tenantId);
+    if (created) {
+      await audit("ACADEMIC_AGENTS_AUTO_PROVISIONED", req, {
+        safeDetails: { tenantId, created }
+      });
+    }
 
     res.json({ ok: true, created });
   } catch (e) {
@@ -4147,6 +4948,11 @@ app.delete("/api/academic-agents/:id", async (req, res) => {
     if (!current)
       return res.status(404).json({
         error: "Academic Agent not found"
+      });
+
+    if (CORE_ACADEMIC_AGENT_IDS.has(String(current.agentId || "")))
+      return res.status(409).json({
+        error: "Core Academic Agents may be edited or disabled, but not deleted"
       });
 
     await academicAgents.deleteOne({
@@ -4912,6 +5718,27 @@ app.delete("/api/persona-prompt-policies/:id", async (req, res) => {
 });
 
 
+app.post("/api/ai-policy/bootstrap-classes", async (req, res) => {
+  try {
+    if (!canManageModelPolicy(req))
+      return res.status(403).json({
+        error: "AI model policy administration is not permitted"
+      });
+
+    await ensureManagedClassCatalog();
+
+    await audit("AIS_MODEL_CLASSES_BOOTSTRAPPED", req, {
+      safeDetails: { classCount: AIS_CLASS_CATALOG.length }
+    });
+
+    res.json({ ok: true, classCount: AIS_CLASS_CATALOG.length });
+  } catch (e) {
+    console.error("[AIS-CLASS-BOOTSTRAP]", e);
+    res.status(500).json({ error: "Failed to bootstrap AI Scholar Hub classes" });
+  }
+});
+
+
 app.get("/api/ai-policy/catalog", async (req, res) => {
   try {
     if (!canManageModelPolicy(req))
@@ -4921,13 +5748,25 @@ app.get("/api/ai-policy/catalog", async (req, res) => {
 
     const tenantId = String(req.query.tenantId || "").trim();
 
-    const [providers, models, entitlements, tenantList] = await Promise.all([
+    const [providers, models, entitlements, agents, personaRoutes, tenantList] = await Promise.all([
       aiProviders.find({}).sort({ name: 1 }).toArray(),
       aiModels.find({}).sort({ providerKey: 1, label: 1, model: 1 }).toArray(),
       tenantId
         ? modelEntitlements
             .find({ tenantId })
             .sort({ role: 1, agentId: 1 })
+            .toArray()
+        : Promise.resolve([]),
+      tenantId
+        ? academicAgents
+            .find({ tenantId, enabled: { $ne: false } })
+            .sort({ name: 1 })
+            .toArray()
+        : Promise.resolve([]),
+      tenantId
+        ? personaModelRoutes
+            .find({ tenantId, enabled: { $ne: false } })
+            .sort({ personaId: 1, priority: -1 })
             .toArray()
         : Promise.resolve([]),
       institutions
@@ -4939,19 +5778,78 @@ app.get("/api/ai-policy/catalog", async (req, res) => {
     res.json({
       providers,
       models,
+      classComposition: AIS_CLASS_COMPOSITION,
       entitlements,
+      agents,
+      personaRoutes,
       institutions: tenantList,
       costTiers: [...MODEL_COST_TIERS],
       roles: [
         "USER",
         "INSTRUCTOR",
         "INSTITUTION_ADMIN",
-        "PLATFORM_ADMIN"
+        "PLATFORM_ADMIN",
+        "SUPERADMIN"
       ]
     });
   } catch (e) {
     console.error("[AI-POLICY-CATALOG]", e);
     res.status(500).json({ error: "Failed to retrieve AI model policy" });
+  }
+});
+
+
+app.post("/api/ai-policy/validate-routes", async (req, res) => {
+  try {
+    if (!canManageModelPolicy(req))
+      return res.status(403).json({
+        error: "AI route validation is not permitted"
+      });
+
+    const routerKey = String(
+      process.env.ASH_MODEL_ROUTER_API_KEY ||
+      process.env.GEMINI_PROXY_API_KEY ||
+      ""
+    ).trim();
+
+    if (!routerKey)
+      return res.status(503).json({
+        error: "Model router validation is not configured"
+      });
+
+    const routerBase = String(
+      process.env.ASH_MODEL_ROUTER_INTERNAL_URL ||
+      "http://model-router:8000"
+    ).replace(/\/$/, "");
+
+    const response = await fetch(`${routerBase}/admin/routes/validate`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${routerKey}` },
+      signal: AbortSignal.timeout(240000)
+    });
+
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok)
+      return res.status(502).json({
+        error: "Model route validation did not complete"
+      });
+
+    await audit("AIS_MODEL_ROUTES_VALIDATED", req, {
+      safeDetails: {
+        routeCount: Array.isArray(data.results) ? data.results.length : 0,
+        availableCount: Array.isArray(data.results)
+          ? data.results.filter(item => item.available === true).length
+          : 0
+      }
+    });
+
+    res.json({
+      validatedAt: data.validatedAt || null,
+      results: Array.isArray(data.results) ? data.results : []
+    });
+  } catch (e) {
+    console.error("[AIS-ROUTE-VALIDATION]", e?.name || "Error");
+    res.status(502).json({ error: "Model route validation failed" });
   }
 });
 
@@ -5374,6 +6272,20 @@ app.get("/api/users/export", async (_req, res) => {
   res.setHeader("Content-Type", "text/csv");
   res.setHeader("Content-Disposition", "attachment; filename=ai-scholar-hub-users.csv");
   res.send(csv);
+});
+
+app.use((error, _req, res, next) => {
+  if (!error) return next();
+
+  if (error instanceof multer.MulterError) {
+    const message = error.code === "LIMIT_FILE_SIZE"
+      ? "Document exceeds the 20 MB upload limit"
+      : "The document upload could not be accepted";
+    return res.status(400).json({ error: message });
+  }
+
+  console.error("[ADMIN-UI-UNHANDLED]", error);
+  return res.status(500).json({ error: "The request could not be completed" });
 });
 
 app.listen(PORT, "0.0.0.0", () =>

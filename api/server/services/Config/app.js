@@ -393,7 +393,7 @@ async function applyAcademicIntelligence(appConfig, options = {}) {
   const mongo = mongoose.connection.db;
   const academicStart = process.hrtime.bigint();
 
-  const [agents, learnerState, promptPolicies] =
+  const [agents, learnerState, promptPolicies, integrityPolicies] =
     await Promise.all([
       mongo.collection('academicAgents')
         .find({
@@ -418,6 +418,17 @@ async function applyAcademicIntelligence(appConfig, options = {}) {
           personaId: 1,
           version: -1
         })
+        .toArray(),
+
+      mongo.collection('academicIntegrityPolicies')
+        .find({
+          tenantId,
+          enabled: true
+        })
+        .sort({
+          policyId: 1,
+          version: -1
+        })
         .toArray()
     ]);
 
@@ -435,12 +446,18 @@ async function applyAcademicIntelligence(appConfig, options = {}) {
     return appConfig;
   }
 
-  const agentMap = new Map(
-    agents.map(agent => [
-      String(agent.modelSpecName || '').trim(),
-      agent
-    ])
-  );
+  const agentMap = new Map();
+
+  // A primary MODE owns the user-facing ModelSpec. Specialized AGENT records
+  // may share that experience but must not unpredictably replace its runtime
+  // policy merely because MongoDB returned them later.
+  for (const agent of agents) {
+    const modelSpecName = String(agent.modelSpecName || '').trim();
+    if (!modelSpecName) continue;
+    const current = agentMap.get(modelSpecName);
+    if (!current || String(agent.agentType || '').toUpperCase() === 'MODE')
+      agentMap.set(modelSpecName, agent);
+  }
 
   const promptPolicyMap = new Map();
 
@@ -450,6 +467,14 @@ async function applyAcademicIntelligence(appConfig, options = {}) {
 
     if (personaId && !promptPolicyMap.has(personaId))
       promptPolicyMap.set(personaId, policy);
+  }
+
+  const integrityPolicyMap = new Map();
+
+  for (const policy of integrityPolicies) {
+    const policyId = String(policy.policyId || '').trim().toUpperCase();
+    if (policyId && !integrityPolicyMap.has(policyId))
+      integrityPolicyMap.set(policyId, policy);
   }
 
   const compact = (value, max) =>
@@ -546,6 +571,28 @@ async function applyAcademicIntelligence(appConfig, options = {}) {
       const promptPolicy =
         promptPolicyMap.get(personaId) || null;
 
+      const integrityPolicyId = String(
+        agent.integrityPolicyId || 'SCHOLARLY_INTEGRITY_CORE'
+      ).trim().toUpperCase();
+
+      const integrityPolicy =
+        integrityPolicyMap.get(integrityPolicyId) || {
+          policyId: integrityPolicyId,
+          version: 'runtime-default',
+          principle:
+            'AI should reduce the mechanical burden of scholarship without removing the intellectual responsibility of the scholar.',
+          rules: {
+            prohibitFabricatedCitations: true,
+            prohibitFabricatedData: true,
+            prohibitFabricatedResults: true,
+            prohibitFalseSourceInspectionClaims: true,
+            distinguishEvidenceFromInference: true,
+            preserveContradictoryEvidence: true,
+            requireGapSearchScopeCaveat: true,
+            requireHumanScholarlyJudgment: true
+          }
+        };
+
       let stablePolicy = '';
 
       if (promptPolicy?.prompt) {
@@ -588,14 +635,46 @@ async function applyAcademicIntelligence(appConfig, options = {}) {
           spec?.preset?.promptPrefix || ''
         ).trim();
 
+      const integrityRules = integrityPolicy?.rules || {};
+      const integrityDirective = integrityPolicy
+        ? [
+            '## ACADEMIC INTEGRITY',
+            integrityRules.prohibitFabricatedCitations
+              ? 'Do not fabricate citations.'
+              : '',
+            integrityRules.prohibitFabricatedData
+              ? 'Do not fabricate data.'
+              : '',
+            integrityRules.prohibitFabricatedResults
+              ? 'Do not fabricate results.'
+              : '',
+            integrityRules.prohibitFalseSourceInspectionClaims
+              ? 'Do not claim source inspection unless the source was provided or retrieved.'
+              : '',
+            integrityRules.distinguishEvidenceFromInference
+              ? 'Separate evidence and tool output from inference and uncertainty.'
+              : '',
+            integrityRules.preserveContradictoryEvidence
+              ? 'Preserve material contradictions.'
+              : '',
+            integrityRules.requireGapSearchScopeCaveat
+              ? 'Qualify gap claims by search scope.'
+              : '',
+            integrityRules.requireHumanScholarlyJudgment
+              ? 'Leave consequential scholarly judgment to the human.'
+              : ''
+          ].filter(Boolean).join(' ')
+        : '';
+
       const promptPrefix = [
         basePrompt,
         stablePolicy,
+        integrityDirective,
         learnerContext
       ].filter(Boolean).join('\n\n');
 
       logger.info(
-        `[academicIntelligence] tenant=${tenantId} role=${role} persona=${personaId} promptVersion=${promptPolicy?.version ?? 'fallback'} promptChars=${promptPrefix.length} learnerContext=${learnerContext ? 'yes' : 'no'}`
+        `[academicIntelligence] tenant=${tenantId} role=${role} persona=${personaId} promptVersion=${promptPolicy?.version ?? 'fallback'} integrityPolicy=${integrityPolicy ? `${integrityPolicyId}@${integrityPolicy.version}` : 'fallback'} promptChars=${promptPrefix.length} learnerContext=${learnerContext ? 'yes' : 'no'}`
       );
 
       return {
@@ -612,6 +691,13 @@ async function applyAcademicIntelligence(appConfig, options = {}) {
           String(agent.agentId || '').trim(),
 
         personaId,
+
+        ...(integrityPolicy
+          ? {
+              academicIntegrityPolicyId: integrityPolicyId,
+              academicIntegrityPolicyVersion: integrityPolicy.version
+            }
+          : {}),
 
         ...(promptPolicy
           ? {

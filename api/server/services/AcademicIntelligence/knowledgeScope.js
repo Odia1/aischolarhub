@@ -22,9 +22,10 @@ const mongoose = require('mongoose');
  *
  * The LLM never determines authorization.
  *
- * There is deliberately no parallel ragGroups authorization hierarchy here.
- * Institutional knowledge follows the institution's existing organizational
- * hierarchy: institution → department/course → group/class.
+ * RAG Access Points own document corpora. RAG Access Groups are authorization
+ * bundles that grant selected users or organizational groups access to one or
+ * more Access Points. Descendant grants follow the existing organization tree;
+ * they do not create a second, competing hierarchy.
  */
 
 
@@ -324,6 +325,59 @@ async function resolveKnowledgeScope({
     }
   }
 
+  const ragAccessGroups = await mongo.collection('ragGroups')
+    .find({
+      tenantId,
+      enabled: { $ne: false },
+      ragLocationIds: { $exists: true, $ne: [] },
+    })
+    .toArray();
+
+  const grantedAccessGroups = ragAccessGroups.filter((accessGroup) => {
+    const mode = clean(accessGroup.accessMode).toUpperCase();
+    const selectedUsers = idSet(accessGroup.userIds);
+    const selectedGroups = idSet(accessGroup.groupIds);
+
+    if (mode === 'SELECTED_USERS') {
+      return selectedUsers.has(userId);
+    }
+
+    if (mode === 'GROUP_AND_DESCENDANTS') {
+      return [...selectedGroups].some((value) => authorizedGroupIds.has(value));
+    }
+
+    if (mode === 'SELECTED_GROUPS' || mode === 'GROUP_ONLY') {
+      return [...selectedGroups].some((value) => directGroupIds.has(value));
+    }
+
+    return false;
+  });
+
+  const grantedLocationIds = idSet(
+    grantedAccessGroups.flatMap((accessGroup) => accessGroup.ragLocationIds || []),
+  );
+  const configuredLocationIds = [...grantedLocationIds]
+    .filter((value) => value !== `institution:${tenantId}`)
+    .map(oid)
+    .filter(Boolean);
+  const grantedLocations = configuredLocationIds.length
+    ? await mongo.collection('ragLocations')
+        .find({
+          _id: { $in: configuredLocationIds },
+          tenantId,
+          enabled: { $ne: false },
+        })
+        .toArray()
+    : [];
+
+  for (const location of grantedLocations) {
+    const targetId = clean(location.targetId);
+    if (!targetId) continue;
+    if (location.type === 'DEPARTMENT') departmentIds.add(targetId);
+    if (location.type === 'COURSE') courseIds.add(targetId);
+    if (location.type === 'GROUP') authorizedGroupIds.add(targetId);
+  }
+
   const allowedScopes = {
     institution: {
       allowed: true,
@@ -350,6 +404,11 @@ async function resolveKnowledgeScope({
     activeGroupId,
 
     directGroupIds: [...directGroupIds].sort(),
+
+    grantedRagAccessGroupIds: grantedAccessGroups
+      .map((accessGroup) => clean(accessGroup._id))
+      .filter(Boolean)
+      .sort(),
 
     allowedScopes,
 

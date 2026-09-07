@@ -77,7 +77,7 @@
         <div>
           <h2>RAG Knowledge Administration</h2>
           <div class="muted">
-            Manage institutional knowledge boundaries, access and delegated RAG Managers.
+            Manage institutional knowledge corpora and their audience policies.
           </div>
         </div>
         <button type="button" onclick="loadOrganizationAdmin()">Refresh</button>
@@ -87,8 +87,8 @@
         <div class="org-card">
           <h3>RAG Access Points</h3>
           <div class="muted">
-            Institution and personal scopes are automatic. Configure department,
-            course and instructor scopes here.
+            Document corpora attached to the institution, a department, a
+            course/class, or an organizational group. Upload documents here.
           </div>
           <div class="org-toolbar">
             <button type="button" class="primary" onclick="openRagForm()">+ RAG Access Point</button>
@@ -97,13 +97,13 @@
         </div>
 
         <div class="org-card">
-          <h3>RAG Groups</h3>
+          <h3>RAG Access Groups</h3>
           <div class="muted">
-            Create governed knowledge/security boundaries and associate them with
-            organizational groups, courses, departments or selected users.
+            Audience policies that may grant one or more Groups, Subgroups, or
+            selected users access to multiple RAG Access Points.
           </div>
           <div class="org-toolbar">
-            <button type="button" class="primary" onclick="openRagGroupForm()">+ RAG Group</button>
+            <button type="button" class="primary" onclick="openRagGroupForm()">+ RAG Access Group</button>
           </div>
           <div id="ragGroupList" class="org-list"></div>
         </div>
@@ -381,18 +381,65 @@
 
     window.openRagForm = function(existing=null){
       const type=existing?.type||'DEPARTMENT';
-      let targets=type==='DEPARTMENT'?state.departments:type==='COURSE'?state.courses:state.users.filter(u=>String(u.role||'').toUpperCase()==='INSTRUCTOR');
+      const targets=type==='DEPARTMENT'
+        ? state.departments
+        : type==='COURSE'
+          ? state.courses
+          : state.groups;
       const selected=existing?.targetId||'';
+
       dialog(existing?'Edit RAG Access Point':'Create RAG Access Point',
-        `<select name="type" ${existing?'disabled':''}><option value="DEPARTMENT" ${type==='DEPARTMENT'?'selected':''}>Department / School</option><option value="COURSE" ${type==='COURSE'?'selected':''}>Course / Class</option><option value="INSTRUCTOR" ${type==='INSTRUCTOR'?'selected':''}>Instructor</option></select>
+        `<label class="muted">Knowledge scope</label>
+         <select name="type" ${existing?'disabled':''}>
+           <option value="DEPARTMENT" ${type==='DEPARTMENT'?'selected':''}>Department / School</option>
+           <option value="COURSE" ${type==='COURSE'?'selected':''}>Course / Class</option>
+           <option value="GROUP" ${type==='GROUP'?'selected':''}>Group / Subgroup</option>
+         </select>
+         <label class="muted">Scope target</label>
          <select name="targetId" ${existing?'disabled':''} required>${options(targets,selected?[selected]:[])}</select>
          <input name="name" maxlength="200" placeholder="Display name (optional)" value="${esc2(existing?.name||'')}">
          <textarea name="description" maxlength="1000" placeholder="Description (optional)">${esc2(existing?.description||'')}</textarea>
          <label><input type="checkbox" name="enabled" ${existing?.enabled!==false?'checked':''}> Enabled</label>`,
-        async d=>{const f=d.querySelector('form');if(existing){await api(`/api/rag-locations/${encodeURIComponent(id(existing))}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:f.name.value,description:f.description.value,enabled:f.enabled.checked})})}else{await api('/api/rag-locations',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({type:f.type.value,targetId:f.targetId.value,name:f.name.value,description:f.description.value,enabled:f.enabled.checked})})}});
+        async d=>{
+          const f=d.querySelector('form');
+          if(existing){
+            await api(`/api/rag-locations/${encodeURIComponent(id(existing))}`,{
+              method:'PATCH',
+              headers:{'Content-Type':'application/json'},
+              body:JSON.stringify({
+                name:f.name.value,
+                description:f.description.value,
+                enabled:f.enabled.checked
+              })
+            });
+            return;
+          }
+          await api('/api/rag-locations',{
+            method:'POST',
+            headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({
+              tenantId:scope(),
+              type:f.type.value,
+              targetId:f.targetId.value,
+              name:f.name.value,
+              description:f.description.value,
+              enabled:f.enabled.checked
+            })
+          });
+        });
+
+      if(existing)return;
+      const typeSelect=document.querySelector('#orgDynamicDialog select[name="type"]');
+      const targetSelect=document.querySelector('#orgDynamicDialog select[name="targetId"]');
+      typeSelect.onchange=()=>{
+        const items=typeSelect.value==='DEPARTMENT'
+          ? state.departments
+          : typeSelect.value==='COURSE'
+            ? state.courses
+            : state.groups;
+        targetSelect.innerHTML=options(items);
+      };
     };
-
-
 
     window.openRagGroupManagers = async function(encoded){
       const item = typeof encoded === 'string'
@@ -456,9 +503,9 @@
           .join('');
 
         dialog(
-          `RAG Group Managers — ${item.name}`,
+          `Collection Managers — ${item.name}`,
           `<div class="muted">
-             Search for Instructors or Institution Admins to manage this RAG Group.
+             Search for Instructors or Institution Admins to manage this collection.
            </div>
 
            <input name="ragManagerSearch"
@@ -556,13 +603,90 @@
       }
     };
 
+    window.openRagLocationDocuments = async function(encoded){
+      const item = typeof encoded === 'string'
+        ? JSON.parse(decodeURIComponent(encoded))
+        : encoded;
+      const locationId = id(item);
+
+      try{
+        const result = await api(
+          `/api/rag-locations/${encodeURIComponent(locationId)}/documents?tenantId=${encodeURIComponent(scope())}`
+        );
+        const documents = result.documents || [];
+
+        dialog(
+          `Documents — ${item.name}`,
+          `<div class="muted">
+             Documents uploaded here are indexed once and may be retrieved only
+             according to this access point's natural hierarchy and any RAG
+             Access Group grants.
+           </div>
+
+           <label class="muted">Upload documents (PDF, text or Markdown; 20 MB each)</label>
+           <input name="documents" type="file" multiple
+                  accept=".pdf,.txt,.md,application/pdf,text/plain,text/markdown">
+
+           <div class="muted" style="margin-top:8px">
+             Clear a document checkbox to remove it from retrieval. The stored
+             record is retained for audit and recovery.
+           </div>
+
+           <div class="org-list" style="max-height:280px">
+             ${documents.length ? documents.map(doc=>`
+               <label class="org-row">
+                 <span>
+                   <strong>${esc2(doc.filename||doc.file_id)}</strong>
+                   <span class="org-small" style="display:block">
+                     ${Math.ceil(Number(doc.bytes||0)/1024)} KB
+                   </span>
+                 </span>
+                 <span>
+                   <span class="org-tag">Indexed</span>
+                   <input type="checkbox" name="retainedDocument"
+                          value="${esc2(doc.file_id)}" checked>
+                 </span>
+               </label>
+             `).join('') : '<div class="org-row"><span class="org-small">No documents uploaded.</span></div>'}
+           </div>`,
+          async d=>{
+            const f=d.querySelector('form');
+            const retained=new Set(
+              [...f.querySelectorAll('input[name="retainedDocument"]:checked')]
+                .map(x=>x.value)
+            );
+
+            for(const doc of documents){
+              if(retained.has(String(doc.file_id)))continue;
+              await api(
+                `/api/rag-locations/${encodeURIComponent(locationId)}/documents/${encodeURIComponent(doc.file_id)}?tenantId=${encodeURIComponent(scope())}`,
+                {method:'DELETE'}
+              );
+            }
+
+            for(const file of [...f.documents.files]){
+              const body=new FormData();
+              body.set('file',file,file.name);
+              body.set('tenantId',scope());
+              await api(
+                `/api/rag-locations/${encodeURIComponent(locationId)}/documents`,
+                {method:'POST',body}
+              );
+            }
+          }
+        );
+      }catch(e){
+        alert(e.message);
+      }
+    };
+
     window.openRagGroupForm = function(existing=null){
       const selectedGroups=existing?.groupIds||[];
-      const selectedDepartments=existing?.departmentIds||[];
-      const selectedCourses=existing?.courseIds||[];
+      const selectedUsers=existing?.userIds||[];
+      const selectedLocations=existing?.ragLocationIds||[];
 
-      dialog(existing?'Edit RAG Group':'Create RAG Group',
-        `<input name="name" required maxlength="200" placeholder="RAG Group name" value="${esc2(existing?.name||'')}">
+      dialog(existing?'Edit RAG Access Group':'Create RAG Access Group',
+        `<input name="name" required maxlength="200" placeholder="Access-group name" value="${esc2(existing?.name||'')}">
          <textarea name="description" maxlength="1000" placeholder="Description (optional)">${esc2(existing?.description||'')}</textarea>
          <label class="muted">Access mode</label>
          <select name="accessMode">
@@ -573,10 +697,10 @@
          </select>
          <label class="muted">Organizational Groups</label>
          <select name="groupIds" multiple>${options(state.groups,selectedGroups)}</select>
-         <label class="muted">Departments / Schools (optional)</label>
-         <select name="departmentIds" multiple>${options(state.departments,selectedDepartments)}</select>
-         <label class="muted">Courses / Classes (optional)</label>
-         <select name="courseIds" multiple>${options(state.courses,selectedCourses)}</select>
+         <label class="muted">Selected users (used by Selected users mode)</label>
+         <select name="userIds" multiple>${options(state.users,selectedUsers)}</select>
+         <label class="muted">RAG Access Points granted by this policy</label>
+         <select name="ragLocationIds" multiple>${options(state.rag,selectedLocations)}</select>
          <label><input type="checkbox" name="enabled" ${existing?.enabled!==false?'checked':''}> Enabled</label>`,
         async d=>{
           const f=d.querySelector('form');
@@ -594,8 +718,8 @@
                 description:f.description.value,
                 accessMode:f.accessMode.value,
                 groupIds:vals('groupIds'),
-                departmentIds:vals('departmentIds'),
-                courseIds:vals('courseIds'),
+                userIds:vals('userIds'),
+                ragLocationIds:vals('ragLocationIds'),
                 enabled:f.enabled.checked
               })
             }
@@ -606,7 +730,7 @@
 
     window.deleteOrgItem = async function(kind,item){
       if(!confirm(`Delete ${item.name||'this item'}?`))return;
-      const endpoint={department:'departments',course:'courses',group:'groups','rag':'rag-locations'}[kind];
+      const endpoint={department:'departments',course:'courses',group:'groups',rag:'rag-locations',ragGroup:'rag-groups'}[kind];
       try{await api(`/api/${endpoint}/${encodeURIComponent(id(item))}`,{method:'DELETE'});await loadOrganizationAdmin()}catch(e){alert(e.message)}
     };
 
@@ -644,10 +768,24 @@
           </div>`;
         }
       );
-      renderList(document.getElementById('ragLocationList'),state.rag,r=>{const targetType=r.type==='DEPARTMENT'?state.departments:r.type==='COURSE'?state.courses:state.users;const target=targetType.find(x=>id(x)===String(r.targetId));return `<div class="org-row"><div><strong>${esc2(r.name)}</strong><div><span class="org-tag">${esc2(r.type)}</span><span class="org-tag ${r.enabled?'org-enabled':'org-disabled'}">${r.enabled?'Enabled':'Disabled'}</span></div><div class="org-small">${esc2(target?.email||target?.name||'')}</div></div><div class="org-actions"><button type="button" onclick="openEncoded('rag','${arg(r)}')">Edit</button><button type="button" class="danger" onclick="deleteEncoded('rag','${arg(r)}')">Delete</button></div></div>`});
+      renderList(document.getElementById('ragLocationList'),state.rag,r=>`
+        <div class="org-row">
+          <div>
+            <strong>${esc2(r.name)}</strong>
+            <div>
+              <span class="org-tag">${esc2(r.type)}</span>
+              <span class="org-tag ${r.enabled?'org-enabled':'org-disabled'}">${r.enabled?'Enabled':'Disabled'}</span>
+              ${r.automatic?'<span class="org-tag">Built in</span>':''}
+            </div>
+            <div class="org-small">${r.documentCount||0} documents</div>
+          </div>
+          <div class="org-actions">
+            <button type="button" onclick="openRagLocationDocuments('${arg(r)}')">Documents</button>
+            ${r.automatic?'':`<button type="button" onclick="openEncoded('rag','${arg(r)}')">Edit</button><button type="button" class="danger" onclick="deleteEncoded('rag','${arg(r)}')">Delete</button>`}
+          </div>
+        </div>`);
       renderList(document.getElementById('ragGroupList'),state.ragGroups,r=>{
         const linked=(r.groupIds||[]).length;
-        const managers=r.managerCount||0;
         return `<div class="org-row">
           <div>
             <strong>${esc2(r.name)}</strong>
@@ -655,10 +793,9 @@
               <span class="org-tag ${r.enabled?'org-enabled':'org-disabled'}">${r.enabled?'Enabled':'Disabled'}</span>
               <span class="org-tag">${esc2(r.accessMode||'GROUP_ONLY')}</span>
             </div>
-            <div class="org-small">${linked} groups · ${(r.departmentIds||[]).length} departments · ${(r.courseIds||[]).length} courses · ${managers} managers</div>
+            <div class="org-small">${(r.ragLocationIds||[]).length} access points · ${linked} groups · ${(r.userIds||[]).length} selected users</div>
           </div>
           <div class="org-actions">
-            <button type="button" onclick="openRagGroupManagers('${arg(r)}')">Managers</button>
             <button type="button" onclick="openRagGroupForm('${arg(r)}')">Edit</button>
             <button type="button" class="danger" onclick="deleteOrgItem('ragGroup',JSON.parse(decodeURIComponent('${arg(r)}')))">Delete</button>
           </div>
@@ -676,12 +813,12 @@
           api(`/api/groups${q}`),
           api(`/api/rag-locations${q}`),
           api(`/api/rag-groups${q}`),
-          api('/api/users?role=Instructor&limit=100')
+          api('/api/users?limit=100')
         ]);
         state.departments=d.departments||[];
         state.courses=c.courses||[];
         state.groups=g.groups||[];
-        state.rag=(r.locations||[]).filter(x=>!x.automatic);
+        state.rag=(r.locations||[]).filter(x=>x.type!=='PERSONAL');
         state.ragGroups=rg.ragGroups||[];
         state.users=Array.isArray(u)?u:[];
         document.getElementById('orgScopeText').textContent=`Institution scope: ${scope()||'Platform-wide'}`;

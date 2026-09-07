@@ -21,6 +21,16 @@
       institutions: [],
       agents: []
     };
+    const coreAgentIds = new Set([
+      'K12_SOCRATIC_TUTOR',
+      'SOCRATIC_TUTOR',
+      'RESEARCH_SYNTHESIZER',
+      'SEMANTIC_SCHOLAR_SEARCH',
+      'LITERATURE_REVIEW',
+      'RESEARCH_GAP_FINDER',
+      'EDUCATION_CAREER_PATHWAYS',
+      'COURSE_KNOWLEDGE'
+    ]);
 
     const esc = v => String(v ?? '')
       .replaceAll('&','&amp;')
@@ -69,12 +79,6 @@
                 </select>
               `}
 
-              <button type="button"
-                onclick="bootstrapAcademicAgents()"
-                ${state.tenantId ? '' : 'disabled'}>
-                Bootstrap Core Agents
-              </button>
-
               <button type="button" class="primary"
                 onclick="openAcademicAgentForm()"
                 ${state.tenantId ? '' : 'disabled'}>
@@ -97,6 +101,9 @@
                   <span class="org-tag ${a.enabled!==false?'org-enabled':'org-disabled'}">
                     ${a.enabled!==false?'Enabled':'Disabled'}
                   </span>
+                  ${coreAgentIds.has(a.agentId)
+                    ? '<span class="org-tag">Core</span>'
+                    : ''}
                 </div>
 
                 <p class="muted">${esc(a.description || '')}</p>
@@ -121,10 +128,12 @@
                     Edit
                   </button>
 
-                  <button type="button" class="danger"
-                    onclick="deleteAcademicAgent('${esc(a._id)}')">
-                    Delete
-                  </button>
+                  ${coreAgentIds.has(a.agentId) ? '' : `
+                    <button type="button" class="danger"
+                      onclick="deleteAcademicAgent('${esc(a._id)}')">
+                      Delete
+                    </button>
+                  `}
                 </div>
               </div>
             `).join('') || `
@@ -183,30 +192,6 @@
       d.addEventListener('close', () => d.remove(), {once:true});
       d.showModal();
     }
-
-    window.bootstrapAcademicAgents = async () => {
-      if (!state.tenantId) return;
-
-      try {
-        const result = await api('/api/academic-agents/bootstrap', {
-          method:'POST',
-          headers:{'Content-Type':'application/json'},
-          body:JSON.stringify({
-            tenantId:state.tenantId
-          })
-        });
-
-        await loadAgents();
-
-        alert(
-          result.created
-            ? `${result.created} Academic Agents created.`
-            : 'Core Academic Agents already exist.'
-        );
-      } catch (e) {
-        alert(e.message);
-      }
-    };
 
     window.openAcademicAgentForm = agentId => {
       const existing = state.agents.find(
@@ -268,6 +253,12 @@
             placeholder="Pedagogical strategy">${esc(existing?.pedagogy?.strategy || '')}</textarea>
 
           <label>
+            <input type="checkbox" name="enabled"
+              ${existing?.enabled !== false ? 'checked' : ''}>
+            Enabled
+          </label>
+
+          <label>
             <input type="checkbox"
               name="diagnoseFirst"
               ${existing?.pedagogy?.diagnoseFirst !== false ? 'checked' : ''}>
@@ -314,7 +305,7 @@
             modelSpecName:f.modelSpecName.value,
             description:f.description.value,
             allowedRoles:roles,
-            enabled:true,
+            enabled:f.enabled.checked,
             pedagogy:{
               mode:f.mode.value,
               strategy:f.strategy.value,
