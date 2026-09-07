@@ -453,7 +453,7 @@
   "com_ui_add_multi_conversation": "Tilføj multikonversation",
   "com_ui_adding_details": "Tilføjer detaljer",
   "com_ui_admin": "Admin",
-  "com_ui_admin_access_warning": "Deaktivering af administratoradgang til denne funktion kan forårsage uventede UI-problemer, der kræver opdatering. Hvis den gemmes, er den eneste måde at vende tilbage på via grænsefladeindstillingen i librechat.yaml config, som påvirker alle roller.",
+  "com_ui_admin_access_warning": "Deaktivering af administratoradgang til denne funktion kan forårsage uventede UI-problemer, der kræver opdatering. Hvis den gemmes, er den eneste måde at vende tilbage på via grænsefladeindstillingen i AIH configuration, som påvirker alle roller.",
   "com_ui_admin_settings": "Administratorindstillinger",
   "com_ui_advanced": "Avanceret",
   "com_ui_advanced_settings": "Avancerede indstillinger",

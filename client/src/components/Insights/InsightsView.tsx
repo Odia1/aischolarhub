@@ -562,7 +562,7 @@ export default function InsightsView() {
   const insights = useInsightsQuery(insightsParams, { enabled: isAllowed });
   const data = insights.data;
 
-  useDocumentTitle(`${localize('com_insights_title')} | LibreChat`);
+  useDocumentTitle(`${localize('com_insights_title')} | AIH`);
 
   useEffect(
     () => () => {

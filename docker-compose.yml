@@ -184,7 +184,7 @@ services:
 
   admin-panel:
     container_name: aih-dev-admin
-    image: aih-admin:persona-policy-rc1
+    image: aih-admin:release-c-branding
     restart: always
 
     ports:

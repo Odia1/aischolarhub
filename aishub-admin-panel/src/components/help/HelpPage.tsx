@@ -3,28 +3,10 @@ import { useLocalize } from '@/hooks';
 
 const RESOURCES = [
   {
-    titleKey: 'com_help_docs_title',
-    descKey: 'com_help_docs_desc',
-    icon: 'document',
-    href: 'https://www.librechat.ai/docs',
-  },
-  {
-    titleKey: 'com_help_api_title',
-    descKey: 'com_help_api_desc',
-    icon: 'code',
-    href: 'https://www.librechat.ai/docs/configuration',
-  },
-  {
-    titleKey: 'com_help_community_title',
-    descKey: 'com_help_community_desc',
-    icon: 'users',
-    href: 'https://github.com/danny-avila/LibreChat',
-  },
-  {
-    titleKey: 'com_help_discord_title',
-    descKey: 'com_help_discord_desc',
+    titleKey: 'com_help_support',
+    descKey: 'com_help_support_text',
     icon: 'chat',
-    href: 'https://discord.librechat.ai',
+    href: 'mailto:ai@seedsnet.org',
   },
 ] as const;
 

@@ -215,7 +215,7 @@
           <input name="modelSpecName"
             required
             value="${esc(existing?.modelSpecName || '')}"
-            placeholder="LibreChat modelSpec name">
+            placeholder="AIH modelSpec name">
 
           <textarea name="description"
             placeholder="Description">${esc(existing?.description || '')}</textarea>

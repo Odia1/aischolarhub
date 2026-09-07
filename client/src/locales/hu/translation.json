@@ -416,7 +416,7 @@
   "com_ui_add_model_preset": "Modell vagy előre beállított hozzáadása további válaszhoz",
   "com_ui_add_multi_conversation": "Többes beszélgetés hozzáadása",
   "com_ui_admin": "Admin",
-  "com_ui_admin_access_warning": "Az adminisztrátori hozzáférés letiltása ehhez a funkcióhoz váratlan kezelőfelületi problémákat okozhat, amelyek frissítést igényelnek. Ha mentésre kerül, a visszaállítás egyetlen módja a librechat.yaml konfigurációs fájlban található interfész beállítás, amely minden szerepkörre hatással van.",
+  "com_ui_admin_access_warning": "Az adminisztrátori hozzáférés letiltása ehhez a funkcióhoz váratlan kezelőfelületi problémákat okozhat, amelyek frissítést igényelnek. Ha mentésre kerül, a visszaállítás egyetlen módja a AIH configuration konfigurációs fájlban található interfész beállítás, amely minden szerepkörre hatással van.",
   "com_ui_admin_settings": "Adminisztrátori beállítások",
   "com_ui_advanced": "Haladó",
   "com_ui_advanced_settings": "Haladó beállítások",

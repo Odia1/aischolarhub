@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="icon" href="/favicon.ico?v=2" type="image/x-icon">
+<title>AIH — Administrator Help</title>
+<style>
+body{
+  margin:0;
+  font-family:system-ui,sans-serif;
+  background:#f6f7f9;
+  color:#222;
+  line-height:1.55
+}
+header{
+  display:flex;
+  align-items:center;
+  gap:14px;
+  padding:18px 28px;
+  background:#20232a;
+  color:#fff
+}
+header img{
+  width:44px;
+  height:44px;
+  border-radius:9px;
+  object-fit:contain
+}
+header h1{
+  margin:0;
+  font-size:22px
+}
+header div{
+  color:#cfd3da;
+  font-size:13px
+}
+main{
+  max-width:900px;
+  margin:28px auto;
+  padding:0 20px 40px
+}
+section{
+  margin-bottom:18px;
+  padding:20px;
+  border:1px solid #ddd;
+  border-radius:10px;
+  background:#fff
+}
+h2{
+  margin:0 0 8px;
+  font-size:18px
+}
+p{
+  margin:7px 0
+}
+ul{
+  margin:8px 0 0;
+  padding-left:22px
+}
+.actions{
+  display:flex;
+  flex-wrap:wrap;
+  gap:10px;
+  margin-top:22px
+}
+.actions a{
+  display:inline-block;
+  padding:10px 14px;
+  border-radius:7px;
+  background:#20232a;
+  color:#fff;
+  text-decoration:none
+}
+.actions a.secondary{
+  background:#fff;
+  color:#20232a;
+  border:1px solid #aaa
+}
+footer{
+  padding:18px;
+  border-top:1px solid #ddd;
+  background:#fff;
+  color:#666;
+  text-align:center;
+  font-size:13px
+}
+</style>
+</head>
+<body>
+<header>
+  <img src="/aih.png" alt="AIH">
+  <div>
+    <h1>AIH Administrator Help</h1>
+    <div>AI Scholar Hub institutional administration</div>
+  </div>
+</header>
+
+<main>
+  <section>
+    <h2>Administration overview</h2>
+    <p>
+      This portal manages AIH institutions, users, academic groups,
+      RAG access, academic agents, and AI experience policies.
+      Available functions depend on your administrative role.
+    </p>
+  </section>
+
+  <section>
+    <h2>Institutions and users</h2>
+    <ul>
+      <li>Superadmins manage the complete AIH platform.</li>
+      <li>Platform Admins manage institutions and their administrators.</li>
+      <li>Institution Admins manage users and instructors only within their institution.</li>
+      <li>Institution data must remain within its assigned institution context.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Groups and academic structure</h2>
+    <p>
+      Groups contain users and instructors from one institution.
+      Administrative accounts are managed separately and are not ordinary
+      group members. Departments, courses, and subgroups can be used to
+      organize academic access.
+    </p>
+  </section>
+
+  <section>
+    <h2>RAG access</h2>
+    <p>
+      RAG Access Points identify institution-owned document collections.
+      RAG Access Groups determine which groups, courses, departments, or
+      selected users may retrieve information from those collections.
+    </p>
+  </section>
+
+  <section>
+    <h2>Academic agents and AI policy</h2>
+    <p>
+      Academic Agents define guided educational experiences. AI Experience
+      Policy controls the model classes and routes available to institutions,
+      roles, and agents.
+    </p>
+  </section>
+
+  <section>
+    <h2>Need additional assistance?</h2>
+    <p>
+      Contact AIH support at <strong>ai@seedsnet.org</strong>.
+    </p>
+    <div class="actions">
+      <a href="mailto:ai@seedsnet.org">Email AIH Support</a>
+      <a class="secondary" href="/">Return to Administrator Portal</a>
+    </div>
+  </section>
+</main>
+
+<footer>
+  AI Scholar Hub • Conceived &amp; Developed by Prof. Priyadarsan Patra
+</footer>
+</body>
+</html>
