@@ -128,10 +128,54 @@
 
     function dialog(title, body, onSubmit){
       const d=document.createElement('dialog'); d.id='orgDynamicDialog';
-      d.innerHTML=`<form method="dialog" class="org-form-grid"><h3>${esc2(title)}</h3>${body}<div style="display:flex;gap:8px"><button class="primary">Save</button><button type="button" onclick="this.closest('dialog').close()">Cancel</button></div></form>`;
+      d.innerHTML=`<form method="dialog" class="org-form-grid"><h3>${esc2(title)}</h3>${body}<div style="display:flex;align-items:center;flex-wrap:wrap;gap:8px"><button class="primary" data-dialog-submit>Save</button><button type="button" data-dialog-cancel>Cancel</button><span class="org-dialog-progress" data-dialog-progress role="status" aria-live="polite" hidden><span class="org-spinner" aria-hidden="true"></span><span data-dialog-progress-text>Working…</span></span></div></form>`;
       document.body.appendChild(d);
-      d.querySelector('form').addEventListener('submit', async e=>{e.preventDefault();try{await onSubmit(d);d.close();await loadOrganizationAdmin()}catch(err){alert(err.message)}});
-      d.addEventListener('close',()=>d.remove(),{once:true}); d.showModal(); return d;
+
+      const form=d.querySelector('form');
+      const submitButton=d.querySelector('[data-dialog-submit]');
+      const cancelButton=d.querySelector('[data-dialog-cancel]');
+      const progress=d.querySelector('[data-dialog-progress]');
+      const progressText=d.querySelector('[data-dialog-progress-text]');
+
+      d.setProgress=message=>{
+        progressText.textContent=String(message||'Working…');
+        progress.hidden=false;
+      };
+
+      const setBusy=busy=>{
+        d.dataset.busy=busy?'true':'false';
+        d.setAttribute('aria-busy',busy?'true':'false');
+        submitButton.disabled=busy;
+        cancelButton.disabled=busy;
+        if(!busy)progress.hidden=true;
+      };
+
+      cancelButton.addEventListener('click',()=>d.close());
+      d.addEventListener('cancel',event=>{
+        if(d.dataset.busy==='true')event.preventDefault();
+      });
+
+      form.addEventListener('submit',async event=>{
+        event.preventDefault();
+        if(d.dataset.busy==='true')return;
+
+        setBusy(true);
+        d.setProgress('Saving changes…');
+
+        try{
+          await onSubmit(d);
+          d.setProgress('Refreshing…');
+          await loadOrganizationAdmin();
+          d.close();
+        }catch(err){
+          setBusy(false);
+          alert(err?.message||'The operation could not be completed');
+        }
+      });
+
+      d.addEventListener('close',()=>d.remove(),{once:true});
+      d.showModal();
+      return d;
     }
 
     function options(items, selected=[]){return items.map(x=>`<option value="${esc2(id(x))}" ${selected.map(String).includes(id(x))?'selected':''}>${esc2(x.name||x.email||x.code||id(x))}</option>`).join('')}
@@ -624,9 +668,9 @@
              Access Group grants.
            </div>
 
-           <label class="muted">Upload documents (PDF, text or Markdown; 20 MB each)</label>
+           <label class="muted">Upload documents (PDF, text, Markdown or Word .docx; 30 MB each)</label>
            <input name="documents" type="file" multiple
-                  accept=".pdf,.txt,.md,application/pdf,text/plain,text/markdown">
+                  accept=".pdf,.txt,.md,.markdown,.docx,application/pdf,text/plain,text/markdown,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
 
            <div class="muted" style="margin-top:8px">
              Clear a document checkbox to remove it from retrieval. The stored
@@ -656,16 +700,33 @@
               [...f.querySelectorAll('input[name="retainedDocument"]:checked')]
                 .map(x=>x.value)
             );
+            const uploadFiles=[...f.documents.files];
+            const removedDocuments=documents.filter(
+              doc=>!retained.has(String(doc.file_id))
+            );
 
-            for(const doc of documents){
-              if(retained.has(String(doc.file_id)))continue;
+            // Validate every new file before making any changes.
+            for(const file of uploadFiles){
+              if(file.size > 30 * 1024 * 1024){
+                throw new Error(`${file.name} exceeds the 30 MB upload limit`);
+              }
+            }
+
+            for(const [index,doc] of removedDocuments.entries()){
+              d.setProgress(
+                `Removing document ${index+1} of ${removedDocuments.length}: ${doc.filename||'document'}`
+              );
               await api(
                 `/api/rag-locations/${encodeURIComponent(locationId)}/documents/${encodeURIComponent(doc.file_id)}?tenantId=${encodeURIComponent(scope())}`,
                 {method:'DELETE'}
               );
             }
 
-            for(const file of [...f.documents.files]){
+            for(const [index,file] of uploadFiles.entries()){
+              d.setProgress(
+                `Uploading and indexing document ${index+1} of ${uploadFiles.length}: ${file.name}`
+              );
+
               const body=new FormData();
               body.set('file',file,file.name);
               body.set('tenantId',scope());
@@ -673,6 +734,10 @@
                 `/api/rag-locations/${encodeURIComponent(locationId)}/documents`,
                 {method:'POST',body}
               );
+            }
+
+            if(removedDocuments.length===0 && uploadFiles.length===0){
+              d.setProgress('No document changes to save.');
             }
           }
         );
@@ -696,6 +761,7 @@
            <option value="SELECTED_GROUPS" ${existing?.accessMode==='SELECTED_GROUPS'?'selected':''}>Selected groups</option>
            <option value="SELECTED_USERS" ${existing?.accessMode==='SELECTED_USERS'?'selected':''}>Selected users</option>
          </select>
+         <div class="muted">Choose both an audience and at least one RAG Access Point. An enabled policy cannot be empty.</div>
          <label class="muted">Organizational Groups</label>
          <select name="groupIds" multiple>${options(state.groups,selectedGroups)}</select>
          <label class="muted">Selected users (used by Selected users mode)</label>
@@ -715,6 +781,7 @@
               method:existing?'PATCH':'POST',
               headers:{'Content-Type':'application/json'},
               body:JSON.stringify({
+                tenantId:scope(),
                 name:f.name.value,
                 description:f.description.value,
                 accessMode:f.accessMode.value,

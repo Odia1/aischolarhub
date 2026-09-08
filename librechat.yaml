@@ -247,15 +247,18 @@ modelSpecs:
 
 fileConfig:
 
+  serverFileSizeLimit: 30
+
   endpoints:
 
     default:
 
       fileLimit: 5
-      fileSizeLimit: 20
+      fileSizeLimit: 30
       totalSizeLimit: 100
 
       supportedMimeTypes:
         - "application/pdf"
         - "text/plain"
         - "text/markdown"
+        - "application/vnd.openxmlformats-officedocument.wordprocessingml.document"

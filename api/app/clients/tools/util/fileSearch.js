@@ -39,7 +39,6 @@ const primeFiles = async (options) => {
     req,
     agentId,
     agentResourceType,
-    academicAgentId,
   } = options;
   const file_ids = tool_resources?.[EToolResources.file_search]?.file_ids ?? [];
   const agentResourceIds = new Set(file_ids);
@@ -67,24 +66,15 @@ const primeFiles = async (options) => {
   let authorizedFileIds = [];
 
   /*
-   * COURSE_KNOWLEDGE is the only hierarchy-aware file-search path.
-   *
-   * The authoritative resolver determines which institutional hierarchy
-   * locations the authenticated user may access, then maps those locations
-   * to Mongo file metadata carrying knowledgeScope.
-   *
-   * Other agents retain ordinary LibreChat file-search behavior.
+   * Hierarchical institutional knowledge belongs to the authenticated
+   * user's normal AIH retrieval scope. It is independent of any selected
+   * or persisted Agent and is merged with personal/attached files.
    */
-  if (
-    academicAgentId === 'COURSE_KNOWLEDGE' &&
-    req?.user?.id &&
-    req?.user?.tenantId
-  ) {
+  if (req?.user?.id && req?.user?.tenantId) {
     const knowledge = await resolveAuthorizedKnowledgeFiles({
       tenantId: req.user.tenantId,
       userId: req.user.id,
       role: req.user.role,
-      agentId: 'COURSE_KNOWLEDGE',
 
       /*
        * No active academic group is currently transported through the
@@ -142,7 +132,11 @@ const primeFiles = async (options) => {
       toolContext = `- Note: Use the ${Tools.file_search} tool to find relevant information within:`;
     }
     toolContext += `\n\t- ${file.filename}${
-      agentResourceIds.has(file.file_id) ? '' : ' (just attached by user)'
+      agentResourceIds.has(file.file_id)
+        ? ''
+        : file.fromInstitutionalKnowledge === true
+          ? ' (authorized institutional knowledge)'
+          : ' (just attached by user)'
     }`;
     files.push({
       file_id: file.file_id,
@@ -241,19 +235,28 @@ const createFileSearchTool = async ({
       );
 
       const results = await Promise.all(queryPromises);
-      const validResults = results.filter((result) => result !== null);
+      const validResults = results
+        .map((result, fileIndex) =>
+          result === null
+            ? null
+            : {
+                result,
+                file: files[fileIndex],
+              },
+        )
+        .filter(Boolean);
 
       if (validResults.length === 0) {
         return ['No results found or errors occurred while searching the files.', undefined];
       }
 
       const formattedResults = validResults
-        .flatMap((result, fileIndex) =>
+        .flatMap(({ result, file }) =>
           result.data.map(([docInfo, distance]) => ({
             filename: docInfo.metadata.source.split('/').pop(),
             content: docInfo.page_content,
             distance,
-            file_id: files[fileIndex]?.file_id,
+            file_id: file?.file_id,
             page: docInfo.metadata.page || null,
           })),
         )

@@ -602,6 +602,35 @@ form{
   color:#46515e;
 }
 
+
+    /* AIH dynamic-dialog progress */
+    .org-dialog-progress {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      min-height: 32px;
+      color: #555;
+      font-size: 13px;
+    }
+
+    .org-dialog-progress[hidden] {
+      display: none;
+    }
+
+    .org-spinner {
+      width: 14px;
+      height: 14px;
+      flex: none;
+      border: 2px solid #d1d5db;
+      border-top-color: #2563eb;
+      border-radius: 50%;
+      animation: org-spinner-rotate .75s linear infinite;
+    }
+
+    @keyframes org-spinner-rotate {
+      to { transform: rotate(360deg); }
+    }
+
 </style>
 </head>
 

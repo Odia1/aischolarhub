@@ -4,7 +4,7 @@ services:
 
   api:
     container_name: aih-dev-api
-    image: seeds.azurecr.io/aischolarhub-custom:dev-20260905-1c0186dba-persona-policy-rc1
+    image: seeds.azurecr.io/aischolarhub-custom:dev-20260908-release-c-hierarchical-rag-v1
     restart: always
     user: "${UID}:${GID}"
 
@@ -101,6 +101,9 @@ services:
     container_name: aih-dev-ollama
     image: ollama/ollama:latest
     restart: always
+
+    environment:
+      OLLAMA_KEEP_ALIVE: "-1"
 
     volumes:
       - ./ollama_data:/root/.ollama

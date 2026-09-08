@@ -23,8 +23,18 @@ jest.mock('~/server/services/Files/permissions', () => ({
   filterFilesByAgentAccess: jest.fn((options) => Promise.resolve(options.files)),
 }));
 
+jest.mock('~/server/services/AcademicIntelligence/knowledgeScope', () => ({
+  resolveAuthorizedKnowledgeFiles: jest.fn().mockResolvedValue({
+    scope: {},
+    files: [],
+  }),
+}));
+
 const { createFileSearchTool, primeFiles } = require('~/app/clients/tools/util/fileSearch');
 const { generateShortLivedToken } = require('@librechat/api');
+const {
+  resolveAuthorizedKnowledgeFiles,
+} = require('~/server/services/AcademicIntelligence/knowledgeScope');
 
 describe('fileSearch.js - agent file authorization', () => {
   it('uses the permission resource type established by the calling route', async () => {
@@ -314,5 +324,179 @@ describe('entity_id scoping by file origin', () => {
     });
     await tool.func({ query: 'q' });
     expect(bodiesSent()[0].entity_id).toBeUndefined();
+  });
+});
+
+describe('AI Scholar Hub hierarchical File Search', () => {
+  const institutionalFile = {
+    file_id: 'institution-file',
+    filename: 'institution.pdf',
+    knowledgeScope: {
+      type: 'INSTITUTION',
+      targetId: 'SEEDS',
+    },
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    resolveAuthorizedKnowledgeFiles.mockResolvedValue({
+      scope: {},
+      files: [],
+    });
+  });
+
+  it('primes shared-only institutional knowledge in normal chat', async () => {
+    resolveAuthorizedKnowledgeFiles.mockResolvedValueOnce({
+      scope: {},
+      files: [institutionalFile],
+    });
+
+    const result = await primeFiles({
+      req: {
+        user: {
+          id: 'user-1',
+          tenantId: 'SEEDS',
+          role: 'USER',
+        },
+      },
+      tool_resources: undefined,
+    });
+
+    expect(resolveAuthorizedKnowledgeFiles).toHaveBeenCalledWith({
+      tenantId: 'SEEDS',
+      userId: 'user-1',
+      role: 'USER',
+      activeGroupId: null,
+    });
+    expect(result.files).toEqual([
+      expect.objectContaining({
+        file_id: 'institution-file',
+        fromAgent: false,
+        fromInstitutionalKnowledge: true,
+      }),
+    ]);
+    expect(result.authorizedFileIds).toEqual(['institution-file']);
+    expect(result.toolContext).toContain(
+      'authorized institutional knowledge',
+    );
+  });
+
+  it('preserves personal-only File Search', async () => {
+    const { getFiles } = require('~/models');
+    getFiles.mockResolvedValueOnce([
+      {
+        file_id: 'personal-file',
+        filename: 'personal.pdf',
+        user: 'user-1',
+      },
+    ]);
+
+    const result = await primeFiles({
+      req: {
+        user: {
+          id: 'user-1',
+          tenantId: 'SEEDS',
+          role: 'USER',
+        },
+      },
+      tool_resources: {
+        file_search: {
+          file_ids: ['personal-file'],
+        },
+      },
+    });
+
+    expect(result.files).toEqual([
+      expect.objectContaining({
+        file_id: 'personal-file',
+        fromInstitutionalKnowledge: false,
+      }),
+    ]);
+    expect(result.authorizedFileIds).toEqual([]);
+  });
+
+  it('merges personal and shared knowledge without replacing either', async () => {
+    const { getFiles } = require('~/models');
+    getFiles.mockResolvedValueOnce([
+      {
+        file_id: 'personal-file',
+        filename: 'personal.pdf',
+        user: 'user-1',
+      },
+    ]);
+    resolveAuthorizedKnowledgeFiles.mockResolvedValueOnce({
+      scope: {},
+      files: [institutionalFile],
+    });
+
+    const result = await primeFiles({
+      req: {
+        user: {
+          id: 'user-1',
+          tenantId: 'SEEDS',
+          role: 'USER',
+        },
+      },
+      tool_resources: {
+        file_search: {
+          file_ids: ['personal-file'],
+        },
+      },
+    });
+
+    expect(result.files.map((file) => file.file_id)).toEqual([
+      'personal-file',
+      'institution-file',
+    ]);
+    expect(result.authorizedFileIds).toEqual(['institution-file']);
+  });
+
+  it('retains the correct file identity when an earlier query fails', async () => {
+    generateShortLivedToken.mockReturnValue('mock-jwt-token');
+
+    axios.post
+      .mockRejectedValueOnce(new Error('first file unavailable'))
+      .mockResolvedValueOnce({
+        data: [
+          [
+            {
+              page_content: 'Grounded content from the second file',
+              metadata: {
+                source: '/documents/second.pdf',
+                page: 4,
+              },
+            },
+            0.1,
+          ],
+        ],
+      });
+
+    const fileSearchTool = await createFileSearchTool({
+      userId: 'user-1',
+      tenantId: 'SEEDS',
+      files: [
+        {
+          file_id: 'first-file',
+          filename: 'first.pdf',
+          fromAgent: false,
+        },
+        {
+          file_id: 'second-file',
+          filename: 'second.pdf',
+          fromAgent: false,
+        },
+      ],
+    });
+
+    const [, artifact] = await fileSearchTool.func({
+      query: 'grounded question',
+    });
+
+    expect(artifact.file_search.sources).toHaveLength(1);
+    expect(artifact.file_search.sources[0]).toMatchObject({
+      fileId: 'second-file',
+      fileName: 'second.pdf',
+      pages: [4],
+    });
   });
 });

@@ -3,6 +3,7 @@ import { MongoClient, ObjectId } from "mongodb";
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
 import multer from "multer";
+import { validateEnabledRagGroupPolicy } from "./rag-policy.js";
 
 const app = express();
 const PORT = process.env.PORT || 3090;
@@ -19,7 +20,7 @@ const ragDocumentUpload = multer({
   storage: multer.memoryStorage(),
   limits: {
     files: 1,
-    fileSize: 20 * 1024 * 1024
+    fileSize: 30 * 1024 * 1024
   }
 });
 
@@ -3216,6 +3217,12 @@ app.post("/api/rag-groups", async (req, res) => {
 
     const refs = await validateRagGroupReferences(tenantId, req.body);
 
+    validateEnabledRagGroupPolicy({
+      accessMode,
+      enabled: req.body.enabled !== false,
+      ...refs
+    });
+
     const now = new Date();
     const doc = {
       tenantId,
@@ -3307,6 +3314,12 @@ app.patch("/api/rag-groups/:id", async (req, res) => {
 
       Object.assign(update, refs);
     }
+
+    const effectivePolicy = {
+      ...current,
+      ...update
+    };
+    validateEnabledRagGroupPolicy(effectivePolicy);
 
     const result = await ragGroups.findOneAndUpdate(
       { _id: current._id, tenantId: current.tenantId },
@@ -3465,7 +3478,8 @@ app.post(
   "/api/rag-locations/:id/documents",
   ragDocumentUpload.single("file"),
   async (req, res) => {
-    let uploadedFile = null;
+    let uploadedFileId = null;
+    let insertedDocumentId = null;
     let cleanupContext = null;
 
     try {
@@ -3487,15 +3501,55 @@ app.post(
       const allowedMimeTypes = new Set([
         "application/pdf",
         "text/plain",
-        "text/markdown"
+        "text/markdown",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
       ]);
-      const allowedExtensions = new Set([".pdf", ".txt", ".md", ".markdown"]);
+      const allowedExtensions = new Set([
+        ".pdf",
+        ".txt",
+        ".md",
+        ".markdown",
+        ".docx"
+      ]);
+      const mimeType = String(req.file.mimetype || "").toLowerCase();
+
       if (
-        !allowedMimeTypes.has(String(req.file.mimetype || "").toLowerCase()) ||
+        !allowedMimeTypes.has(mimeType) ||
         !allowedExtensions.has(filenameExtension)
       ) {
         return res.status(400).json({
-          error: "Only PDF, plain-text, and Markdown documents are supported"
+          error: "Only PDF, text, Markdown, and Word (.docx) documents are supported"
+        });
+      }
+
+      const prefix = req.file.buffer.subarray(
+        0,
+        Math.min(req.file.buffer.length, 8192)
+      );
+      const isPdf = filenameExtension === ".pdf";
+      const isDocx = filenameExtension === ".docx";
+      const isText = [".txt", ".md", ".markdown"].includes(filenameExtension);
+      const hasPdfSignature =
+        prefix.length >= 5 &&
+        prefix.subarray(0, 5).toString("ascii") === "%PDF-";
+      const hasZipSignature =
+        prefix.length >= 4 &&
+        prefix[0] === 0x50 &&
+        prefix[1] === 0x4b &&
+        (
+          (prefix[2] === 0x03 && prefix[3] === 0x04) ||
+          (prefix[2] === 0x05 && prefix[3] === 0x06) ||
+          (prefix[2] === 0x07 && prefix[3] === 0x08)
+        );
+      const containsNullByte = prefix.includes(0);
+
+      if (
+        (isPdf && !hasPdfSignature) ||
+        (isDocx && !hasZipSignature) ||
+        (isText && containsNullByte)
+      ) {
+        return res.status(400).json({
+          error: "The selected file does not match its declared document format"
         });
       }
 
@@ -3516,53 +3570,41 @@ app.post(
       const token = signRagToken(req.admin._id, location.tenantId);
       cleanupContext = {
         token,
-        libreChatBase: String(
-          process.env.LIBRECHAT_INTERNAL_URL || "http://api:3080"
-        ).replace(/\/$/, ""),
+        tenantId: location.tenantId,
         ragBase: String(
           process.env.RAG_API_URL || "http://rag_api:8000"
         ).replace(/\/$/, "")
       };
-      const uploadBody = new FormData();
-      const requestedFileId = crypto.randomUUID();
+
+      // Institution-managed RAG documents are durable knowledge resources,
+      // not transient message attachments. This route owns their permanent
+      // identity and metadata lifecycle.
+      const fileId = crypto.randomUUID();
+      uploadedFileId = fileId;
+
       const filename = String(req.file.originalname || "document")
         .replace(/[\r\n]/g, " ")
         .slice(0, 240);
       const blob = new Blob([req.file.buffer], {
-        type: req.file.mimetype || "application/octet-stream"
+        type: mimeType
       });
-
-      uploadBody.set("endpoint", "AI Scholar Free Router");
-      uploadBody.set("endpointType", "custom");
-      uploadBody.set("file_id", requestedFileId);
-      uploadBody.set("message_file", "true");
-      uploadBody.set("file", blob, encodeURIComponent(filename));
-
-      const uploadResponse = await fetch(`${cleanupContext.libreChatBase}/api/files`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-        body: uploadBody,
-        signal: AbortSignal.timeout(120000)
-      });
-      uploadedFile = await readUpstreamJson(
-        uploadResponse,
-        "LibreChat could not store the document"
-      );
-
-      const fileId = String(uploadedFile.file_id || "");
-      if (!fileId)
-        throw new Error("LibreChat did not return a document ID");
 
       const embeddingBody = new FormData();
       embeddingBody.set("file_id", fileId);
       embeddingBody.set("file", blob, encodeURIComponent(filename));
 
-      const embeddingResponse = await fetch(`${cleanupContext.ragBase}/embed`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-        body: embeddingBody,
-        signal: AbortSignal.timeout(120000)
-      });
+      const embeddingResponse = await fetch(
+        `${cleanupContext.ragBase}/embed`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            Accept: "application/json"
+          },
+          body: embeddingBody,
+          signal: AbortSignal.timeout(120000)
+        }
+      );
       const embedding = await readUpstreamJson(
         embeddingResponse,
         "The document could not be indexed"
@@ -3571,31 +3613,35 @@ app.post(
       if (embedding.status !== true)
         throw new Error("The document could not be indexed");
 
-      const document = await ragFiles.findOneAndUpdate(
-        {
-          file_id: fileId,
-          tenantId: location.tenantId,
-          user: req.admin._id
+      const now = new Date();
+      const document = {
+        _id: new ObjectId(),
+        user: req.admin._id,
+        file_id: fileId,
+        temp_file_id: null,
+        digest,
+        bytes: req.file.size,
+        filename,
+        filepath: `rag://${location.tenantId}/${fileId}`,
+        object: "file",
+        embedded: true,
+        enabled: true,
+        published: true,
+        type: mimeType,
+        context: "rag",
+        usage: 0,
+        source: "local",
+        tenantId: location.tenantId,
+        knowledgeScope: {
+          type: location.type,
+          targetId: String(location.targetId)
         },
-        {
-          $set: {
-            digest,
-            embedded: true,
-            enabled: true,
-            published: true,
-            knowledgeScope: {
-              type: location.type,
-              targetId: String(location.targetId)
-            },
-            updatedAt: new Date()
-          },
-          $unset: { expiresAt: "" }
-        },
-        { returnDocument: "after" }
-      );
+        createdAt: now,
+        updatedAt: now
+      };
 
-      if (!document)
-        throw new Error("Stored document metadata could not be finalized");
+      const insertResult = await ragFiles.insertOne(document);
+      insertedDocumentId = insertResult.insertedId;
 
       await audit("RAG_ACCESS_POINT_DOCUMENT_UPLOADED", req, {
         safeDetails: {
@@ -3615,32 +3661,30 @@ app.post(
     } catch (e) {
       console.error("[RAG-DOCUMENT-UPLOAD]", e);
 
-      if (uploadedFile?.file_id && cleanupContext) {
-        await Promise.allSettled([
+      if (uploadedFileId && cleanupContext) {
+        const cleanupOperations = [
           fetch(`${cleanupContext.ragBase}/documents`, {
             method: "DELETE",
             headers: {
               Authorization: `Bearer ${cleanupContext.token}`,
               "Content-Type": "application/json"
             },
-            body: JSON.stringify([uploadedFile.file_id]),
-            signal: AbortSignal.timeout(15000)
-          }),
-          fetch(`${cleanupContext.libreChatBase}/api/files`, {
-            method: "DELETE",
-            headers: {
-              Authorization: `Bearer ${cleanupContext.token}`,
-              "Content-Type": "application/json"
-            },
-            body: JSON.stringify({
-              files: [{
-                file_id: uploadedFile.file_id,
-                filepath: uploadedFile.filepath
-              }]
-            }),
+            body: JSON.stringify([uploadedFileId]),
             signal: AbortSignal.timeout(15000)
           })
-        ]);
+        ];
+
+        if (insertedDocumentId) {
+          cleanupOperations.push(
+            ragFiles.deleteOne({
+              _id: insertedDocumentId,
+              file_id: uploadedFileId,
+              tenantId: cleanupContext.tenantId
+            })
+          );
+        }
+
+        await Promise.allSettled(cleanupOperations);
       }
 
       res.status(Number(e.statusCode) || 400).json({
@@ -6340,7 +6384,7 @@ app.use((error, _req, res, next) => {
 
   if (error instanceof multer.MulterError) {
     const message = error.code === "LIMIT_FILE_SIZE"
-      ? "Document exceeds the 20 MB upload limit"
+      ? "Document exceeds the 30 MB upload limit"
       : "The document upload could not be accepted";
     return res.status(400).json({ error: message });
   }

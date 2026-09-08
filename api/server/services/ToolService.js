@@ -1174,7 +1174,7 @@ async function loadToolDefinitionsWrapper({
     try {
       const { toolContext, files } = await primeCodeFiles({
         req,
-        tool_resources,
+        tool_resources: tool_resources || {},
         agentId: agent.id,
         agentResourceType,
         codeApiBaseUrl: resolvedCodeExecutionContext.baseUrl,
@@ -1194,19 +1194,13 @@ async function loadToolDefinitionsWrapper({
     }
   }
 
-  if (hasFileSearch && tool_resources) {
+  if (hasFileSearch) {
     try {
       const { toolContext } = await primeSearchFiles({
         req,
         tool_resources,
         agentId: agent.id,
         agentResourceType,
-
-        /*
-         * Runtime-only governed Academic Agent identity.
-         * Only an explicitly selected Academic ModelSpec may populate this.
-         */
-        academicAgentId: agent.academicAgentId,
       });
       if (toolContext) {
         dynamicToolContextMap[Tools.file_search] = toolContext;

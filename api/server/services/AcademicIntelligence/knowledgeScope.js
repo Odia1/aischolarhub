@@ -135,11 +135,6 @@ async function resolveKnowledgeScope({
     throw new Error('User context is required');
   }
 
-  if (!agentId) {
-    throw new Error('Academic Agent is required');
-  }
-
-
   const mongo = getMongo();
   const users = mongo.collection('users');
   const academicAgents = mongo.collection('academicAgents');
@@ -151,7 +146,7 @@ async function resolveKnowledgeScope({
     throw new Error('Invalid user context');
   }
 
-  const [user, agent] = await Promise.all([
+  const [user, configuredAgent] = await Promise.all([
     users.findOne(
       {
         _id: userObjectId,
@@ -162,38 +157,81 @@ async function resolveKnowledgeScope({
           _id: 1,
           tenantId: 1,
           role: 1,
+          ragAccess: 1,
         },
       },
     ),
 
-    academicAgents.findOne(
-      {
-        tenantId,
-        agentId,
-        enabled: true,
-      },
-      {
-        projection: {
-          _id: 1,
-          agentId: 1,
-          agentType: 1,
-          allowedRoles: 1,
-          audiences: 1,
-          ragPolicy: 1,
-        },
-      },
-    ),
+    agentId
+      ? academicAgents.findOne(
+          {
+            tenantId,
+            agentId,
+            enabled: true,
+          },
+          {
+            projection: {
+              _id: 1,
+              agentId: 1,
+              agentType: 1,
+              allowedRoles: 1,
+              audiences: 1,
+              ragPolicy: 1,
+            },
+          },
+        )
+      : Promise.resolve(null),
   ]);
 
   if (!user) {
     throw new Error('User not found in this institution');
   }
 
-  if (!agent) {
+  /*
+   * An Academic Agent policy may further restrict retrieval, but normal
+   * AIH chat does not require an Agent. In generic chat, institution/group
+   * access policies and the authenticated user's hierarchy are authoritative.
+   */
+  const agent = agentId
+    ? configuredAgent
+    : {
+        allowedRoles: [],
+        ragPolicy: {
+          sharedScopeMode: 'CONTEXTUAL_HIERARCHY',
+        },
+      };
+
+  if (agentId && !agent) {
     throw new Error('Academic Agent not found or disabled');
   }
 
   const effectiveRole = clean(user.role || role);
+
+  /*
+   * Shared institutional retrieval is an independent account capability.
+   * A user without it retains ordinary personal File Search, but receives
+   * no institution/group-authorized documents.
+   */
+  if (user.ragAccess !== true) {
+    return {
+      tenantId,
+      userId,
+      role: effectiveRole,
+      allowedScopes: {
+        institution: {
+          allowed: false,
+          tenantId,
+        },
+        departments: [],
+        courses: [],
+        groups: [],
+        personal: {
+          allowed: true,
+          userId,
+        },
+      },
+    };
+  }
 
   const allowedRoles = new Set(
     Array.isArray(agent.allowedRoles)
@@ -291,8 +329,6 @@ async function resolveKnowledgeScope({
   );
 
   const authorizedGroupIds = new Set();
-  const departmentIds = new Set();
-  const courseIds = new Set();
 
   /*
    * Hierarchical inheritance comes from the organization tree itself.
@@ -307,21 +343,6 @@ async function resolveKnowledgeScope({
     for (const node of chain) {
       authorizedGroupIds.add(clean(node._id));
 
-      for (
-        const departmentId of Array.isArray(node.departmentIds)
-          ? node.departmentIds
-          : []
-      ) {
-        departmentIds.add(clean(departmentId));
-      }
-
-      for (
-        const courseId of Array.isArray(node.courseIds)
-          ? node.courseIds
-          : []
-      ) {
-        courseIds.add(clean(courseId));
-      }
     }
   }
 
@@ -370,25 +391,40 @@ async function resolveKnowledgeScope({
         .toArray()
     : [];
 
+  /*
+   * Organizational membership establishes audience eligibility only.
+   * Retrieval scope is granted exclusively through enabled RAG policies
+   * that reference enabled RAG Access Points.
+   */
+  const grantedDepartmentIds = new Set();
+  const grantedCourseIds = new Set();
+  const grantedGroupIds = new Set();
+
   for (const location of grantedLocations) {
     const targetId = clean(location.targetId);
     if (!targetId) continue;
-    if (location.type === 'DEPARTMENT') departmentIds.add(targetId);
-    if (location.type === 'COURSE') courseIds.add(targetId);
-    if (location.type === 'GROUP') authorizedGroupIds.add(targetId);
+    if (location.type === 'DEPARTMENT') {
+      grantedDepartmentIds.add(targetId);
+    }
+    if (location.type === 'COURSE') {
+      grantedCourseIds.add(targetId);
+    }
+    if (location.type === 'GROUP') {
+      grantedGroupIds.add(targetId);
+    }
   }
 
   const allowedScopes = {
     institution: {
-      allowed: true,
+      allowed: grantedLocationIds.has(`institution:${tenantId}`),
       tenantId,
     },
 
-    departments: [...departmentIds].filter(Boolean).sort(),
+    departments: [...grantedDepartmentIds].filter(Boolean).sort(),
 
-    courses: [...courseIds].filter(Boolean).sort(),
+    courses: [...grantedCourseIds].filter(Boolean).sort(),
 
-    groups: [...authorizedGroupIds].filter(Boolean).sort(),
+    groups: [...grantedGroupIds].filter(Boolean).sort(),
 
     personal: {
       allowed: true,
