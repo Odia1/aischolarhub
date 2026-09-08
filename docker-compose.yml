@@ -40,8 +40,6 @@ services:
     volumes:
       - ./.env:/app/.env
       - ./librechat.yaml:/app/librechat.yaml
-      - ./api/server/services/Config/app.js:/app/api/server/services/Config/app.js:ro
-      - ./api/server/services/AcademicIntelligence/knowledgeScope.js:/app/api/server/services/AcademicIntelligence/knowledgeScope.js:ro
       - ./images:/app/client/public/images
       - ./uploads:/app/uploads
       - ./logs:/app/logs
