@@ -1,0 +1,3 @@
+services:
+  api:
+    image: seeds.azurecr.io/aischolarhub-custom:dev-20260908-release-c-hierarchical-rag-v1
