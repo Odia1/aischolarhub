@@ -62,6 +62,41 @@ describe('agent trigger identity', () => {
     });
   });
 
+  it('signs only bounded canonical institutional knowledge scopes', () => {
+    const token = generateShortLivedToken('user-1', '1m', 'SEEDS', {
+      authorizedKnowledgeScopeKeys: [
+        'institution:SEEDS',
+        'INSTITUTION:SEEDS',
+        'GROUP:cohort-a',
+        'UNTRUSTED:anything',
+        '',
+      ],
+    });
+
+    const payload = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString()) as {
+      id: string;
+      tenantId: string;
+      authorizedKnowledgeScopeKeys: string[];
+    };
+
+    expect(payload).toMatchObject({
+      id: 'user-1',
+      tenantId: 'SEEDS',
+      authorizedKnowledgeScopeKeys: ['GROUP:cohort-a', 'INSTITUTION:SEEDS'],
+    });
+  });
+
+  it('omits an institutional scope claim when every supplied scope is invalid', () => {
+    const token = generateShortLivedToken('user-1', '1m', 'SEEDS', {
+      authorizedKnowledgeScopeKeys: ['UNTRUSTED:value', 'missing-target:', ''],
+    });
+    const payload = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString()) as {
+      authorizedKnowledgeScopeKeys?: string[];
+    };
+
+    expect(payload.authorizedKnowledgeScopeKeys).toBeUndefined();
+  });
+
   it('uses the dedicated trigger scope without changing ordinary tokens', () => {
     const trigger = generateAgentTriggerToken('user-1');
     const payload = JSON.parse(Buffer.from(trigger.split('.')[1], 'base64url').toString()) as {

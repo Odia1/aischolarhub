@@ -21,7 +21,34 @@ export type ShortLivedTokenClaims = {
    * it does not transport or reconstruct the institution hierarchy itself.
    */
   authorizedFileIds?: string[];
+  /**
+   * Canonical hierarchy scopes resolved by the trusted AI Scholar Hub API.
+   * The RAG service may narrow these claims but can never expand them.
+   */
+  authorizedKnowledgeScopeKeys?: string[];
 };
+
+const KNOWLEDGE_SCOPE_TYPES = new Set(['INSTITUTION', 'DEPARTMENT', 'COURSE', 'GROUP']);
+
+function normalizeKnowledgeScopeClaims(values?: string[]): string[] {
+  const normalized = (Array.isArray(values) ? values : [])
+    .map((value) => {
+      const raw = String(value ?? '').trim();
+      const separator = raw.indexOf(':');
+      if (separator <= 0) {
+        return null;
+      }
+      const type = raw.slice(0, separator).trim().toUpperCase();
+      const targetId = raw.slice(separator + 1).trim();
+      if (!KNOWLEDGE_SCOPE_TYPES.has(type) || !targetId || targetId.length > 256) {
+        return null;
+      }
+      return `${type}:${targetId}`;
+    })
+    .filter((value): value is string => value != null);
+
+  return [...new Set(normalized)].sort().slice(0, 256);
+}
 
 export const generateShortLivedToken = (
   userId: string,
@@ -32,12 +59,16 @@ export const generateShortLivedToken = (
   const authorizedFileIds = Array.isArray(claims.authorizedFileIds)
     ? [...new Set(claims.authorizedFileIds.map(String).filter(Boolean))]
     : [];
+  const authorizedKnowledgeScopeKeys = normalizeKnowledgeScopeClaims(
+    claims.authorizedKnowledgeScopeKeys,
+  );
 
   return jwt.sign(
     {
       id: userId,
       ...(tenantId ? { tenantId } : {}),
       ...(authorizedFileIds.length ? { authorizedFileIds } : {}),
+      ...(authorizedKnowledgeScopeKeys.length ? { authorizedKnowledgeScopeKeys } : {}),
     },
     process.env.JWT_SECRET!,
     {
