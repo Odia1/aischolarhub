@@ -33,6 +33,9 @@ const {
 } = require('~/server/services/MCPRequestContext');
 const { saveMessage, getConvo, getMessages } = require('~/models');
 const {
+  ensureFileCitationAnchors,
+} = require('~/app/clients/tools/util/fileCitationFallback');
+const {
   recordScheduleOutcome,
   claimScheduleResume,
   releaseScheduleResumeClaim,
@@ -342,6 +345,7 @@ async function finalizeResumedTurn({
   if (attachments.length > 0) {
     responseMessage.attachments = attachments;
   }
+  ensureFileCitationAnchors(responseMessage);
 
   // Response metadata: the resume client only sees POST-resume usage, while the job's
   // tracked tokenUsage is cumulative across the pause. Take the cumulative usage (+

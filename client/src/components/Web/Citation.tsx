@@ -7,11 +7,13 @@ import { SourceHovercard, FaviconImage, getCleanDomain } from '~/components/Web/
 import FilePreviewDialog from '~/components/Chat/Messages/Content/FilePreviewDialog';
 import { CitationContext, useCitation, useCompositeCitations } from './Context';
 import { useLocalize } from '~/hooks';
+import { isInstitutionManagedCitation } from '~/utils/ragCitation';
 
 interface FileCitationMetadata {
   fileBytes?: number;
   fileType?: string;
   storageType?: string;
+  institutionManaged?: boolean;
 }
 
 interface FileCitationSource {
@@ -106,11 +108,12 @@ export function CompositeCitation(props: CompositeCitationProps) {
   const currentSource = sources[currentPage] as FileCitationSource;
   const { isFileType, fileId, fileMeta, fileName, filePages, fileRelevance, filePageRelevance } =
     getFileCitationData(currentSource);
+  const mayOpenOriginal = isFileType && !isInstitutionManagedCitation(fileMeta);
 
   const handleFileClick = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (isFileType && fileId) {
+    if (mayOpenOriginal && fileId) {
       setShowPreview(true);
     }
   };
@@ -122,7 +125,7 @@ export function CompositeCitation(props: CompositeCitationProps) {
         label={getCitationLabel()}
         onMouseEnter={() => setHoveredCitationId(citationId || null)}
         onMouseLeave={() => setHoveredCitationId(null)}
-        onClick={isFileType ? handleFileClick : undefined}
+        onClick={mayOpenOriginal ? handleFileClick : undefined}
         isFile={isFileType}
         filePages={filePages}
         fileRelevance={fileRelevance}
@@ -131,12 +134,18 @@ export function CompositeCitation(props: CompositeCitationProps) {
           <>
             <div className="flex items-center gap-2">
               <FileText className="size-4 shrink-0 text-text-secondary" aria-hidden="true" />
-              <button
-                onClick={handleFileClick}
-                className="min-w-0 truncate text-sm font-medium text-text-primary hover:underline"
-              >
-                {fileName || currentSource.title || localize('com_file_source')}
-              </button>
+              {mayOpenOriginal ? (
+                <button
+                  onClick={handleFileClick}
+                  className="min-w-0 truncate text-sm font-medium text-text-primary hover:underline"
+                >
+                  {fileName || currentSource.title || localize('com_file_source')}
+                </button>
+              ) : (
+                <span className="min-w-0 truncate text-sm font-medium text-text-primary">
+                  {fileName || currentSource.title || localize('com_file_source')}
+                </span>
+              )}
             </div>
             {(fileRelevance != null || (filePages && filePages.length > 0)) && (
               <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -273,7 +282,7 @@ export function CompositeCitation(props: CompositeCitationProps) {
           </>
         )}
       </SourceHovercard>
-      {isFileType && fileId && (
+      {mayOpenOriginal && fileId && (
         <FilePreviewDialog
           open={showPreview}
           onOpenChange={setShowPreview}
@@ -311,6 +320,7 @@ export function Citation(props: CitationComponentProps) {
 
   const { isFileType, fileId, fileMeta, fileName, filePages, fileRelevance, filePageRelevance } =
     getFileCitationData(refData);
+  const mayOpenOriginal = isFileType && !isInstitutionManagedCitation(fileMeta);
 
   const [showPreview, setShowPreview] = useState(false);
 
@@ -318,11 +328,11 @@ export function Citation(props: CitationComponentProps) {
     (e: React.MouseEvent) => {
       e.preventDefault();
       e.stopPropagation();
-      if (isFileType && fileId) {
+      if (mayOpenOriginal && fileId) {
         setShowPreview(true);
       }
     },
-    [isFileType, fileId],
+    [mayOpenOriginal, fileId],
   );
 
   if (!refData) {
@@ -345,12 +355,12 @@ export function Citation(props: CitationComponentProps) {
         label={getCitationLabel()}
         onMouseEnter={() => setHoveredCitationId(citationId || null)}
         onMouseLeave={() => setHoveredCitationId(null)}
-        onClick={isFileType ? handleFileClick : undefined}
+        onClick={mayOpenOriginal ? handleFileClick : undefined}
         isFile={isFileType}
         filePages={filePages}
         fileRelevance={fileRelevance}
       />
-      {isFileType && fileId && (
+      {mayOpenOriginal && fileId && (
         <FilePreviewDialog
           open={showPreview}
           onOpenChange={setShowPreview}

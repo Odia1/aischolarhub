@@ -1,8 +1,10 @@
 import { useMemo } from 'react';
 import { TAttachment, Tools, SearchResultData } from 'librechat-data-provider';
 import { useLocalize } from '~/hooks';
+import { buildRagCitationSnippet } from '~/utils/ragCitation';
 
 interface FileSource {
+  content?: string;
   fileId: string;
   fileName: string;
   pages?: number[];
@@ -103,10 +105,12 @@ export function useSearchResultsByTurn(attachments?: TAttachment[]) {
                 title: source.fileName || localize('com_file_unknown'),
                 link: `#file-${source.fileId}`, // Create a pseudo-link for file references
                 attribution: source.fileName || localize('com_file_unknown'), // Show filename in inline display
-                snippet:
+                snippet: buildRagCitationSnippet(
+                  source.content,
                   source.pages && source.pages.length > 0
                     ? localize('com_file_pages', { pages: source.pages.join(', ') })
-                    : '', // Only page numbers for hover
+                    : '',
+                ),
                 type: 'file' as const,
                 // Store additional agent-specific data as properties on the reference
                 fileId: source.fileId,

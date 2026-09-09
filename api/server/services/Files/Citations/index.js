@@ -150,6 +150,9 @@ async function enhanceSourcesWithMetadata(sources, appConfig) {
         storageType: configuredStorageType,
         fileType: fileRecord.type || undefined,
         fileBytes: fileRecord.bytes || undefined,
+        ...(fileRecord.context === 'rag' && fileRecord.knowledgeScope?.type != null
+          ? { institutionManaged: true }
+          : {}),
       },
     };
   });

@@ -22,6 +22,7 @@ import { useSearchContext } from '~/Providers';
 import { cn, triggerDownload } from '~/utils';
 import { useLocalize } from '~/hooks';
 import store from '~/store';
+import { isInstitutionManagedCitation } from '~/utils/ragCitation';
 
 interface SourceItemProps {
   source: ValidSource;
@@ -179,6 +180,7 @@ type AgentFileSource = {
   messageId: string;
   toolCallId: string;
   metadata?: any;
+  snippet?: string;
 };
 
 interface FileItemProps {
@@ -238,6 +240,8 @@ const FileItem = React.memo(function FileItem({
 
   // Check if file is from local storage
   const isLocalFile = file.metadata?.storageType === 'local';
+  const isInstitutionManaged = isInstitutionManagedCitation(file.metadata);
+  const isDownloadable = !isLocalFile && !isInstitutionManaged;
 
   const handleDownload = useCallback(
     async (e: React.MouseEvent) => {
@@ -245,7 +249,7 @@ const FileItem = React.memo(function FileItem({
       e.stopPropagation();
 
       // Don't allow download for local files
-      if (isLocalFile) {
+      if (!isDownloadable) {
         return;
       }
       try {
@@ -263,7 +267,7 @@ const FileItem = React.memo(function FileItem({
         console.error('Error downloading file:', error);
       }
     },
-    [downloadFile, file.filename, isLocalFile, localize, showToast],
+    [downloadFile, file.filename, isDownloadable, localize, showToast],
   );
   const isLoading = false;
 
@@ -288,13 +292,13 @@ const FileItem = React.memo(function FileItem({
   if (expanded) {
     return (
       <button
-        onClick={isLocalFile ? undefined : handleDownload}
+        onClick={isDownloadable ? handleDownload : undefined}
         disabled={isLoading}
         className={`flex w-full flex-col rounded-lg bg-surface-primary-contrast px-3 py-2 text-sm transition-all duration-300 disabled:opacity-50 ${
-          isLocalFile ? 'cursor-default' : 'hover:bg-surface-tertiary'
+          isDownloadable ? 'hover:bg-surface-tertiary' : 'cursor-default'
         }`}
         aria-label={
-          isLocalFile ? localize('com_sources_download_local_unavailable') : downloadAriaLabel
+          isDownloadable ? downloadAriaLabel : file.filename
         }
       >
         <div className="flex items-center gap-2">
@@ -302,7 +306,7 @@ const FileItem = React.memo(function FileItem({
           <span className="truncate text-xs font-medium text-text-secondary">
             {localize('com_sources_agent_file')}
           </span>
-          {!isLocalFile && <Download className="ml-auto size-3" aria-hidden="true" />}
+          {isDownloadable && <Download className="ml-auto size-3" aria-hidden="true" />}
         </div>
         <div className="mt-1 min-w-0">
           <span className="line-clamp-2 break-words text-left text-sm font-medium text-text-primary md:line-clamp-3">
@@ -319,6 +323,11 @@ const FileItem = React.memo(function FileItem({
               {(file.bytes / 1024).toFixed(1)} KB
             </span>
           )}
+          {file.snippet && (
+            <span className="mt-2 line-clamp-4 break-words text-left text-xs text-text-secondary">
+              {file.snippet}
+            </span>
+          )}
         </div>
         {error && (
           <div className="mt-1 text-xs text-text-destructive">{getErrorMessage(error)}</div>
@@ -329,13 +338,13 @@ const FileItem = React.memo(function FileItem({
 
   return (
     <button
-      onClick={isLocalFile ? undefined : handleDownload}
+      onClick={isDownloadable ? handleDownload : undefined}
       disabled={isLoading}
       className={`flex h-full w-full flex-col rounded-lg bg-surface-primary-contrast px-3 py-2 text-sm transition-all duration-300 disabled:opacity-50 ${
-        isLocalFile ? 'cursor-default' : 'hover:bg-surface-tertiary'
+        isDownloadable ? 'hover:bg-surface-tertiary' : 'cursor-default'
       }`}
       aria-label={
-        isLocalFile ? localize('com_sources_download_local_unavailable') : downloadAriaLabel
+        isDownloadable ? downloadAriaLabel : file.filename
       }
     >
       <div className="flex items-center gap-2">
@@ -343,7 +352,7 @@ const FileItem = React.memo(function FileItem({
         <span className="truncate text-xs font-medium text-text-secondary">
           {localize('com_sources_agent_file')}
         </span>
-        {!isLocalFile && <Download className="ml-auto size-3" aria-hidden="true" />}
+        {isDownloadable && <Download className="ml-auto size-3" aria-hidden="true" />}
       </div>
       <div className="mt-1 min-w-0">
         <span className="line-clamp-2 break-words text-left text-sm font-medium text-text-primary md:line-clamp-3">
@@ -353,6 +362,11 @@ const FileItem = React.memo(function FileItem({
           <span className="mt-1 line-clamp-1 text-left text-xs text-text-secondary">
             {localize('com_sources_pages')}:{' '}
             {sortPagesByRelevance(file.pages, file.pageRelevance).join(', ')}
+          </span>
+        )}
+        {file.snippet && (
+          <span className="mt-2 line-clamp-3 break-words text-left text-xs text-text-secondary">
+            {file.snippet}
           </span>
         )}
       </div>
@@ -629,6 +643,7 @@ function SourcesComponent({ messageId, conversationId }: SourcesProps = {}) {
               pages: (source as any).pages,
               relevance: (source as any).relevance,
               pageRelevance: (source as any).pageRelevance,
+              snippet: (source as any).snippet,
               messageId: messageId || '',
               toolCallId: 'file_search_results',
             };

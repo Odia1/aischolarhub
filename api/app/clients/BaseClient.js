@@ -38,6 +38,9 @@ const db = require('~/models');
 const {
   updateLearnerStateFromTurn,
 } = require('~/server/services/AcademicIntelligence/learnerState');
+const {
+  ensureFileCitationAnchors,
+} = require('./tools/util/fileCitationFallback');
 
 const collectHistoricalFileRefs = (message) => {
   const refs = [];
@@ -856,6 +859,7 @@ class BaseClient {
     if (this.artifactPromises) {
       responseMessage.attachments = (await Promise.all(this.artifactPromises)).filter((a) => a);
     }
+    ensureFileCitationAnchors(responseMessage);
 
     if (this.options.attachments) {
       try {
