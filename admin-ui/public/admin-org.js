@@ -747,6 +747,9 @@
     };
 
     window.openRagGroupForm = function(existing=null){
+      if(typeof existing==='string'){
+        existing=JSON.parse(decodeURIComponent(existing));
+      }
       const selectedGroups=existing?.groupIds||[];
       const selectedUsers=existing?.userIds||[];
       const selectedLocations=existing?.ragLocationIds||[];
