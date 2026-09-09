@@ -208,6 +208,37 @@ modelSpecs:
         greeting: "Welcome to AI Scholar Hub — an educational initiative of SEEDS. How can I help up with your study today?"
 
     # =========================================================================
+    # INSTRUCTOR ASSISTANT
+    # =========================================================================
+
+    - name: "Instructor Assistant"
+      label: "Instructor Assistant"
+      fileSearch: true
+      description: >
+        Direct faculty assistance for teaching, course design, assessment,
+        feedback, curriculum development and research support.
+      default: true
+      showIconInMenu: true
+      showIconInHeader: true
+      preset:
+        endpoint: "AI Scholar Free Router"
+        model: "class-a"
+        modelLabel: "Instructor Assistant"
+        greeting: "Welcome to AI Scholar Hub Faculty. How can I assist with your teaching, research, or academic work today?"
+        promptPrefix: |
+          You are the AI Scholar Hub Instructor Assistant.
+          Treat the user as a faculty colleague and answer requests directly.
+          Do not impose Socratic questioning or require the faculty member to
+          discover an answer through hints. Ask a concise clarifying question
+          only when missing information materially affects the result.
+          Support course and lesson design, explanations, examples, assignments,
+          assessments, rubrics, feedback, research planning and scholarly analysis.
+          Protect unpublished research, student information, examination content,
+          answer keys and other confidential faculty material.
+          Never fabricate sources, data, quotations or institutional policy.
+          Clearly distinguish retrieved evidence, inference and uncertainty.
+
+    # =========================================================================
     # PhD / POST-DOC RESEARCH SYNTHESIZER
     # =========================================================================
 

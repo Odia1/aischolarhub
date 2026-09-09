@@ -173,6 +173,7 @@ const ACADEMIC_AGENT_TYPES = new Set([
 const CORE_ACADEMIC_AGENT_IDS = new Set([
   "K12_SOCRATIC_TUTOR",
   "SOCRATIC_TUTOR",
+  "INSTRUCTOR_ASSISTANT",
   "RESEARCH_SYNTHESIZER",
   "SEMANTIC_SCHOLAR_SEARCH",
   "LITERATURE_REVIEW",
@@ -4222,7 +4223,7 @@ async function ensureCoreAcademicAgents(tenantId) {
           "Age-appropriate Socratic tutoring for primary and secondary school learners.",
         modelSpecName: "K-12 Socratic Tutor",
         enabled: true,
-        allowedRoles: ["USER", "INSTRUCTOR"],
+        allowedRoles: ["USER"],
         audiences: [
           "SCHOOL_STUDENT",
           "SCHOOL_TEACHER"
@@ -4280,7 +4281,7 @@ async function ensureCoreAcademicAgents(tenantId) {
           "Adaptive higher-education tutor using guided discovery, misconception repair and active retrieval.",
         modelSpecName: "Undergrad Socratic Tutor",
         enabled: true,
-        allowedRoles: ["USER", "INSTRUCTOR"],
+        allowedRoles: ["USER"],
         audiences: ["UNDERGRADUATE"],
         integrityPolicyId,
         tools: [],
@@ -4319,6 +4320,55 @@ async function ensureCoreAcademicAgents(tenantId) {
           masteryTracking: true,
           strategy:
             "Diagnose current understanding first. Use minimum necessary assistance. Move from prompt to hint to explanation only as needed. Verify learning with active retrieval."
+        },
+        createdAt: now,
+        updatedAt: now
+      },
+
+      {
+        tenantId,
+        agentId: "INSTRUCTOR_ASSISTANT",
+        agentType: "MODE",
+        name: "Instructor Assistant",
+        description:
+          "Direct, rigorous assistance for teaching, course design, assessment, feedback and faculty research.",
+        modelSpecName: "Instructor Assistant",
+        enabled: true,
+        allowedRoles: ["INSTRUCTOR", "INSTITUTION_ADMIN"],
+        audiences: ["COLLEGE_FACULTY", "SCHOOL_TEACHER", "RESEARCHER"],
+        integrityPolicyId,
+        tools: [],
+        mcpServers: [],
+        workflow: {
+          type: "FACULTY_ASSISTANCE",
+          steps: [
+            "Answer the faculty member's request directly",
+            "Support teaching, assessment, curriculum and research work",
+            "Distinguish evidence from inference and uncertainty",
+            "Protect confidential assessment and unpublished material",
+            "Use questions only when clarification materially improves the result"
+          ]
+        },
+        modelPolicy: { mode: "PERSONA_ROUTE", costTier: "BALANCED" },
+        researchMaturityPolicy: {
+          adaptive: true,
+          allowedLevels: ["DEVELOPING", "INDEPENDENT", "ADVANCED"]
+        },
+        visibility: "INSTITUTION",
+        ragPolicy: {
+          personalRag: "INHERIT_USER_ACCESS",
+          sharedScopeMode: "CONTEXTUAL_HIERARCHY",
+          ragGroupIds: []
+        },
+        pedagogy: {
+          mode: "EXPLAINER",
+          diagnoseFirst: false,
+          activeRetrieval: false,
+          adaptiveDifficulty: true,
+          misconceptionRepair: true,
+          masteryTracking: false,
+          strategy:
+            "Treat the user as a faculty colleague. Lead with a direct useful answer. Do not impose Socratic questioning. Ask concise clarifying questions only when needed. Support course design, teaching material, assessments, rubrics, feedback and research while preserving academic integrity and confidentiality."
         },
         createdAt: now,
         updatedAt: now
@@ -4824,6 +4874,11 @@ async function ensureCoreAcademicAgents(tenantId) {
       );
 
       if (result.upsertedCount) created++;
+
+      await academicAgents.updateOne(
+        { tenantId, agentId: doc.agentId },
+        { $set: { allowedRoles: doc.allowedRoles, updatedAt: now } }
+      );
     }
 
     return created;

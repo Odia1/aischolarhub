@@ -24,6 +24,7 @@
     const coreAgentIds = new Set([
       'K12_SOCRATIC_TUTOR',
       'SOCRATIC_TUTOR',
+      'INSTRUCTOR_ASSISTANT',
       'RESEARCH_SYNTHESIZER',
       'SEMANTIC_SCHOLAR_SEARCH',
       'LITERATURE_REVIEW',
