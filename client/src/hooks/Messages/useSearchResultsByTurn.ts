@@ -14,6 +14,7 @@ interface FileSource {
 }
 
 interface DeduplicatedSource {
+  content?: string;
   fileId: string;
   fileName: string;
   pages: number[];
@@ -78,11 +79,15 @@ export function useSearchResultsByTurn(attachments?: TAttachment[]) {
               const mergedPageRelevance = { ...existingPageRelevance, ...newPageRelevance };
 
               existing.pages = uniquePages;
+              if ((source.relevance || 0) > (existing.relevance || 0) && source.content) {
+                existing.content = source.content;
+              }
               existing.relevance = Math.max(existing.relevance || 0, source.relevance || 0);
               existing.pageRelevance = mergedPageRelevance;
             }
           } else {
             deduplicatedSources.set(fileId, {
+              content: source.content,
               fileId: source.fileId,
               fileName: source.fileName,
               pages: source.pages || [],
