@@ -848,7 +848,7 @@
             <div class="org-small">${r.documentCount||0} documents</div>
           </div>
           <div class="org-actions">
-            <button type="button" onclick="openRagLocationDocuments('${arg(r)}')">Documents</button>
+            ${String(r.type||'').toUpperCase()==='PERSONAL'?'':`<button type="button" onclick="openRagLocationDocuments('${arg(r)}')">Documents</button>`}
             ${r.automatic?'':`<button type="button" onclick="openEncoded('rag','${arg(r)}')">Edit</button><button type="button" class="danger" onclick="deleteEncoded('rag','${arg(r)}')">Delete</button>`}
           </div>
         </div>`);

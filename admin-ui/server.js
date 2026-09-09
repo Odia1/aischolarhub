@@ -3,6 +3,10 @@ import { MongoClient, ObjectId } from "mongodb";
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
 import multer from "multer";
+import {
+  RAG_CONFIGURABLE_TYPES,
+  knowledgeScopeKey
+} from "./rag-scope.js";
 import { validateEnabledRagGroupPolicy } from "./rag-policy.js";
 
 const app = express();
@@ -2256,7 +2260,7 @@ const ragGroupManagers = db.collection("ragGroupManagers");
 const ragFiles = db.collection("files");
 
 const ORG_ID_RE = /^[-a-zA-Z0-9_.]{1,128}$/;
-const RAG_TYPES = new Set(["DEPARTMENT", "COURSE", "GROUP"]);
+const RAG_TYPES = RAG_CONFIGURABLE_TYPES;
 
 function orgTenant(req, requestedTenantId = null) {
   if (isInstitutionAdmin(req.admin)) return actorTenant(req);
@@ -3067,14 +3071,6 @@ function signRagToken(userId, tenantId, claims = {}) {
     .digest("base64url");
 
   return `${content}.${signature}`;
-}
-
-function knowledgeScopeKey(location) {
-  const type = String(location?.type || "").trim().toUpperCase();
-  const targetId = String(location?.targetId || "").trim();
-  if (!RAG_TYPES.has(type) || !targetId)
-    throw new Error("RAG Access Point scope is invalid");
-  return `${type}:${targetId}`;
 }
 
 async function readUpstreamJson(response, fallback) {
