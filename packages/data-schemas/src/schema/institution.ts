@@ -23,6 +23,13 @@ const institutionSchema = new Schema<IInstitution>(
       required: true,
       index: true,
     },
+    category: {
+      type: String,
+      enum: ['SCHOOL', 'HIGHER_EDUCATION', 'MIXED'],
+      default: 'HIGHER_EDUCATION',
+      required: true,
+      index: true,
+    },
   },
   { timestamps: true, collection: 'institutions' },
 );

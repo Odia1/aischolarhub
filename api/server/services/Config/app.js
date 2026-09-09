@@ -397,7 +397,7 @@ async function applyAcademicIntelligence(appConfig, options = {}) {
   const mongo = mongoose.connection.db;
   const academicStart = process.hrtime.bigint();
 
-  const [agents, learnerState, promptPolicies, integrityPolicies] =
+  const [agents, learnerState, institutionProfile, academicProfile, promptPolicies, integrityPolicies] =
     await Promise.all([
       mongo.collection('academicAgents')
         .find({
@@ -411,6 +411,18 @@ async function applyAcademicIntelligence(appConfig, options = {}) {
             tenantId,
             userId
           })
+        : Promise.resolve(null),
+
+      mongo.collection('institutions').findOne(
+        { _id: tenantId },
+        { projection: { category: 1 } }
+      ),
+
+      userId && mongoose.Types.ObjectId.isValid(userId)
+        ? mongo.collection('users').findOne(
+            { _id: new mongoose.Types.ObjectId(userId), tenantId },
+            { projection: { academicAudience: 1, teachingProfile: 1 } }
+          )
         : Promise.resolve(null),
 
       mongo.collection('personaPromptPolicies')
@@ -534,6 +546,36 @@ async function applyAcademicIntelligence(appConfig, options = {}) {
         ].join('\n')
       : '';
 
+  const institutionCategory = String(
+    institutionProfile?.category || 'HIGHER_EDUCATION'
+  ).toUpperCase();
+  const instructorAudience = institutionCategory === 'SCHOOL'
+    ? 'SCHOOL_TEACHER'
+    : institutionCategory === 'MIXED'
+      ? String(academicProfile?.academicAudience || 'COLLEGE_FACULTY').toUpperCase()
+      : 'COLLEGE_FACULTY';
+  const teachingProfile = academicProfile?.teachingProfile || {};
+  const teachingProfileParts = role === 'INSTRUCTOR' && instructorAudience === 'SCHOOL_TEACHER'
+    ? [
+        Array.isArray(teachingProfile.gradeBands) && teachingProfile.gradeBands.length
+          ? `Grades: ${teachingProfile.gradeBands.map(x => compact(x, 100)).filter(Boolean).join(', ')}` : '',
+        Array.isArray(teachingProfile.subjects) && teachingProfile.subjects.length
+          ? `Subjects: ${teachingProfile.subjects.map(x => compact(x, 100)).filter(Boolean).join(', ')}` : '',
+        compact(teachingProfile.curriculum, 160)
+          ? `Curriculum: ${compact(teachingProfile.curriculum, 160)}` : '',
+        'Language: English'
+      ].filter(Boolean)
+    : [];
+  const teachingContext = role === 'INSTRUCTOR' && instructorAudience === 'SCHOOL_TEACHER'
+    ? [
+        '## PERSISTENT TEACHING PROFILE',
+        ...teachingProfileParts,
+        "Use these as defaults across conversations. The teacher's explicit request and selected or retrieved teaching materials may override them for the current task.",
+        'Infer grade, subject, topic and curriculum from retrieved materials only when supported by evidence. Do not silently change the persistent profile.',
+        'Ask one concise clarification only when a missing detail materially affects the requested teaching artifact.'
+      ].join('\n')
+    : '';
+
   const specs = Array.isArray(appConfig?.modelSpecs?.list)
     ? appConfig.modelSpecs.list
     : [];
@@ -554,9 +596,14 @@ async function applyAcademicIntelligence(appConfig, options = {}) {
             )
           : [];
 
+      const audiences = Array.isArray(agent.audiences)
+        ? agent.audiences.map(x => String(x).toUpperCase())
+        : [];
       return (
-        !allowedRoles.length ||
-        allowedRoles.includes(role)
+        (!allowedRoles.length || allowedRoles.includes(role)) &&
+        (role !== 'INSTRUCTOR' ||
+          !audiences.length ||
+          audiences.includes(instructorAudience))
       );
     })
     .map(spec => {
@@ -675,7 +722,8 @@ async function applyAcademicIntelligence(appConfig, options = {}) {
         stablePolicy,
         RETRIEVAL_RESPONSE_POLICY,
         integrityDirective,
-        learnerContext
+        learnerContext,
+        teachingContext
       ].filter(Boolean).join('\n\n');
 
       logger.info(

@@ -65,6 +65,20 @@ const userSchema: Schema<IUser> = new Schema<IUser>(
       type: String,
       default: SystemRoles.USER,
     },
+    academicAudience: {
+      type: String,
+      enum: ['COLLEGE_FACULTY', 'SCHOOL_TEACHER', null],
+      default: null,
+    },
+    teachingProfile: {
+      type: {
+        gradeBands: { type: [String], default: [] },
+        subjects: { type: [String], default: [] },
+        curriculum: { type: String, default: '' },
+        instructionalLanguage: { type: String, default: '' },
+      },
+      default: null,
+    },
     googleId: {
       type: String,
     },

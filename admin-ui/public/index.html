@@ -907,6 +907,16 @@ form{
 
   <select id="crole"></select>
 
+  <select id="cacademicAudience">
+    <option value="COLLEGE_FACULTY">Instructor profile: College Faculty</option>
+    <option value="SCHOOL_TEACHER">Instructor profile: School Teacher</option>
+  </select>
+
+  <input id="cteachingGrades" placeholder="Grades taught, comma-separated (for school teachers)">
+  <input id="cteachingSubjects" placeholder="Subjects taught, comma-separated">
+  <input id="cteachingCurriculum" placeholder="Curriculum/framework, e.g. CBSE, state, Cambridge">
+  <input id="cteachingLanguage" value="English" readonly aria-label="Instructional language (English in this release)">
+
   <select
     id="ctenant"
     class="hidden">
@@ -971,6 +981,16 @@ form{
 
   <select id="erole"></select>
 
+  <select id="eacademicAudience">
+    <option value="COLLEGE_FACULTY">Instructor profile: College Faculty</option>
+    <option value="SCHOOL_TEACHER">Instructor profile: School Teacher</option>
+  </select>
+
+  <input id="eteachingGrades" placeholder="Grades taught, comma-separated (for school teachers)">
+  <input id="eteachingSubjects" placeholder="Subjects taught, comma-separated">
+  <input id="eteachingCurriculum" placeholder="Curriculum/framework">
+  <input id="eteachingLanguage" value="English" readonly aria-label="Instructional language (English in this release)">
+
   <select
     id="etenant"
     class="hidden">
@@ -1033,6 +1053,12 @@ form{
     placeholder="Institution name"
     required
     maxlength="200">
+
+  <select id="icategory" required>
+    <option value="HIGHER_EDUCATION">College / University</option>
+    <option value="SCHOOL">School</option>
+    <option value="MIXED">Mixed school and higher education</option>
+  </select>
 
   <label
     for="idomains"
@@ -1613,6 +1639,27 @@ function refreshTenantControls() {
       !editScoped
     );
   }
+
+  const instructorRole = value => String(value || "").toUpperCase() === "INSTRUCTOR";
+  const categoryFor = tenantId =>
+    institutionsCache.find(i => String(i._id) === String(tenantId))?.category || "HIGHER_EDUCATION";
+  const createCategory = categoryFor(isInstitutionAdmin() ? ownTenant() : ctenant?.value);
+  const editCategory = categoryFor(isInstitutionAdmin() ? ownTenant() : etenant?.value);
+  if (instructorRole(crole?.value) && createCategory !== "MIXED")
+    cacademicAudience.value = createCategory === "SCHOOL" ? "SCHOOL_TEACHER" : "COLLEGE_FACULTY";
+  if (instructorRole(erole?.value) && editCategory !== "MIXED")
+    eacademicAudience.value = editCategory === "SCHOOL" ? "SCHOOL_TEACHER" : "COLLEGE_FACULTY";
+  cacademicAudience.classList.toggle("hidden", !instructorRole(crole?.value) || createCategory !== "MIXED");
+  eacademicAudience.classList.toggle("hidden", !instructorRole(erole?.value) || editCategory !== "MIXED");
+
+  const createSchoolTeacher = instructorRole(crole?.value) &&
+    (createCategory === "SCHOOL" || createCategory === "MIXED" && cacademicAudience?.value === "SCHOOL_TEACHER");
+  const editSchoolTeacher = instructorRole(erole?.value) &&
+    (editCategory === "SCHOOL" || editCategory === "MIXED" && eacademicAudience?.value === "SCHOOL_TEACHER");
+  [cteachingGrades, cteachingSubjects, cteachingCurriculum, cteachingLanguage]
+    .forEach(control => control.classList.toggle("hidden", !createSchoolTeacher));
+  [eteachingGrades, eteachingSubjects, eteachingCurriculum, eteachingLanguage]
+    .forEach(control => control.classList.toggle("hidden", !editSchoolTeacher));
 }
 
 function refreshRagControl(
@@ -1709,20 +1756,15 @@ async function loadMe() {
     cragAccess
   );
 
-  crole.onchange =
-    refreshTenantControls;
-
-  erole.onchange =
-    refreshTenantControls;
+  crole.onchange = refreshTenantControls;
+  erole.onchange = refreshTenantControls;
+  ctenant.onchange = refreshTenantControls;
+  etenant.onchange = refreshTenantControls;
+  cacademicAudience.onchange = refreshTenantControls;
+  eacademicAudience.onchange = refreshTenantControls;
 }
 
 async function loadInstitutions() {
-  if (
-    isInstitutionAdmin()
-  ) {
-    return;
-  }
-
   const d =
     await api(
       "/api/institutions"
@@ -1912,6 +1954,9 @@ function renderInstitutions() {
               i._id
             )}
           </div>
+          <div class="muted">
+            Type: ${esc(i.category || "HIGHER_EDUCATION")}
+          </div>
         </div>
 
         <span class="badge ${
@@ -1946,6 +1991,14 @@ function renderInstitutions() {
           onclick="openDomainDialog('${esc(i._id)}')">
           Manage Domains
         </button>
+
+        ${isInstitutionAdmin() ? "" : `
+        <select id="institution-category-${esc(i._id)}" aria-label="Institution type">
+          <option value="HIGHER_EDUCATION" ${(i.category || "HIGHER_EDUCATION") === "HIGHER_EDUCATION" ? "selected" : ""}>College / University</option>
+          <option value="SCHOOL" ${i.category === "SCHOOL" ? "selected" : ""}>School</option>
+          <option value="MIXED" ${i.category === "MIXED" ? "selected" : ""}>Mixed</option>
+        </select>
+        <button type="button" onclick="saveInstitutionCategory('${esc(i._id)}')">Save Type</button>`}
 
       </div>
 
@@ -2101,6 +2154,20 @@ async function toggleInstitution(
     alert(
       e.message
     );
+  }
+}
+
+async function saveInstitutionCategory(id) {
+  const select = document.getElementById(`institution-category-${id}`);
+  try {
+    await api(`/api/institutions/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ category: select.value })
+    });
+    await loadInstitutions();
+  } catch (e) {
+    alert(e.message);
   }
 }
 
@@ -2463,6 +2530,8 @@ institutionForm.onsubmit =
                 iid.value,
               name:
                 iname.value,
+              category:
+                icategory.value,
               domains:
                 idomains.value
                   .split(/[\n,]+/)
@@ -3511,6 +3580,18 @@ createForm.onsubmit =
         role:
           crole.value,
 
+        academicAudience:
+          crole.value === "Instructor"
+            ? cacademicAudience.value
+            : null,
+
+        teachingProfile: {
+          gradeBands: cteachingGrades.value.split(",").map(x => x.trim()).filter(Boolean),
+          subjects: cteachingSubjects.value.split(",").map(x => x.trim()).filter(Boolean),
+          curriculum: cteachingCurriculum.value,
+          instructionalLanguage: cteachingLanguage.value
+        },
+
         ragAccess:
           cragAccess.value ===
           "true"
@@ -3609,6 +3690,14 @@ function editUser(
     u.role
   );
 
+  eacademicAudience.value =
+    u.academicAudience || "COLLEGE_FACULTY";
+
+  eteachingGrades.value = (u.teachingProfile?.gradeBands || []).join(", ");
+  eteachingSubjects.value = (u.teachingProfile?.subjects || []).join(", ");
+  eteachingCurriculum.value = u.teachingProfile?.curriculum || "";
+  eteachingLanguage.value = u.teachingProfile?.instructionalLanguage || "";
+
   refreshTenantControls();
 
   etenant.value =
@@ -3639,6 +3728,18 @@ editForm.onsubmit =
 
         role:
           erole.value,
+
+        academicAudience:
+          erole.value === "Instructor"
+            ? eacademicAudience.value
+            : null,
+
+        teachingProfile: {
+          gradeBands: eteachingGrades.value.split(",").map(x => x.trim()).filter(Boolean),
+          subjects: eteachingSubjects.value.split(",").map(x => x.trim()).filter(Boolean),
+          curriculum: eteachingCurriculum.value,
+          instructionalLanguage: eteachingLanguage.value
+        },
 
         ragAccess:
           eragAccess.value ===

@@ -34,6 +34,17 @@ await client.connect();
 const db = client.db("LibreChat");
 const users = db.collection("users");
 const institutions = db.collection("institutions");
+const INSTITUTION_CATEGORIES = new Set(["SCHOOL", "HIGHER_EDUCATION", "MIXED"]);
+
+function normalizeInstitutionCategory(value) {
+  const category = String(value || "HIGHER_EDUCATION").trim().toUpperCase();
+  if (!INSTITUTION_CATEGORIES.has(category)) {
+    const error = new Error("Institution type must be School, College/University, or Mixed");
+    error.statusCode = 400;
+    throw error;
+  }
+  return category;
+}
 const adminAudit = db.collection("adminAudit");
 
 const aiProviders = db.collection("aiProviders");
@@ -174,6 +185,7 @@ const CORE_ACADEMIC_AGENT_IDS = new Set([
   "K12_SOCRATIC_TUTOR",
   "SOCRATIC_TUTOR",
   "INSTRUCTOR_ASSISTANT",
+  "SCHOOL_TEACHING_ASSISTANT",
   "RESEARCH_SYNTHESIZER",
   "SEMANTIC_SCHOLAR_SEARCH",
   "LITERATURE_REVIEW",
@@ -189,6 +201,40 @@ const ACADEMIC_AUDIENCES = new Set([
   "SCHOOL_TEACHER",
   "SCHOOL_STUDENT"
 ]);
+
+const INSTRUCTOR_AUDIENCES = new Set([
+  "COLLEGE_FACULTY",
+  "SCHOOL_TEACHER"
+]);
+
+function normalizeInstructorAudience(value, role) {
+  if (String(role || "").trim().toUpperCase() !== "INSTRUCTOR") return null;
+  const audience = String(value || "COLLEGE_FACULTY").trim().toUpperCase();
+  if (!INSTRUCTOR_AUDIENCES.has(audience))
+    throw new Error("Instructor profile must be College Faculty or School Teacher");
+  return audience;
+}
+
+function normalizeProfileList(value, maxItems = 20) {
+  const values = Array.isArray(value) ? value : String(value || "").split(",");
+  return [...new Set(values.map(item => String(item || "").trim()).filter(Boolean))]
+    .slice(0, maxItems)
+    .map(item => item.slice(0, 100));
+}
+
+function normalizeTeachingProfile(value, role, audience) {
+  if (
+    String(role || "").trim().toUpperCase() !== "INSTRUCTOR" ||
+    audience !== "SCHOOL_TEACHER"
+  ) return null;
+  const profile = value && typeof value === "object" ? value : {};
+  return {
+    gradeBands: normalizeProfileList(profile.gradeBands),
+    subjects: normalizeProfileList(profile.subjects),
+    curriculum: String(profile.curriculum || "").trim().slice(0, 160),
+    instructionalLanguage: "English"
+  };
+}
 
 const ACADEMIC_AGENT_VISIBILITIES = new Set([
   "INSTITUTION",
@@ -1348,6 +1394,7 @@ app.post("/api/institutions", async (req, res) => {
   if (!/^[-a-zA-Z0-9_.]{1,128}$/.test(id) || !name || name.length > 200)
     return res.status(400).json({ error: "Valid institution id and name are required" });
   try {
+    const category = normalizeInstitutionCategory(req.body.category);
     const domains = normalizeInstitutionDomains(req.body.domains) || [];
     await assertInstitutionDomainsAvailable(id, domains);
 
@@ -1356,6 +1403,7 @@ app.post("/api/institutions", async (req, res) => {
       _id: id,
       name,
       status: "enabled",
+      category,
       domains,
       createdAt: now,
       updatedAt: now
@@ -1392,6 +1440,9 @@ app.patch("/api/institutions/:id", async (req, res) => {
     update.status = req.body.status;
   }
   try {
+    if (req.body.category !== undefined) {
+      update.category = normalizeInstitutionCategory(req.body.category);
+    }
     if (req.body.domains !== undefined) {
       const institution = await institutions.findOne(
         { _id: id },
@@ -1517,6 +1568,8 @@ app.post("/api/users", async (req, res) => {
     const email = String(req.body.email || "").trim().toLowerCase();
     const role = String(req.body.role || "USER").trim();
     const ragAccess = parseRagAccess(req.body.ragAccess);
+    const academicAudience = normalizeInstructorAudience(req.body.academicAudience, role);
+    const teachingProfile = normalizeTeachingProfile(req.body.teachingProfile, role, academicAudience);
 
     if (!name || !email)
       return res.status(400).json({ error: "Name and email are required" });
@@ -1576,6 +1629,8 @@ app.post("/api/users", async (req, res) => {
       avatar: null,
       provider: "local",
       role,
+      academicAudience,
+      teachingProfile,
       ...(tenantId ? { tenantId } : {}),
       ragAccess,
       plugins: [],
@@ -1792,6 +1847,27 @@ app.patch("/api/users/:id", async (req, res) => {
       } else {
         delete update.tenantId;
       }
+    }
+
+    if (req.body.academicAudience !== undefined || req.body.role !== undefined) {
+      update.academicAudience = normalizeInstructorAudience(
+        req.body.academicAudience !== undefined
+          ? req.body.academicAudience
+          : user.academicAudience,
+        update.role || user.role
+      );
+    }
+
+    if (req.body.teachingProfile !== undefined || req.body.academicAudience !== undefined || req.body.role !== undefined) {
+      const effectiveRole = update.role || user.role;
+      const effectiveAudience = update.academicAudience !== undefined
+        ? update.academicAudience
+        : normalizeInstructorAudience(user.academicAudience, effectiveRole);
+      update.teachingProfile = normalizeTeachingProfile(
+        req.body.teachingProfile !== undefined ? req.body.teachingProfile : user.teachingProfile,
+        effectiveRole,
+        effectiveAudience
+      );
     }
 
     if (req.body.password) {
@@ -4329,13 +4405,13 @@ async function ensureCoreAcademicAgents(tenantId) {
         tenantId,
         agentId: "INSTRUCTOR_ASSISTANT",
         agentType: "MODE",
-        name: "Instructor Assistant",
+        name: "Instructor Assistant — College Faculty",
         description:
           "Direct, rigorous assistance for teaching, course design, assessment, feedback and faculty research.",
         modelSpecName: "Instructor Assistant",
         enabled: true,
         allowedRoles: ["INSTRUCTOR", "INSTITUTION_ADMIN"],
-        audiences: ["COLLEGE_FACULTY", "SCHOOL_TEACHER", "RESEARCHER"],
+        audiences: ["COLLEGE_FACULTY", "RESEARCHER"],
         integrityPolicyId,
         tools: [],
         mcpServers: [],
@@ -4369,6 +4445,55 @@ async function ensureCoreAcademicAgents(tenantId) {
           masteryTracking: false,
           strategy:
             "Treat the user as a faculty colleague. Lead with a direct useful answer. Do not impose Socratic questioning. Ask concise clarifying questions only when needed. Support course design, teaching material, assessments, rubrics, feedback and research while preserving academic integrity and confidentiality."
+        },
+        createdAt: now,
+        updatedAt: now
+      },
+
+      {
+        tenantId,
+        agentId: "SCHOOL_TEACHING_ASSISTANT",
+        agentType: "MODE",
+        name: "School Teaching Assistant",
+        description:
+          "Direct support for lesson plans, classroom materials, assessments, feedback and age-appropriate instruction.",
+        modelSpecName: "School Teaching Assistant",
+        enabled: true,
+        allowedRoles: ["INSTRUCTOR"],
+        audiences: ["SCHOOL_TEACHER"],
+        integrityPolicyId,
+        tools: [],
+        mcpServers: [],
+        workflow: {
+          type: "SCHOOL_TEACHING_ASSISTANCE",
+          steps: [
+            "Create standards-aware lesson plans",
+            "Create worksheets and differentiated classroom materials",
+            "Create quizzes and assignments with answer guidance",
+            "Create rubrics and provide constructive feedback",
+            "Protect student privacy and assessment security"
+          ]
+        },
+        modelPolicy: { mode: "PERSONA_ROUTE", costTier: "BALANCED" },
+        researchMaturityPolicy: {
+          adaptive: true,
+          allowedLevels: ["NOVICE", "DEVELOPING", "INDEPENDENT"]
+        },
+        visibility: "INSTITUTION",
+        ragPolicy: {
+          personalRag: "INHERIT_USER_ACCESS",
+          sharedScopeMode: "CONTEXTUAL_HIERARCHY",
+          ragGroupIds: []
+        },
+        pedagogy: {
+          mode: "EXPLAINER",
+          diagnoseFirst: false,
+          activeRetrieval: false,
+          adaptiveDifficulty: true,
+          misconceptionRepair: true,
+          masteryTracking: false,
+          strategy:
+            "Treat the user as a professional teacher. Lead with useful teaching material rather than Socratic questioning. Support lesson plans, worksheets, quizzes, assignments, rubrics, feedback and differentiated instruction. Ask for grade, subject and learning objectives only when needed."
         },
         createdAt: now,
         updatedAt: now
