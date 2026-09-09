@@ -4,7 +4,7 @@ services:
 
   api:
     container_name: aih-dev-api
-    image: seeds.azurecr.io/aischolarhub-custom:dev-20260909-0075ec879-instructor-assistant-v1
+    image: seeds.azurecr.io/aischolarhub-custom:dev-20260909-235309-731036825-school-routing-v1
     restart: always
     user: "${UID}:${GID}"
 
