@@ -3043,7 +3043,7 @@ function cleanIdList(values) {
   )];
 }
 
-function signRagToken(userId, tenantId) {
+function signRagToken(userId, tenantId, claims = {}) {
   const secret = String(process.env.JWT_SECRET || "");
   if (!secret)
     throw new Error("Document upload signing is not configured");
@@ -3054,6 +3054,7 @@ function signRagToken(userId, tenantId) {
     .toString("base64url");
   const header = encode({ alg: "HS256", typ: "JWT" });
   const payload = encode({
+    ...claims,
     id: String(userId),
     tenantId: String(tenantId),
     iat: now,
@@ -3066,6 +3067,14 @@ function signRagToken(userId, tenantId) {
     .digest("base64url");
 
   return `${content}.${signature}`;
+}
+
+function knowledgeScopeKey(location) {
+  const type = String(location?.type || "").trim().toUpperCase();
+  const targetId = String(location?.targetId || "").trim();
+  if (!RAG_TYPES.has(type) || !targetId)
+    throw new Error("RAG Access Point scope is invalid");
+  return `${type}:${targetId}`;
 }
 
 async function readUpstreamJson(response, fallback) {
@@ -3434,13 +3443,38 @@ app.delete("/api/rag-locations/:id/documents/:fileId", async (req, res) => {
     if (!location)
       return res.status(404).json({ error: "RAG Access Point not found" });
 
-    const document = await ragFiles.findOneAndUpdate(
+    const documentFilter =
       {
         file_id: String(req.params.fileId || ""),
         tenantId: location.tenantId,
         "knowledgeScope.type": location.type,
         "knowledgeScope.targetId": String(location.targetId)
+      };
+    const document = await ragFiles.findOne(documentFilter);
+    if (!document)
+      return res.status(404).json({ error: "RAG document not found" });
+
+    const ragBase = String(
+      process.env.RAG_API_URL || "http://rag_api:8000"
+    ).replace(/\/$/, "");
+    const token = signRagToken(req.admin._id, location.tenantId, {
+      managedInstitutionalFileIds: [document.file_id]
+    });
+    const deletionResponse = await fetch(`${ragBase}/documents`, {
+      method: "DELETE",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json"
       },
+      body: JSON.stringify([document.file_id]),
+      signal: AbortSignal.timeout(15000)
+    });
+    if (!deletionResponse.ok && deletionResponse.status !== 404) {
+      await readUpstreamJson(deletionResponse, "The document vectors could not be removed");
+    }
+
+    const updated = await ragFiles.findOneAndUpdate(
+      documentFilter,
       {
         $set: {
           published: false,
@@ -3453,8 +3487,8 @@ app.delete("/api/rag-locations/:id/documents/:fileId", async (req, res) => {
       { returnDocument: "before" }
     );
 
-    if (!document)
-      return res.status(404).json({ error: "RAG document not found" });
+    if (!updated)
+      throw new Error("Document metadata changed during removal");
 
     await audit("RAG_ACCESS_POINT_DOCUMENT_REMOVED", req, {
       safeDetails: {
@@ -3567,7 +3601,9 @@ app.post(
           error: `This institution already contains the document “${duplicate.filename}”.`
         });
 
-      const token = signRagToken(req.admin._id, location.tenantId);
+      const token = signRagToken(req.admin._id, location.tenantId, {
+        ingestionKnowledgeScopeKey: knowledgeScopeKey(location)
+      });
       cleanupContext = {
         token,
         tenantId: location.tenantId,

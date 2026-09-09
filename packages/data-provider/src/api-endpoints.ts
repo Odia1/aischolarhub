@@ -45,6 +45,7 @@ export const user = () => `${BASE_URL}/api/user`;
 export const userPreferences = () => `${user()}/preferences`;
 
 export const balance = () => `${BASE_URL}/api/balance`;
+export const ragPoints = () => `${BASE_URL}/api/knowledge/points`;
 
 export const userPlugins = () => `${BASE_URL}/api/user/plugins`;
 

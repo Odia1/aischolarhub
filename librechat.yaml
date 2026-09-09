@@ -187,6 +187,7 @@ modelSpecs:
 
     - name: "Undergrad Socratic Tutor"
       label: "Undergrad Socratic Tutor"
+      fileSearch: true
 
       description: >
         Step-by-step academic guidance using the Socratic method,
@@ -213,6 +214,7 @@ modelSpecs:
     - name: "PhD & Post-Doc Research"
 
       label: "PhD & Post-Doc Research Synthesizer"
+      fileSearch: true
 
       description: >
         Advanced research support for literature synthesis, methodology,
@@ -231,6 +233,7 @@ modelSpecs:
   
     - name: "K-12 Socratic Tutor"
       label: "Socratic Tutor for School Students"
+      fileSearch: true
       description: >
         Tutoring young learners and school students using the Socratic method.
 

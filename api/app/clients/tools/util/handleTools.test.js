@@ -1,6 +1,3 @@
-const mongoose = require('mongoose');
-const { MongoMemoryServer } = require('mongodb-memory-server');
-
 const mockPluginService = {
   updateUserPluginAuth: jest.fn(),
   deleteUserPluginAuth: jest.fn(),
@@ -11,6 +8,8 @@ const mockCreateMCPTool = jest.fn();
 const mockCreateMCPTools = jest.fn();
 const mockGetServerConfig = jest.fn();
 const mockGetAccessibleMcpServerNames = jest.fn(async () => []);
+const mockPrimeSearchFiles = jest.fn();
+const mockCreateFileSearchTool = jest.fn();
 
 const mockCreateSearchTool = jest.fn(() => ({ name: 'web_search' }));
 const mockLoadWebSearchAuth = jest.fn(async () => ({
@@ -28,6 +27,11 @@ jest.mock('@librechat/api', () => ({
 }));
 
 jest.mock('~/server/services/PluginService', () => mockPluginService);
+
+jest.mock('./fileSearch', () => ({
+  primeFiles: (...args) => mockPrimeSearchFiles(...args),
+  createFileSearchTool: (...args) => mockCreateFileSearchTool(...args),
+}));
 
 jest.mock('~/server/services/Config', () => ({
   getAppConfig: jest.fn().mockResolvedValue({
@@ -88,13 +92,11 @@ const { Calculator } = require('@librechat/agents');
 const { Tools, Constants } = require('librechat-data-provider');
 const { ASK_USER_QUESTION_TOOL_NAME } = require('@librechat/api');
 
-const { User } = require('~/db/models');
 const PluginService = require('~/server/services/PluginService');
 const { validateTools, loadTools, loadToolWithAuth } = require('./handleTools');
 const { StructuredSD, availableTools, DALLE3 } = require('../');
 
 describe('Tool Handlers', () => {
-  let mongoServer;
   let fakeUser;
   const pluginKey = 'dalle';
   const pluginKey2 = 'wolfram';
@@ -105,10 +107,6 @@ describe('Tool Handlers', () => {
   const authConfigs = mainPlugin.authConfig;
 
   beforeAll(async () => {
-    mongoServer = await MongoMemoryServer.create();
-    const mongoUri = mongoServer.getUri();
-    await mongoose.connect(mongoUri);
-
     const userAuthValues = {};
     mockPluginService.getUserPluginAuthValue.mockImplementation((userId, authField) => {
       return userAuthValues[`${userId}-${authField}`];
@@ -122,21 +120,7 @@ describe('Tool Handlers', () => {
       },
     );
 
-    fakeUser = new User({
-      name: 'Fake User',
-      username: 'fakeuser',
-      email: 'fakeuser@example.com',
-      emailVerified: false,
-      // file deepcode ignore NoHardcodedPasswords/test: fake value
-      password: 'fakepassword123',
-      avatar: '',
-      provider: 'local',
-      role: 'USER',
-      googleId: null,
-      plugins: [],
-      refreshToken: [],
-    });
-    await fakeUser.save();
+    fakeUser = { _id: '507f1f77bcf86cd799439011' };
     for (const authConfig of authConfigs) {
       await PluginService.updateUserPluginAuth(
         fakeUser._id,
@@ -145,11 +129,6 @@ describe('Tool Handlers', () => {
         mockCredential,
       );
     }
-  });
-
-  afterAll(async () => {
-    await mongoose.disconnect();
-    await mongoServer.stop();
   });
 
   beforeEach(async () => {
@@ -347,6 +326,53 @@ describe('Tool Handlers', () => {
       });
       expect(loadedTools).toHaveLength(1);
       expect(loadedTools[0].name).toBe(ASK_USER_QUESTION_TOOL_NAME);
+    });
+
+    it('loads File Search with tenant-scoped hierarchical authorization', async () => {
+      const userId = fakeUser._id.toString();
+      const req = {
+        user: { id: userId, role: 'USER', tenantId: 'SEEDS' },
+        body: {},
+      };
+      const files = [
+        {
+          file_id: 'institution-file',
+          filename: 'institution.pdf',
+          fromAgent: false,
+          fromInstitutionalKnowledge: true,
+        },
+      ];
+      const authorizedKnowledgeScopeKeys = ['INSTITUTION:SEEDS'];
+      const fileSearchTool = { name: Tools.file_search };
+
+      mockPrimeSearchFiles.mockResolvedValueOnce({
+        files,
+        toolContext: '- institutional knowledge available',
+        authorizedKnowledgeScopeKeys,
+        ragEnabled: true,
+      });
+      mockCreateFileSearchTool.mockResolvedValueOnce(fileSearchTool);
+
+      const result = await loadTools({
+        user: userId,
+        tools: [Tools.file_search],
+        agent: { id: 'normal-chat-agent' },
+        options: { req },
+      });
+
+      expect(result.loadedTools).toEqual([fileSearchTool]);
+      expect(mockPrimeSearchFiles).toHaveBeenCalledWith(
+        expect.objectContaining({ req, agentId: 'normal-chat-agent' }),
+      );
+      expect(mockCreateFileSearchTool).toHaveBeenCalledWith({
+        userId,
+        tenantId: 'SEEDS',
+        files,
+        entity_id: 'normal-chat-agent',
+        fileCitations: expect.any(Boolean),
+        authorizedKnowledgeScopeKeys,
+        ragEnabled: true,
+      });
     });
 
     it('passes request body to chat MCP tool creation and skips stale cache for BODY-scoped servers', async () => {

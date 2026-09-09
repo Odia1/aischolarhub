@@ -2,11 +2,39 @@ const express = require('express');
 const { requireJwtAuth } = require('~/server/middleware');
 const {
   resolveKnowledgeScope,
+  resolveAuthorizedKnowledgeScopes,
 } = require('~/server/services/AcademicIntelligence/knowledgeScope');
 
 const router = express.Router();
 
 router.use(requireJwtAuth);
+
+router.get('/points', async (req, res) => {
+  try {
+    const userId = String(req.user?.id ?? req.user?._id ?? '').trim();
+    const tenantId = String(req.user?.tenantId ?? '').trim();
+    if (!userId || !tenantId) {
+      return res.status(403).json({ error: 'Institution context is required' });
+    }
+    const result = await resolveAuthorizedKnowledgeScopes({
+      tenantId,
+      userId,
+      role: req.user?.role,
+      activeGroupId: null,
+    });
+    res.setHeader('Cache-Control', 'private, max-age=60');
+    res.setHeader('Vary', 'Cookie, Authorization');
+    return res.json({
+      ragEnabledDefault: true,
+      selectedPointKeysDefault: ['PERSONAL'],
+      points: result.scope.availableRagPoints || [],
+    });
+  } catch (error) {
+    return res.status(400).json({
+      error: error?.message || 'Failed to resolve RAG Points',
+    });
+  }
+});
 
 /*
  * Self-service diagnostic/runtime endpoint.
@@ -49,12 +77,6 @@ router.get('/scope', async (req, res) => {
       });
     }
 
-    if (!agentId) {
-      return res.status(400).json({
-        error: 'agentId is required',
-      });
-    }
-
     const result = await resolveKnowledgeScope({
       tenantId,
       userId,
@@ -66,7 +88,7 @@ router.get('/scope', async (req, res) => {
     /*
      * Authorization diagnostics should reflect the user's current hierarchy.
      * Do not let browsers or intermediaries retain a stale authorization view.
-     * Actual retrieval is independently protected by server-signed file IDs.
+     * Actual retrieval is independently protected by server-signed scope keys.
      */
     res.setHeader('Cache-Control', 'no-store');
     res.setHeader('Vary', 'Cookie, Authorization');

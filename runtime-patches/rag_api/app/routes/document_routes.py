@@ -45,8 +45,16 @@ from app.config import (
     PARALLEL_EXECUTION,
     RAG_DISTANCE_THRESHOLD,
 )
-from app.scope import file_clause, files_clause, resolve_scope
+from app.scope import (
+    file_clause,
+    files_clause,
+    effective_knowledge_scope_keys,
+    knowledge_scopes_clause,
+    normalize_knowledge_scope_key,
+    resolve_scope,
+)
 from app.services.rag_authorization import partition_file_access
+from app.services.retrieval import search_authorized
 
 # Warn once at import time if the user set a threshold under Atlas, where
 # the score direction is inverted (Atlas vectorSearchScore: higher = better)
@@ -90,6 +98,7 @@ from app.models import (
     QueryRequestBody,
     DocumentResponse,
     QueryMultipleBody,
+    QueryScopedBody,
 )
 from app.services.vector_store.async_pg_vector import AsyncPgVector
 from app.utils.document_loader import (
@@ -488,6 +497,33 @@ async def delete_documents(
 ):
     scope = resolve_scope(request, entity_id)
     try:
+        user = getattr(request.state, "user", {}) or {}
+        managed_ids = {
+            str(value).strip()
+            for value in user.get("managedInstitutionalFileIds") or []
+            if str(value).strip()
+        }
+        requested_ids = {str(value).strip() for value in document_ids if str(value).strip()}
+        if requested_ids and requested_ids.issubset(managed_ids):
+            if not scope.tenant_id or not hasattr(vector_store, "delete_by_metadata"):
+                raise HTTPException(
+                    status_code=501,
+                    detail="Managed institutional deletion is unavailable",
+                )
+            for file_id in sorted(requested_ids):
+                if isinstance(vector_store, AsyncPgVector):
+                    await vector_store.delete_by_metadata(
+                        {"file_id": file_id, "tenant_id": scope.tenant_id},
+                        executor=request.app.state.thread_pool,
+                    )
+                else:
+                    vector_store.delete_by_metadata(
+                        {"file_id": file_id, "tenant_id": scope.tenant_id}
+                    )
+            return {
+                "message": f"Documents for {len(requested_ids)} file(s) deleted successfully"
+            }
+
         # Resolve existence within the caller's scope *before* deleting anything.
         # A request mixing owned and unknown ids would otherwise destroy the owned
         # rows and still answer 404, leaving the caller to believe nothing went.
@@ -977,6 +1013,7 @@ def _prepare_documents_sync(
     user_id: str,
     clean_content: bool,
     tenant_id: Optional[str] = None,
+    knowledge_scope_key: Optional[str] = None,
 ) -> List[Document]:
     """
     Synchronous document preparation - runs in executor to avoid blocking event loop.
@@ -997,11 +1034,16 @@ def _prepare_documents_sync(
         Document(
             page_content=doc.page_content,
             metadata={
+                **(doc.metadata or {}),
                 "file_id": file_id,
                 "user_id": user_id,
                 **({"tenant_id": tenant_id} if tenant_id else {}),
+                **(
+                    {"knowledge_scope_key": knowledge_scope_key}
+                    if knowledge_scope_key
+                    else {}
+                ),
                 "digest": generate_digest(doc.page_content),
-                **(doc.metadata or {}),
             },
         )
         for doc in documents
@@ -1019,6 +1061,7 @@ async def store_data_in_vector_db(
     content_type: Optional[str] = None,
     temp_file_path: Optional[str] = None,
     tenant_id: Optional[str] = None,
+    knowledge_scope_key: Optional[str] = None,
 ) -> bool:
     start_time = time.perf_counter()
     # Run document preparation in executor to avoid blocking the event loop
@@ -1031,6 +1074,7 @@ async def store_data_in_vector_db(
         user_id,
         clean_content,
         tenant_id,
+        knowledge_scope_key,
     )
 
     logger.info(
@@ -1232,6 +1276,14 @@ async def embed_file(
         if getattr(request.state, "user", None)
         else None
     )
+    signed_scope_key = (
+        request.state.user.get("ingestionKnowledgeScopeKey")
+        if getattr(request.state, "user", None)
+        else None
+    )
+    knowledge_scope_key = normalize_knowledge_scope_key(signed_scope_key)
+    if signed_scope_key and not knowledge_scope_key:
+        raise HTTPException(status_code=403, detail="Invalid signed knowledge scope")
     validated_file_path = _make_unique_temp_path(user_id, file.filename)
 
     if validated_file_path is None:
@@ -1286,6 +1338,7 @@ async def embed_file(
             content_type=file.content_type,
             temp_file_path=validated_file_path,
             tenant_id=tenant_id,
+            knowledge_scope_key=knowledge_scope_key,
         )
 
         if not result:
@@ -1576,6 +1629,71 @@ async def query_embeddings_by_file_ids(request: Request, body: QueryMultipleBody
             traceback.format_exc(),
         )
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/query_scoped")
+async def query_embeddings_by_authorized_scope(request: Request, body: QueryScopedBody):
+    """Search explicit personal/agent files and institutional scopes once.
+
+    Hierarchy scopes come only from the verified JWT.  An optional body
+    selection can narrow those claims for a future user-facing scope picker;
+    it can never add authority.
+    """
+    scope = resolve_scope(request, body.entity_id)
+    try:
+        user = getattr(request.state, "user", {}) or {}
+        tenant_id = str(user.get("tenantId") or "").strip()
+        if not tenant_id:
+            raise HTTPException(status_code=403, detail="Tenant context is required")
+
+        effective_scope_keys = effective_knowledge_scope_keys(
+            user.get("authorizedKnowledgeScopeKeys") or [],
+            body.requested_scope_keys,
+        )
+
+        personal_ids, _institutional_ids = await partition_file_access(
+            str(user.get("id") or ""),
+            tenant_id,
+            body.file_ids,
+            [],
+        )
+
+        branches = []
+        if personal_ids:
+            branches.append(
+                {"$and": [files_clause(personal_ids), scope.owner_clause()]}
+            )
+        if effective_scope_keys:
+            branches.append(knowledge_scopes_clause(sorted(effective_scope_keys)))
+
+        if not branches:
+            raise HTTPException(status_code=404, detail="No authorized knowledge was found")
+
+        authorization_clause = branches[0] if len(branches) == 1 else {"$or": branches}
+        query_filter = scope.preauthorized_predicate(authorization_clause)
+        embedding = get_cached_query_embedding(body.query)
+        documents = await search_authorized(
+            request=request,
+            vector_store=vector_store,
+            embedding=embedding,
+            predicate=query_filter,
+            k=body.k,
+        )
+        documents = _apply_distance_threshold(documents)
+        if not documents:
+            raise HTTPException(status_code=404, detail="No documents found for the query")
+        return documents
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(
+            "Scoped vector search failed | tenant=%s | explicitFiles=%d | scopes=%d | error=%s",
+            str((getattr(request.state, "user", {}) or {}).get("tenantId") or ""),
+            len(body.file_ids),
+            len((getattr(request.state, "user", {}) or {}).get("authorizedKnowledgeScopeKeys") or []),
+            str(e),
+        )
+        raise HTTPException(status_code=500, detail="Scoped vector search failed")
 
 
 @router.post("/text")

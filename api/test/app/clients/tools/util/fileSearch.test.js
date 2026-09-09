@@ -4,6 +4,10 @@ const { ResourceType } = require('librechat-data-provider');
 jest.mock('axios');
 jest.mock('@librechat/api', () => ({
   generateShortLivedToken: jest.fn(),
+  getKnowledgeSourceLabel: jest.fn((scopeKey) => {
+    const type = String(scopeKey || '').split(':', 1)[0];
+    return type === 'INSTITUTION' ? 'Institutional knowledge' : 'Personal or attached file';
+  }),
   logAxiosError: jest.fn(),
 }));
 
@@ -24,16 +28,16 @@ jest.mock('~/server/services/Files/permissions', () => ({
 }));
 
 jest.mock('~/server/services/AcademicIntelligence/knowledgeScope', () => ({
-  resolveAuthorizedKnowledgeFiles: jest.fn().mockResolvedValue({
+  resolveAuthorizedKnowledgeScopes: jest.fn().mockResolvedValue({
     scope: {},
-    files: [],
+    scopeKeys: [],
   }),
 }));
 
 const { createFileSearchTool, primeFiles } = require('~/app/clients/tools/util/fileSearch');
 const { generateShortLivedToken } = require('@librechat/api');
 const {
-  resolveAuthorizedKnowledgeFiles,
+  resolveAuthorizedKnowledgeScopes,
 } = require('~/server/services/AcademicIntelligence/knowledgeScope');
 
 describe('fileSearch.js - agent file authorization', () => {
@@ -124,14 +128,14 @@ describe('fileSearch.js - tuple return validation', () => {
           [
             {
               page_content: 'This is test content from the document',
-              metadata: { source: '/path/to/test.pdf', page: 1 },
+              metadata: { source: '/path/to/test.pdf', page: 1, file_id: 'file-123' },
             },
             0.2,
           ],
           [
             {
               page_content: 'Additional relevant content',
-              metadata: { source: '/path/to/test.pdf', page: 2 },
+              metadata: { source: '/path/to/test.pdf', page: 2, file_id: 'file-123' },
             },
             0.35,
           ],
@@ -155,6 +159,7 @@ describe('fileSearch.js - tuple return validation', () => {
 
       expect(typeof formattedString).toBe('string');
       expect(formattedString).toContain('File: test.pdf');
+      expect(formattedString).toContain('Source context: Personal or attached file');
       expect(formattedString).toContain('Relevance:');
       expect(formattedString).toContain('This is test content from the document');
       expect(formattedString).toContain('Additional relevant content');
@@ -186,7 +191,7 @@ describe('fileSearch.js - tuple return validation', () => {
           [
             {
               page_content: 'Content with citations',
-              metadata: { source: '/path/to/doc.pdf', page: 3 },
+              metadata: { source: '/path/to/doc.pdf', page: 3, file_id: 'file-789' },
             },
             0.15,
           ],
@@ -216,31 +221,26 @@ describe('fileSearch.js - tuple return validation', () => {
     it('should handle multiple files correctly', async () => {
       generateShortLivedToken.mockReturnValue('mock-jwt-token');
 
-      const mockResponse1 = {
+      const response = {
         data: [
           [
             {
               page_content: 'Content from file 1',
-              metadata: { source: '/path/to/file1.pdf', page: 1 },
+              metadata: { source: '/path/to/file1.pdf', page: 1, file_id: 'file-1' },
             },
             0.25,
           ],
-        ],
-      };
-
-      const mockResponse2 = {
-        data: [
           [
             {
               page_content: 'Content from file 2',
-              metadata: { source: '/path/to/file2.pdf', page: 1 },
+              metadata: { source: '/path/to/file2.pdf', page: 1, file_id: 'file-2' },
             },
             0.15,
           ],
         ],
       };
 
-      axios.post.mockResolvedValueOnce(mockResponse1).mockResolvedValueOnce(mockResponse2);
+      axios.post.mockResolvedValue(response);
 
       const fileSearchTool = await createFileSearchTool({
         userId: 'user1',
@@ -263,6 +263,9 @@ describe('fileSearch.js - tuple return validation', () => {
       // Results are sorted by distance (ascending), so file-2 (0.15) comes before file-1 (0.25)
       expect(artifact.file_search.sources[0].fileId).toBe('file-2');
       expect(artifact.file_search.sources[1].fileId).toBe('file-1');
+      expect(axios.post).toHaveBeenCalledTimes(1);
+      expect(axios.post.mock.calls[0][0]).toMatch(/\/query_scoped$/);
+      expect(axios.post.mock.calls[0][1].file_ids).toEqual(['file-1', 'file-2']);
     });
   });
 });
@@ -287,7 +290,7 @@ describe('entity_id scoping by file origin', () => {
 
   function bodiesSent() {
     return axios.post.mock.calls
-      .filter(([url]) => String(url).endsWith('/query'))
+      .filter(([url]) => String(url).endsWith('/query_scoped'))
       .map(([, body]) => body);
   }
 
@@ -303,8 +306,11 @@ describe('entity_id scoping by file origin', () => {
     await tool.func({ query: 'q' });
 
     const bodies = bodiesSent();
-    expect(bodies.find((b) => b.file_id === 'kb-1').entity_id).toBe('agent_123');
-    expect(bodies.find((b) => b.file_id === 'user-1').entity_id).toBeUndefined();
+    expect(bodies).toHaveLength(1);
+    expect(bodies[0]).toMatchObject({
+      file_ids: ['kb-1', 'user-1'],
+      entity_id: 'agent_123',
+    });
   });
 
   it('omits entity_id when fromAgent is not set (safe default)', async () => {
@@ -328,27 +334,18 @@ describe('entity_id scoping by file origin', () => {
 });
 
 describe('AI Scholar Hub hierarchical File Search', () => {
-  const institutionalFile = {
-    file_id: 'institution-file',
-    filename: 'institution.pdf',
-    knowledgeScope: {
-      type: 'INSTITUTION',
-      targetId: 'SEEDS',
-    },
-  };
-
   beforeEach(() => {
     jest.clearAllMocks();
-    resolveAuthorizedKnowledgeFiles.mockResolvedValue({
+    resolveAuthorizedKnowledgeScopes.mockResolvedValue({
       scope: {},
-      files: [],
+      scopeKeys: [],
     });
   });
 
-  it('primes shared-only institutional knowledge in normal chat', async () => {
-    resolveAuthorizedKnowledgeFiles.mockResolvedValueOnce({
+  it('primes shared-only institutional knowledge without enumerating documents', async () => {
+    resolveAuthorizedKnowledgeScopes.mockResolvedValueOnce({
       scope: {},
-      files: [institutionalFile],
+      scopeKeys: ['INSTITUTION:SEEDS'],
     });
 
     const result = await primeFiles({
@@ -362,23 +359,15 @@ describe('AI Scholar Hub hierarchical File Search', () => {
       tool_resources: undefined,
     });
 
-    expect(resolveAuthorizedKnowledgeFiles).toHaveBeenCalledWith({
+    expect(resolveAuthorizedKnowledgeScopes).toHaveBeenCalledWith({
       tenantId: 'SEEDS',
       userId: 'user-1',
       role: 'USER',
       activeGroupId: null,
     });
-    expect(result.files).toEqual([
-      expect.objectContaining({
-        file_id: 'institution-file',
-        fromAgent: false,
-        fromInstitutionalKnowledge: true,
-      }),
-    ]);
-    expect(result.authorizedFileIds).toEqual(['institution-file']);
-    expect(result.toolContext).toContain(
-      'authorized institutional knowledge',
-    );
+    expect(result.files).toEqual([]);
+    expect(result.authorizedKnowledgeScopeKeys).toEqual(['INSTITUTION:SEEDS']);
+    expect(result.toolContext).toContain('authorized institutional knowledge');
   });
 
   it('preserves personal-only File Search', async () => {
@@ -412,7 +401,7 @@ describe('AI Scholar Hub hierarchical File Search', () => {
         fromInstitutionalKnowledge: false,
       }),
     ]);
-    expect(result.authorizedFileIds).toEqual([]);
+    expect(result.authorizedKnowledgeScopeKeys).toEqual([]);
   });
 
   it('merges personal and shared knowledge without replacing either', async () => {
@@ -424,9 +413,9 @@ describe('AI Scholar Hub hierarchical File Search', () => {
         user: 'user-1',
       },
     ]);
-    resolveAuthorizedKnowledgeFiles.mockResolvedValueOnce({
+    resolveAuthorizedKnowledgeScopes.mockResolvedValueOnce({
       scope: {},
-      files: [institutionalFile],
+      scopeKeys: ['INSTITUTION:SEEDS'],
     });
 
     const result = await primeFiles({
@@ -444,59 +433,110 @@ describe('AI Scholar Hub hierarchical File Search', () => {
       },
     });
 
-    expect(result.files.map((file) => file.file_id)).toEqual([
-      'personal-file',
-      'institution-file',
-    ]);
-    expect(result.authorizedFileIds).toEqual(['institution-file']);
+    expect(result.files.map((file) => file.file_id)).toEqual(['personal-file']);
+    expect(result.authorizedKnowledgeScopeKeys).toEqual(['INSTITUTION:SEEDS']);
   });
 
-  it('retains the correct file identity when an earlier query fails', async () => {
-    generateShortLivedToken.mockReturnValue('mock-jwt-token');
+  it('honors a user RAG Point selection only by narrowing authorized scopes', async () => {
+    resolveAuthorizedKnowledgeScopes.mockResolvedValueOnce({
+      scope: {},
+      scopeKeys: ['INSTITUTION:SEEDS', 'GROUP:allowed-group'],
+    });
 
-    axios.post
-      .mockRejectedValueOnce(new Error('first file unavailable'))
-      .mockResolvedValueOnce({
-        data: [
-          [
-            {
-              page_content: 'Grounded content from the second file',
-              metadata: {
-                source: '/documents/second.pdf',
-                page: 4,
-              },
-            },
-            0.1,
-          ],
-        ],
-      });
+    const result = await primeFiles({
+      req: {
+        user: { id: 'user-1', tenantId: 'SEEDS', role: 'USER' },
+        body: {
+          ragSelection: {
+            enabled: true,
+            selectedPointKeys: ['PERSONAL', 'GROUP:allowed-group', 'GROUP:forged-group'],
+          },
+        },
+      },
+      tool_resources: undefined,
+    });
+
+    expect(result.authorizedKnowledgeScopeKeys).toEqual(['GROUP:allowed-group']);
+  });
+
+  it('disables all document retrieval when the user disables RAG', async () => {
+    resolveAuthorizedKnowledgeScopes.mockResolvedValueOnce({
+      scope: {},
+      scopeKeys: ['INSTITUTION:SEEDS'],
+    });
+    const result = await primeFiles({
+      req: {
+        user: { id: 'user-1', tenantId: 'SEEDS', role: 'USER' },
+        body: { ragSelection: { enabled: false } },
+      },
+      tool_resources: undefined,
+    });
+    expect(result.files).toEqual([]);
+    expect(result.authorizedKnowledgeScopeKeys).toEqual([]);
+    expect(result.ragEnabled).toBe(false);
+  });
+
+  it('runs exactly one vector query for personal plus institutional knowledge', async () => {
+    generateShortLivedToken.mockReturnValue('mock-jwt-token');
+    axios.post.mockResolvedValue({
+      data: [[{
+        page_content: 'Grounded institutional content',
+        metadata: {
+          source: '/documents/institution.pdf',
+          file_id: 'institution-file',
+          page: 4,
+          knowledge_scope_key: 'INSTITUTION:SEEDS',
+        },
+      }, 0.1]],
+    });
 
     const fileSearchTool = await createFileSearchTool({
       userId: 'user-1',
       tenantId: 'SEEDS',
       files: [
-        {
-          file_id: 'first-file',
-          filename: 'first.pdf',
-          fromAgent: false,
-        },
-        {
-          file_id: 'second-file',
-          filename: 'second.pdf',
-          fromAgent: false,
-        },
+        { file_id: 'personal-file', filename: 'personal.pdf', fromAgent: false },
       ],
+      authorizedKnowledgeScopeKeys: ['INSTITUTION:SEEDS'],
     });
 
-    const [, artifact] = await fileSearchTool.func({
+    const [formattedString, artifact] = await fileSearchTool.func({
       query: 'grounded question',
     });
 
+    expect(formattedString).toContain('Source context: Institutional knowledge');
     expect(artifact.file_search.sources).toHaveLength(1);
     expect(artifact.file_search.sources[0]).toMatchObject({
-      fileId: 'second-file',
-      fileName: 'second.pdf',
+      fileId: 'institution-file',
+      fileName: 'institution.pdf',
       pages: [4],
     });
+    expect(axios.post).toHaveBeenCalledTimes(1);
+    expect(axios.post.mock.calls[0][1]).toEqual({
+      query: 'grounded question',
+      file_ids: ['personal-file'],
+      k: 10,
+    });
+    expect(generateShortLivedToken).toHaveBeenCalledWith(
+      'user-1',
+      '1m',
+      'SEEDS',
+      { authorizedKnowledgeScopeKeys: ['INSTITUTION:SEEDS'] },
+    );
+  });
+
+  it('instructs factual institutional lookup without overriding learning pedagogy', async () => {
+    const fileSearchTool = await createFileSearchTool({
+      userId: 'user-1',
+      tenantId: 'SEEDS',
+      files: [],
+      authorizedKnowledgeScopeKeys: ['INSTITUTION:SEEDS'],
+    });
+
+    expect(fileSearchTool.description).toContain(
+      'For factual or administrative institutional requests, answer directly',
+    );
+    expect(fileSearchTool.description).toContain(
+      'unless the user requests teaching',
+    );
   });
 });

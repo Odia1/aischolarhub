@@ -19,6 +19,55 @@ from fastapi import Request
 PUBLIC_OWNER = "public"
 
 OWNER_METADATA_KEY = "user_id"
+KNOWLEDGE_SCOPE_METADATA_KEY = "knowledge_scope_key"
+KNOWLEDGE_SCOPE_TYPES = frozenset({"INSTITUTION", "DEPARTMENT", "COURSE", "GROUP"})
+
+
+def normalize_knowledge_scope_key(value: Any) -> Optional[str]:
+    """Return a canonical hierarchy key, rejecting malformed signed claims."""
+    raw = str(value or "").strip()
+    if ":" not in raw:
+        return None
+    scope_type, target_id = raw.split(":", 1)
+    scope_type = scope_type.strip().upper()
+    target_id = target_id.strip()
+    if scope_type not in KNOWLEDGE_SCOPE_TYPES or not target_id:
+        return None
+    return f"{scope_type}:{target_id}"
+
+
+def knowledge_scopes_clause(scope_keys: Sequence[str]) -> Dict[str, Any]:
+    normalized = list(
+        dict.fromkeys(
+            key for key in (normalize_knowledge_scope_key(v) for v in scope_keys) if key
+        )
+    )
+    if len(normalized) == 1:
+        return {KNOWLEDGE_SCOPE_METADATA_KEY: {"$eq": normalized[0]}}
+    return {
+        "$or": [
+            {KNOWLEDGE_SCOPE_METADATA_KEY: {"$eq": key}} for key in normalized
+        ]
+    }
+
+
+def effective_knowledge_scope_keys(
+    signed_scope_keys: Sequence[str], requested_scope_keys: Optional[Sequence[str]] = None
+) -> Tuple[str, ...]:
+    """Intersect a user selection with signed authority; omission means all signed."""
+    signed = {
+        key
+        for key in (normalize_knowledge_scope_key(v) for v in signed_scope_keys)
+        if key
+    }
+    if requested_scope_keys is None:
+        return tuple(sorted(signed))
+    requested = {
+        key
+        for key in (normalize_knowledge_scope_key(v) for v in requested_scope_keys)
+        if key
+    }
+    return tuple(sorted(signed.intersection(requested)))
 
 
 @dataclass(frozen=True)

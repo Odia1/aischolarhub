@@ -24,6 +24,8 @@ services:
       LIBRECHAT_TEMP_CREDENTIALS_PATH: "/app/data/.env.temp"
       RAG_PORT: "8000"
       RAG_API_URL: "http://rag_api:8000"
+      KNOWLEDGE_SCOPE_CACHE_TTL_MS: "3600000"
+      KNOWLEDGE_SCOPE_CACHE_VERSION: "release-c-v1"
       SEARXNG_INSTANCE_URL: "http://searxng:8080"
       ALLOW_REGISTRATION: "${ALLOW_REGISTRATION}"
       ALLOW_EMAIL_LOGIN: "${ALLOW_EMAIL_LOGIN}"

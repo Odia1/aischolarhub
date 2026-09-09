@@ -45,6 +45,16 @@ export const useGetPresetsQuery = (
   });
 };
 
+export const useGetRagPointsQuery = (
+  config?: UseQueryOptions<t.TRagPointsResponse>,
+): QueryObserverResult<t.TRagPointsResponse, unknown> =>
+  useQuery<t.TRagPointsResponse>([QueryKeys.ragPoints], () => dataService.getRagPoints(), {
+    staleTime: 60 * 60 * 1000,
+    cacheTime: 4 * 60 * 60 * 1000,
+    refetchOnWindowFocus: false,
+    ...config,
+  });
+
 export const useGetConvoIdQuery = (
   id: string,
   config?: UseQueryOptions<t.TConversation>,

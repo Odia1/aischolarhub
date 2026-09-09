@@ -369,22 +369,11 @@ const loadTools = async ({
         const {
           files,
           toolContext,
-          authorizedFileIds,
+          authorizedKnowledgeScopeKeys,
+          ragEnabled,
         } = await primeSearchFiles({
           ...options,
           agentId: agent?.id,
-
-          /*
-           * AI Scholar Hub Academic Agent identity is distinct from the
-           * LibreChat agent document id. Only COURSE_KNOWLEDGE activates
-           * hierarchy-native institutional discovery.
-           */
-          /*
-           * This value was stamped from the governed selected ModelSpec
-           * during primary-agent initialization. Do not infer Academic Agent
-           * identity from generic LibreChat identifiers.
-           */
-          academicAgentId: agent?.academicAgentId,
         });
         if (toolContext) {
           dynamicToolContextMap[tool] = toolContext;
@@ -408,11 +397,12 @@ const loadTools = async ({
 
         return createFileSearchTool({
           userId: user,
-          tenantId: req?.user?.tenantId,
+          tenantId: options.req?.user?.tenantId,
           files,
           entity_id: agent?.id,
           fileCitations,
-          authorizedFileIds,
+          authorizedKnowledgeScopeKeys,
+          ragEnabled,
         });
       };
       continue;

@@ -33,6 +33,10 @@ export function getInsightsAccess(): Promise<TInsightsAccessResponse> {
   return request.get(endpoints.insightsAccess());
 }
 
+export function getRagPoints(): Promise<t.TRagPointsResponse> {
+  return request.get(endpoints.ragPoints());
+}
+
 export function getLangfuseConnection(): Promise<t.TLangfuseConnectionStatus> {
   return request.get(endpoints.adminLangfuseConnection());
 }

@@ -161,7 +161,27 @@ export type TPayload = Partial<TMessage> &
      * server may create only if this observed predecessor is still current or
      * the conversation is still idle after its cleanup. */
     expectedPredecessorCreatedAt?: number;
+    ragSelection?: TRagSelection;
   };
+
+export type TRagSelection = {
+  enabled: boolean;
+  selectedPointKeys: string[];
+};
+
+export type TRagPoint = {
+  key: string;
+  type: 'PERSONAL' | 'INSTITUTION' | 'DEPARTMENT' | 'COURSE' | 'GROUP';
+  targetId: string;
+  label: string;
+  defaultSelected: boolean;
+};
+
+export type TRagPointsResponse = {
+  ragEnabledDefault: boolean;
+  selectedPointKeysDefault: string[];
+  points: TRagPoint[];
+};
 
 export type TEditedContent =
   | {
@@ -225,6 +245,7 @@ export type TSubmission = {
   /** Client-only carry-through for a receipt-bound queued recovery. */
   recoverySteerId?: string;
   expectedPredecessorCreatedAt?: number;
+  ragSelection?: TRagSelection;
   /** Opaque client-only queue restoration metadata; intentionally omitted by
    * `createPayload`. */
   queuedMessageOrigin?: unknown;

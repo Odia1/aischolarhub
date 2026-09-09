@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const crypto = require('crypto');
 
 /*
  * AI SCHOLAR HUB — HIERARCHY-NATIVE KNOWLEDGE AUTHORIZATION
@@ -44,6 +45,39 @@ function clean(value) {
   return String(value || '').trim();
 }
 
+const KNOWLEDGE_SCOPE_TYPES = new Set([
+  'INSTITUTION',
+  'DEPARTMENT',
+  'COURSE',
+  'GROUP',
+]);
+
+function knowledgeScopeKey(type, targetId) {
+  const normalizedType = clean(type).toUpperCase();
+  const normalizedTarget = clean(targetId);
+  if (!KNOWLEDGE_SCOPE_TYPES.has(normalizedType) || !normalizedTarget) {
+    return null;
+  }
+  return `${normalizedType}:${normalizedTarget}`;
+}
+
+function allowedKnowledgeScopeKeys(scope) {
+  const keys = [];
+  if (scope?.allowedScopes?.institution?.allowed === true) {
+    keys.push(knowledgeScopeKey('INSTITUTION', scope.tenantId));
+  }
+  for (const [type, field] of [
+    ['DEPARTMENT', 'departments'],
+    ['COURSE', 'courses'],
+    ['GROUP', 'groups'],
+  ]) {
+    for (const targetId of scope?.allowedScopes?.[field] || []) {
+      keys.push(knowledgeScopeKey(type, targetId));
+    }
+  }
+  return [...new Set(keys.filter(Boolean))].sort();
+}
+
 function oid(value) {
   const stringValue = clean(value);
 
@@ -62,14 +96,76 @@ function idSet(values) {
   );
 }
 
-/*
- * Compatibility hook.
- *
- * Knowledge authorization is intentionally uncached. Existing diagnostics
- * and tests may still call this function; keeping it as a no-op avoids
- * unnecessary coupling while preserving immediate revocation semantics.
- */
-function invalidateKnowledgeScopeCache() {}
+const knowledgeScopeCache = new Map();
+const knowledgeScopeInFlight = new Map();
+const KNOWLEDGE_SCOPE_CACHE_TTL_MS = process.env.NODE_ENV === 'test'
+  ? 0
+  : Math.max(0, Number(process.env.KNOWLEDGE_SCOPE_CACHE_TTL_MS || 3600000));
+const KNOWLEDGE_SCOPE_CACHE_MAX = 1000;
+const KNOWLEDGE_SCOPE_CACHE_VERSION = clean(
+  process.env.KNOWLEDGE_SCOPE_CACHE_VERSION || 'v1',
+);
+let sharedCacheRuntime;
+
+function getSharedCacheRuntime() {
+  if (KNOWLEDGE_SCOPE_CACHE_TTL_MS <= 0) {
+    return null;
+  }
+  if (sharedCacheRuntime !== undefined) {
+    return sharedCacheRuntime;
+  }
+  try {
+    const { cacheConfig, ioredisClient } = require('@librechat/api');
+    sharedCacheRuntime = cacheConfig?.USE_REDIS && ioredisClient
+      ? { ioredisClient }
+      : null;
+  } catch {
+    sharedCacheRuntime = null;
+  }
+  return sharedCacheRuntime;
+}
+
+function sharedCacheKey(cacheKey) {
+  return `aih:knowledge-scope:${KNOWLEDGE_SCOPE_CACHE_VERSION}:${crypto
+    .createHash('sha256')
+    .update(cacheKey)
+    .digest('hex')}`;
+}
+
+async function getSharedKnowledgeScope(cacheKey) {
+  const runtime = getSharedCacheRuntime();
+  if (!runtime) {
+    return null;
+  }
+  try {
+    const value = await runtime.ioredisClient.get(sharedCacheKey(cacheKey));
+    return value ? JSON.parse(value) : null;
+  } catch {
+    return null;
+  }
+}
+
+async function setSharedKnowledgeScope(cacheKey, value) {
+  const runtime = getSharedCacheRuntime();
+  if (!runtime) {
+    return;
+  }
+  try {
+    await runtime.ioredisClient.set(
+      sharedCacheKey(cacheKey),
+      JSON.stringify(value),
+      'PX',
+      KNOWLEDGE_SCOPE_CACHE_TTL_MS,
+    );
+  } catch {
+    // Cache failure must never turn into an authorization or availability failure.
+  }
+}
+
+function invalidateKnowledgeScopeCache() {
+  knowledgeScopeCache.clear();
+  knowledgeScopeInFlight.clear();
+}
 
 async function buildGroupChain(mongo, tenantId, group) {
   const groups = mongo.collection('groups');
@@ -230,6 +326,15 @@ async function resolveKnowledgeScope({
           userId,
         },
       },
+      availableRagPoints: [
+        {
+          key: 'PERSONAL',
+          type: 'PERSONAL',
+          targetId: userId,
+          label: 'My files',
+          defaultSelected: true,
+        },
+      ],
     };
   }
 
@@ -275,12 +380,12 @@ async function resolveKnowledgeScope({
 
   const chainByDirectGroup = new Map();
 
-  for (const group of directGroups) {
-    chainByDirectGroup.set(
-      clean(group._id),
-      await buildGroupChain(mongo, tenantId, group),
-    );
-  }
+  const groupChains = await Promise.all(
+    directGroups.map((group) => buildGroupChain(mongo, tenantId, group)),
+  );
+  directGroups.forEach((group, index) => {
+    chainByDirectGroup.set(clean(group._id), groupChains[index]);
+  });
 
   let scopedDirectGroups = directGroups;
 
@@ -448,6 +553,32 @@ async function resolveKnowledgeScope({
 
     allowedScopes,
 
+    availableRagPoints: [
+      {
+        key: 'PERSONAL',
+        type: 'PERSONAL',
+        targetId: userId,
+        label: 'My files',
+        defaultSelected: true,
+      },
+      ...(allowedScopes.institution.allowed
+        ? [{
+            key: knowledgeScopeKey('INSTITUTION', tenantId),
+            type: 'INSTITUTION',
+            targetId: tenantId,
+            label: `${tenantId} institutional knowledge`,
+            defaultSelected: false,
+          }]
+        : []),
+      ...grantedLocations.map((location) => ({
+        key: knowledgeScopeKey(location.type, location.targetId),
+        type: location.type,
+        targetId: clean(location.targetId),
+        label: clean(location.name) || `${location.type}: ${location.targetId}`,
+        defaultSelected: false,
+      })),
+    ].filter((point) => point.key),
+
     /*
      * Audience is agent-policy metadata. Do not infer educational stage from
      * USER/INSTRUCTOR role alone.
@@ -597,8 +728,69 @@ async function resolveAuthorizedKnowledgeFiles({
   };
 }
 
+/**
+ * Resolve authorization to a compact set of hierarchy scope keys.
+ *
+ * Unlike resolveAuthorizedKnowledgeFiles(), this does not enumerate files, so
+ * its result and the signed retrieval credential remain bounded by the user's
+ * organizational hierarchy rather than the repository size.
+ */
+async function resolveAuthorizedKnowledgeScopes(options) {
+  const cacheKey = [
+    clean(options?.tenantId),
+    clean(options?.userId),
+    clean(options?.role),
+    clean(options?.agentId),
+    clean(options?.activeGroupId),
+  ].join('|');
+  const now = Date.now();
+  const cached = knowledgeScopeCache.get(cacheKey);
+  if (cached && cached.expiresAt > now) {
+    return cached.value;
+  }
+  if (knowledgeScopeInFlight.has(cacheKey)) {
+    return knowledgeScopeInFlight.get(cacheKey);
+  }
+
+  const resolution = (async () => {
+    const sharedValue = await getSharedKnowledgeScope(cacheKey);
+    if (sharedValue) {
+      knowledgeScopeCache.set(cacheKey, {
+        value: sharedValue,
+        expiresAt: Date.now() + KNOWLEDGE_SCOPE_CACHE_TTL_MS,
+      });
+      return sharedValue;
+    }
+    const scope = await resolveKnowledgeScope(options);
+    const value = {
+      scope,
+      scopeKeys: allowedKnowledgeScopeKeys(scope),
+    };
+    if (KNOWLEDGE_SCOPE_CACHE_TTL_MS > 0) {
+      if (knowledgeScopeCache.size >= KNOWLEDGE_SCOPE_CACHE_MAX) {
+        knowledgeScopeCache.delete(knowledgeScopeCache.keys().next().value);
+      }
+      knowledgeScopeCache.set(cacheKey, {
+        value,
+        expiresAt: Date.now() + KNOWLEDGE_SCOPE_CACHE_TTL_MS,
+      });
+      await setSharedKnowledgeScope(cacheKey, value);
+    }
+    return value;
+  })();
+  knowledgeScopeInFlight.set(cacheKey, resolution);
+  try {
+    return await resolution;
+  } finally {
+    knowledgeScopeInFlight.delete(cacheKey);
+  }
+}
+
 module.exports = {
   resolveKnowledgeScope,
   resolveAuthorizedKnowledgeFiles,
+  resolveAuthorizedKnowledgeScopes,
+  allowedKnowledgeScopeKeys,
+  knowledgeScopeKey,
   invalidateKnowledgeScopeCache,
 };

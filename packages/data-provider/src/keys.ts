@@ -29,6 +29,7 @@ export enum QueryKeys {
   agents = 'agents',
   agent = 'agent',
   files = 'files',
+  ragPoints = 'ragPoints',
   fileConfig = 'fileConfig',
   tools = 'tools',
   toolAuth = 'toolAuth',

@@ -1,7 +1,11 @@
 const mongoose = require('mongoose');
 const { CacheKeys } = require('librechat-data-provider');
 const { AppService, logger } = require('@librechat/data-schemas');
-const { createAppConfigService, clearMcpConfigCache } = require('@librechat/api');
+const {
+  createAppConfigService,
+  clearMcpConfigCache,
+  RETRIEVAL_RESPONSE_POLICY,
+} = require('@librechat/api');
 const { setCachedTools, invalidateCachedTools } = require('./getCachedTools');
 const { loadAndFormatTools } = require('~/server/services/start/tools');
 const loadCustomConfig = require('./loadCustomConfig');
@@ -669,6 +673,7 @@ async function applyAcademicIntelligence(appConfig, options = {}) {
       const promptPrefix = [
         basePrompt,
         stablePolicy,
+        RETRIEVAL_RESPONSE_POLICY,
         integrityDirective,
         learnerContext
       ].filter(Boolean).join('\n\n');

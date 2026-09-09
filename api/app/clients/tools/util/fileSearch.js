@@ -1,12 +1,16 @@
 const axios = require('axios');
 const { logger } = require('@librechat/data-schemas');
 const { tool } = require('@librechat/agents/langchain/tools');
-const { generateShortLivedToken, logAxiosError } = require('@librechat/api');
+const {
+  generateShortLivedToken,
+  getKnowledgeSourceLabel,
+  logAxiosError,
+} = require('@librechat/api');
 const { Tools, EToolResources } = require('librechat-data-provider');
 const { filterFilesByAgentAccess } = require('~/server/services/Files/permissions');
 const { getFiles } = require('~/models');
 const {
-  resolveAuthorizedKnowledgeFiles,
+  resolveAuthorizedKnowledgeScopes,
 } = require('~/server/services/AcademicIntelligence/knowledgeScope');
 
 const fileSearchJsonSchema = {
@@ -63,7 +67,16 @@ const primeFiles = async (options) => {
 
   dbFiles = dbFiles.concat(resourceFiles);
 
-  let authorizedFileIds = [];
+  let authorizedKnowledgeScopeKeys = [];
+  const ragSelection = req?.body?.ragSelection;
+  const ragEnabled = ragSelection?.enabled !== false;
+  const hasExplicitSelection = Array.isArray(ragSelection?.selectedPointKeys);
+  const selectedPointKeys = new Set(
+    hasExplicitSelection
+      ? ragSelection.selectedPointKeys.map((value) => String(value || '').trim())
+      : [],
+  );
+  const includePersonal = ragEnabled && (!hasExplicitSelection || selectedPointKeys.has('PERSONAL'));
 
   /*
    * Hierarchical institutional knowledge belongs to the authenticated
@@ -71,7 +84,7 @@ const primeFiles = async (options) => {
    * or persisted Agent and is merged with personal/attached files.
    */
   if (req?.user?.id && req?.user?.tenantId) {
-    const knowledge = await resolveAuthorizedKnowledgeFiles({
+    const knowledge = await resolveAuthorizedKnowledgeScopes({
       tenantId: req.user.tenantId,
       userId: req.user.id,
       role: req.user.role,
@@ -84,40 +97,11 @@ const primeFiles = async (options) => {
       activeGroupId: null,
     });
 
-    const institutionalFiles = knowledge.files.map((file) => ({
-      ...file,
-
-      /*
-       * These are not LibreChat agent-owned knowledge-base files.
-       * Their authority comes from the signed authorizedFileIds claim,
-       * so they must not receive caller-asserted entity_id.
-       */
-      fromAgent: false,
-      fromInstitutionalKnowledge: true,
-    }));
-
-    authorizedFileIds = institutionalFiles.map(
-      (file) => file.file_id,
-    );
-
-    /*
-     * Merge without duplicating an already attached/resource file.
-     */
-    const seen = new Set(
-      dbFiles
-        .filter(Boolean)
-        .map((file) => String(file.file_id || ''))
-        .filter(Boolean),
-    );
-
-    for (const file of institutionalFiles) {
-      if (seen.has(file.file_id)) {
-        continue;
-      }
-
-      dbFiles.push(file);
-      seen.add(file.file_id);
-    }
+    authorizedKnowledgeScopeKeys = ragEnabled
+      ? knowledge.scopeKeys.filter(
+          (key) => !hasExplicitSelection || selectedPointKeys.has(key),
+        )
+      : [];
   }
 
   let toolContext = `- Note: Semantic search is available through the ${Tools.file_search} tool but no files are currently loaded. Request the user to upload documents to search through.`;
@@ -147,7 +131,23 @@ const primeFiles = async (options) => {
     });
   }
 
-  return { files, toolContext, authorizedFileIds };
+  if (authorizedKnowledgeScopeKeys.length) {
+    if (!files.length) {
+      toolContext = `- Note: Use the ${Tools.file_search} tool to find relevant information within authorized institutional knowledge.`;
+    } else {
+      toolContext += '\n\t- Authorized institutional knowledge';
+    }
+  }
+  if (!ragEnabled) {
+    toolContext = '- Note: Document search is disabled for this conversation.';
+  }
+
+  return {
+    files: includePersonal ? files : [],
+    toolContext,
+    authorizedKnowledgeScopeKeys,
+    ragEnabled,
+  };
 };
 
 /**
@@ -165,11 +165,15 @@ const createFileSearchTool = async ({
   files,
   entity_id,
   fileCitations = false,
-  authorizedFileIds = [],
+  authorizedKnowledgeScopeKeys = [],
+  ragEnabled = true,
 }) => {
   return tool(
     async ({ query }) => {
-      if (files.length === 0) {
+      if (!ragEnabled) {
+        return ['Document search is disabled for this conversation.', undefined];
+      }
+      if (files.length === 0 && authorizedKnowledgeScopeKeys.length === 0) {
         return ['No files to search. Instruct the user to add files for the search.', undefined];
       }
       /*
@@ -182,84 +186,51 @@ const createFileSearchTool = async ({
        */
       const jwtToken = generateShortLivedToken(
         userId,
-        authorizedFileIds.length ? '1m' : '5m',
+        authorizedKnowledgeScopeKeys.length ? '1m' : '5m',
         tenantId,
-        authorizedFileIds.length
-          ? { authorizedFileIds }
+        authorizedKnowledgeScopeKeys.length
+          ? { authorizedKnowledgeScopeKeys }
           : {},
       );
       if (!jwtToken) {
         return ['There was an error authenticating the file search request.', undefined];
       }
 
-      /**
-       * @param {import('librechat-data-provider').TFile & { fromAgent?: boolean }} file
-       * @returns {{ file_id: string, query: string, k: number, entity_id?: string }}
-       */
-      const createQueryBody = (file) => {
-        const body = {
-          file_id: file.file_id,
-          query,
-          k: 5,
-        };
-        // User-attached files are embedded under the user id (no entity);
-        // only agent knowledge-base files carry the agent's entity_id.
-        // Sending entity_id for user attachments makes the RAG API's entity
-        // filter return no results for them. When files are provided by
-        // primeFiles, fromAgent is always set; for callers that pass files
-        // directly without the flag, the safe default is unscoped (no
-        // entity_id).
-        if (!entity_id || file.fromAgent !== true) {
-          return body;
-        }
-        body.entity_id = entity_id;
-        logger.debug(`[${Tools.file_search}] RAG API /query body`, body);
-        return body;
+      const fileIds = files.map((file) => file.file_id).filter(Boolean);
+      const body = {
+        query,
+        file_ids: fileIds,
+        k: 10,
       };
+      if (entity_id && files.some((file) => file.fromAgent === true)) {
+        body.entity_id = entity_id;
+      }
 
-      const queryPromises = files.map((file) =>
-        axios
-          .post(`${process.env.RAG_API_URL}/query`, createQueryBody(file), {
-            headers: {
-              Authorization: `Bearer ${jwtToken}`,
-              'Content-Type': 'application/json',
-            },
-          })
-          .catch((error) => {
-            logAxiosError({
-              message: 'Error encountered in `file_search` while querying file',
-              error,
-            });
-            return null;
-          }),
-      );
-
-      const results = await Promise.all(queryPromises);
-      const validResults = results
-        .map((result, fileIndex) =>
-          result === null
-            ? null
-            : {
-                result,
-                file: files[fileIndex],
-              },
-        )
-        .filter(Boolean);
-
-      if (validResults.length === 0) {
+      let result;
+      try {
+        result = await axios.post(`${process.env.RAG_API_URL}/query_scoped`, body, {
+          headers: {
+            Authorization: `Bearer ${jwtToken}`,
+            'Content-Type': 'application/json',
+          },
+        });
+      } catch (error) {
+        logAxiosError({
+          message: 'Error encountered in `file_search` while running scoped search',
+          error,
+        });
         return ['No results found or errors occurred while searching the files.', undefined];
       }
 
-      const formattedResults = validResults
-        .flatMap(({ result, file }) =>
-          result.data.map(([docInfo, distance]) => ({
-            filename: docInfo.metadata.source.split('/').pop(),
-            content: docInfo.page_content,
-            distance,
-            file_id: file?.file_id,
-            page: docInfo.metadata.page || null,
-          })),
-        )
+      const formattedResults = result.data
+        .map(([docInfo, distance]) => ({
+          filename: docInfo.metadata.source.split('/').pop(),
+          content: docInfo.page_content,
+          distance,
+          file_id: docInfo.metadata.file_id,
+          page: docInfo.metadata.page || null,
+          sourceContext: getKnowledgeSourceLabel(docInfo.metadata.knowledge_scope_key),
+        }))
         .sort((a, b) => a.distance - b.distance)
         .slice(0, 10);
 
@@ -275,7 +246,7 @@ const createFileSearchTool = async ({
           (result, index) =>
             `File: ${result.filename}${
               fileCitations ? `\nAnchor: \\ue202turn0file${index} (${result.filename})` : ''
-            }\nRelevance: ${(1.0 - result.distance).toFixed(4)}\nContent: ${result.content}\n`,
+            }\nSource context: ${result.sourceContext}\nRelevance: ${(1.0 - result.distance).toFixed(4)}\nContent: ${result.content}\n`,
         )
         .join('\n---\n');
 
@@ -294,7 +265,7 @@ const createFileSearchTool = async ({
     {
       name: Tools.file_search,
       responseFormat: 'content_and_artifact',
-      description: `Performs semantic search across attached "${Tools.file_search}" documents using natural language queries. This tool analyzes the content of uploaded files to find relevant information, quotes, and passages that best match your query. Use this to extract specific information or find relevant sections within the available documents.${
+      description: `Performs semantic search across attached and authorized "${Tools.file_search}" documents using natural language queries. This tool analyzes document content to find relevant information, quotes, and passages. Retrieved source-context labels distinguish personal, institutional, department, course, and group evidence. For factual or administrative institutional requests, answer directly from the evidence with citations and do not append a Socratic exercise unless the user requests teaching.${
         fileCitations
           ? `
 

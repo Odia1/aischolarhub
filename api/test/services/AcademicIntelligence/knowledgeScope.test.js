@@ -111,6 +111,7 @@ jest.mock('mongoose', () => {
 
 const {
   resolveAuthorizedKnowledgeFiles,
+  resolveAuthorizedKnowledgeScopes,
 } = require(
   '~/server/services/AcademicIntelligence/knowledgeScope'
 );
@@ -200,6 +201,23 @@ describe('AI Scholar Hub hierarchical knowledge authorization', () => {
      * Normal chat must not perform an Academic Agent lookup.
      */
     expect(mockAcademicAgentFindOne).not.toHaveBeenCalled();
+  });
+
+  it('resolves compact RAG Point keys without enumerating repository files', async () => {
+    const result = await resolveAuthorizedKnowledgeScopes({
+      tenantId: 'SEEDS',
+      userId: USER_ID,
+      role: 'USER',
+      activeGroupId: null,
+    });
+
+    expect(result.scopeKeys).toEqual(['INSTITUTION:SEEDS']);
+    expect(result.scope.availableRagPoints).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ key: 'PERSONAL', defaultSelected: true }),
+        expect.objectContaining({ key: 'INSTITUTION:SEEDS', defaultSelected: false }),
+      ]),
+    );
   });
 
   it('returns no institutional files when ragAccess is false', async () => {
