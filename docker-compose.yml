@@ -4,7 +4,7 @@ services:
 
   api:
     container_name: aih-dev-api
-    image: seeds.azurecr.io/aischolarhub-custom:dev-20260908-release-c-hierarchical-rag-v1
+    image: seeds.azurecr.io/aischolarhub-custom:dev-c7e46c82d-release-c-scoped-rag-v1
     restart: always
     user: "${UID}:${GID}"
 
@@ -111,7 +111,7 @@ services:
 
   rag_api:
     container_name: aih-dev-rag
-    image: seeds.azurecr.io/aischolarhub-rag-api:dev-20260906-647d29295-agents-rag-rc1
+    image: seeds.azurecr.io/aischolarhub-rag-api:dev-c7e46c82d-release-c-scoped-rag-v1
     restart: always
 
     env_file:
