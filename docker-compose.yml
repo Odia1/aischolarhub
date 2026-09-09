@@ -4,7 +4,7 @@ services:
 
   api:
     container_name: aih-dev-api
-    image: seeds.azurecr.io/aischolarhub-custom:dev-c7e46c82d-release-c-scoped-rag-v1
+    image: seeds.azurecr.io/aischolarhub-custom:dev-867283be7-release-c-scoped-rag-v2
     restart: always
     user: "${UID}:${GID}"
 
