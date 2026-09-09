@@ -5,6 +5,7 @@ import type { SourceData } from '~/components/Web/SourceHovercard';
 import type { CitationProps } from './types';
 import { SourceHovercard, FaviconImage, getCleanDomain } from '~/components/Web/SourceHovercard';
 import FilePreviewDialog from '~/components/Chat/Messages/Content/FilePreviewDialog';
+import InstitutionalCitationDialog from './InstitutionalCitationDialog';
 import { CitationContext, useCitation, useCompositeCitations } from './Context';
 import { useLocalize } from '~/hooks';
 import { isInstitutionManagedCitation } from '~/utils/ragCitation';
@@ -66,6 +67,7 @@ export function CompositeCitation(props: CompositeCitationProps) {
   const { setHoveredCitationId } = useContext(CitationContext);
   const [currentPage, setCurrentPage] = useState(0);
   const [showPreview, setShowPreview] = useState(false);
+  const [showInstitutionalExcerpt, setShowInstitutionalExcerpt] = useState(false);
   const sources = useCompositeCitations(citations || []);
 
   if (!sources || sources.length === 0) {
@@ -109,11 +111,14 @@ export function CompositeCitation(props: CompositeCitationProps) {
   const { isFileType, fileId, fileMeta, fileName, filePages, fileRelevance, filePageRelevance } =
     getFileCitationData(currentSource);
   const mayOpenOriginal = isFileType && !isInstitutionManagedCitation(fileMeta);
+  const isInstitutionManaged = isFileType && isInstitutionManagedCitation(fileMeta);
 
   const handleFileClick = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (mayOpenOriginal && fileId) {
+    if (isInstitutionManaged) {
+      setShowInstitutionalExcerpt(true);
+    } else if (mayOpenOriginal && fileId) {
       setShowPreview(true);
     }
   };
@@ -125,7 +130,7 @@ export function CompositeCitation(props: CompositeCitationProps) {
         label={getCitationLabel()}
         onMouseEnter={() => setHoveredCitationId(citationId || null)}
         onMouseLeave={() => setHoveredCitationId(null)}
-        onClick={mayOpenOriginal ? handleFileClick : undefined}
+        onClick={isFileType ? handleFileClick : undefined}
         isFile={isFileType}
         filePages={filePages}
         fileRelevance={fileRelevance}
@@ -134,7 +139,7 @@ export function CompositeCitation(props: CompositeCitationProps) {
           <>
             <div className="flex items-center gap-2">
               <FileText className="size-4 shrink-0 text-text-secondary" aria-hidden="true" />
-              {mayOpenOriginal ? (
+              {mayOpenOriginal || isInstitutionManaged ? (
                 <button
                   onClick={handleFileClick}
                   className="min-w-0 truncate text-sm font-medium text-text-primary hover:underline"
@@ -296,6 +301,16 @@ export function CompositeCitation(props: CompositeCitationProps) {
           fileSize={fileMeta?.fileBytes}
         />
       )}
+      {isInstitutionManaged && (
+        <InstitutionalCitationDialog
+          open={showInstitutionalExcerpt}
+          onOpenChange={setShowInstitutionalExcerpt}
+          title={fileName || currentSource.title || localize('com_file_source')}
+          snippet={currentSource.snippet}
+          pages={filePages}
+          relevance={fileRelevance}
+        />
+      )}
     </>
   );
 }
@@ -321,18 +336,22 @@ export function Citation(props: CitationComponentProps) {
   const { isFileType, fileId, fileMeta, fileName, filePages, fileRelevance, filePageRelevance } =
     getFileCitationData(refData);
   const mayOpenOriginal = isFileType && !isInstitutionManagedCitation(fileMeta);
+  const isInstitutionManaged = isFileType && isInstitutionManagedCitation(fileMeta);
 
   const [showPreview, setShowPreview] = useState(false);
+  const [showInstitutionalExcerpt, setShowInstitutionalExcerpt] = useState(false);
 
   const handleFileClick = useCallback(
     (e: React.MouseEvent) => {
       e.preventDefault();
       e.stopPropagation();
-      if (mayOpenOriginal && fileId) {
+      if (isInstitutionManaged) {
+        setShowInstitutionalExcerpt(true);
+      } else if (mayOpenOriginal && fileId) {
         setShowPreview(true);
       }
     },
-    [mayOpenOriginal, fileId],
+    [isInstitutionManaged, mayOpenOriginal, fileId],
   );
 
   if (!refData) {
@@ -355,7 +374,7 @@ export function Citation(props: CitationComponentProps) {
         label={getCitationLabel()}
         onMouseEnter={() => setHoveredCitationId(citationId || null)}
         onMouseLeave={() => setHoveredCitationId(null)}
-        onClick={mayOpenOriginal ? handleFileClick : undefined}
+        onClick={isFileType ? handleFileClick : undefined}
         isFile={isFileType}
         filePages={filePages}
         fileRelevance={fileRelevance}
@@ -372,6 +391,16 @@ export function Citation(props: CitationComponentProps) {
           fileType={fileMeta?.fileType}
           fileSource={fileMeta?.storageType}
           fileSize={fileMeta?.fileBytes}
+        />
+      )}
+      {isInstitutionManaged && (
+        <InstitutionalCitationDialog
+          open={showInstitutionalExcerpt}
+          onOpenChange={setShowInstitutionalExcerpt}
+          title={fileName || refData.title || localize('com_file_source')}
+          snippet={refData.snippet}
+          pages={filePages}
+          relevance={fileRelevance}
         />
       )}
     </>
