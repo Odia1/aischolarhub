@@ -192,7 +192,10 @@ const CORE_ACADEMIC_AGENT_IDS = new Set([
   "RESEARCH_GAP_FINDER",
   "EDUCATION_CAREER_PATHWAYS",
   "COURSE_KNOWLEDGE",
-  "MUSIC_STUDIO_AGENT"
+  "MUSIC_STUDIO_AGENT",
+  "EVIDENCE_OF_LEARNING",
+  "RESEARCH_CLAIM_AUDITOR",
+  "CURRICULUM_COHERENCE"
 ]);
 
 const ACADEMIC_AUDIENCES = new Set([
@@ -5153,6 +5156,381 @@ async function ensureCoreAcademicAgents(tenantId) {
           exportEnabled: false,
           voiceCloningEnabled: false,
           instrumentalGenerationOnly: true
+        },
+
+        createdAt: now,
+        updatedAt: now
+      }
+
+,
+      {
+        tenantId,
+
+        agentId: "EVIDENCE_OF_LEARNING",
+        agentType: "AGENT",
+
+        name: "Evidence of Learning / Oral Defense",
+
+        description:
+          "Adaptive oral defense that gathers positive evidence that a learner understands, can explain, defend and transfer submitted or AI-assisted work.",
+
+        modelSpecName: "Undergrad Socratic Tutor",
+
+        experienceModelSpecs: {
+          USER: "Undergrad Socratic Tutor",
+          UNDERGRADUATE: "Undergrad Socratic Tutor",
+          SCHOOL_STUDENT: "K-12 Socratic Tutor",
+
+          INSTRUCTOR: "Instructor Assistant",
+          COLLEGE_FACULTY: "Instructor Assistant",
+          SCHOOL_TEACHER: "School Teaching Assistant",
+
+          RESEARCHER: "PhD & Post-Doc Research",
+          INSTITUTION_ADMIN: "Instructor Assistant"
+        },
+
+        enabled: true,
+
+        allowedRoles: [
+          "USER",
+          "INSTRUCTOR",
+          "INSTITUTION_ADMIN"
+        ],
+
+        audiences: [
+          "SCHOOL_STUDENT",
+          "SCHOOL_TEACHER",
+          "UNDERGRADUATE",
+          "COLLEGE_FACULTY",
+          "RESEARCHER"
+        ],
+
+        integrityPolicyId,
+
+        capabilities: [
+          "EVIDENCE_OF_LEARNING.USE",
+          "EVIDENCE_OF_LEARNING.DEFEND",
+          "EVIDENCE_OF_LEARNING.REPORT"
+        ],
+
+        tools: [],
+        mcpServers: [],
+
+        workflow: {
+          type: "ADAPTIVE_ORAL_DEFENSE",
+
+          steps: [
+            "Inspect the learner's submitted work or stated project",
+            "Identify important concepts, assumptions, methods and decisions",
+            "Ask one concise defense question at a time",
+            "Adapt the next question to the learner's previous answer",
+            "Probe why important choices were made",
+            "Use transfer and counterfactual questions",
+            "Identify demonstrated understanding and unresolved misconceptions",
+            "Produce an evidence-of-learning summary"
+          ]
+        },
+
+        assessmentPolicy: {
+          aiDetection: false,
+          misconductInference: false,
+          positiveEvidenceOnly: true,
+          adaptiveQuestioning: true,
+          transferTesting: true,
+          counterfactualTesting: true,
+          humanAssessmentAuthority: true
+        },
+
+        modelPolicy: {
+          mode: "PERSONA_ROUTE",
+          costTier: "BALANCED"
+        },
+
+        researchMaturityPolicy: {
+          adaptive: true,
+          allowedLevels: [
+            "NOVICE",
+            "DEVELOPING",
+            "INDEPENDENT",
+            "ADVANCED"
+          ]
+        },
+
+        visibility: "INSTITUTION",
+
+        ragPolicy: {
+          personalRag: "INHERIT_USER_ACCESS",
+          sharedScopeMode: "CONTEXTUAL_HIERARCHY",
+          ragGroupIds: []
+        },
+
+        pedagogy: {
+          mode: "ORAL_DEFENSE",
+          diagnoseFirst: true,
+          activeRetrieval: true,
+          adaptiveDifficulty: true,
+          misconceptionRepair: true,
+          masteryTracking: true,
+
+          strategy:
+            "Gather positive evidence of understanding through explanation, reasoning, application and transfer. Ask one meaningful question at a time. Do not infer AI use or academic misconduct from writing style, fluency or similarity to generated text."
+        },
+
+        toolUi: {
+          category: "LEARNING_AND_ASSESSMENT",
+          label: "Show What I Know",
+          shortDescription:
+            "Demonstrate your understanding through a short adaptive oral review.",
+          requiresExplicitInvocation: true,
+          persistentPrimaryExperience: true
+        },
+
+        createdAt: now,
+        updatedAt: now
+      },
+
+      {
+        tenantId,
+
+        agentId: "RESEARCH_CLAIM_AUDITOR",
+        agentType: "AGENT",
+
+        name: "Research Claim Auditor",
+
+        description:
+          "Audits important scholarly claims against supplied or retrieved evidence and identifies unsupported extensions, excessive inference, contradictory evidence and unverifiable source claims.",
+
+        modelSpecName: "PhD & Post-Doc Research",
+
+        experienceModelSpecs: {
+          USER: "PhD & Post-Doc Research",
+          UNDERGRADUATE: "PhD & Post-Doc Research",
+
+          INSTRUCTOR: "Instructor Assistant",
+          COLLEGE_FACULTY: "Instructor Assistant",
+
+          RESEARCHER: "PhD & Post-Doc Research",
+          INSTITUTION_ADMIN: "Instructor Assistant"
+        },
+
+        enabled: true,
+
+        allowedRoles: [
+          "USER",
+          "INSTRUCTOR",
+          "INSTITUTION_ADMIN"
+        ],
+
+        audiences: [
+          "UNDERGRADUATE",
+          "COLLEGE_FACULTY",
+          "RESEARCHER"
+        ],
+
+        integrityPolicyId,
+
+        capabilities: [
+          "CLAIM_AUDITOR.USE",
+          "CLAIM_AUDITOR.EXTRACT",
+          "CLAIM_AUDITOR.VERIFY",
+          "CLAIM_AUDITOR.REPORT"
+        ],
+
+        tools: [],
+        mcpServers: [],
+
+        workflow: {
+          type: "CLAIM_EVIDENCE_AUDIT",
+
+          steps: [
+            "Extract significant factual, quantitative, causal and novelty claims",
+            "Locate the citation or evidence associated with each claim",
+            "Identify which cited sources were actually available for inspection",
+            "Determine what each inspected source establishes",
+            "Separate evidence from interpretation and inference",
+            "Identify unsupported extensions",
+            "Identify overstated causality or certainty",
+            "Preserve material contradictory evidence",
+            "Qualify novelty and gap claims by search scope",
+            "Produce a structured claim-to-evidence report"
+          ]
+        },
+
+        claimAuditPolicy: {
+          requireSourceInspectionForVerification: true,
+          prohibitFalseInspectionClaims: true,
+          distinguishEvidenceFromInference: true,
+          identifyUnsupportedExtensions: true,
+          identifyOverstatedCausality: true,
+          preserveContradictoryEvidence: true,
+          qualifyNoveltyBySearchScope: true,
+          preserveHumanScholarlyJudgment: true
+        },
+
+        modelPolicy: {
+          mode: "PERSONA_ROUTE",
+          costTier: "ADVANCED"
+        },
+
+        researchMaturityPolicy: {
+          adaptive: true,
+          allowedLevels: [
+            "DEVELOPING",
+            "INDEPENDENT",
+            "ADVANCED"
+          ]
+        },
+
+        visibility: "INSTITUTION",
+
+        ragPolicy: {
+          personalRag: "INHERIT_USER_ACCESS",
+          sharedScopeMode: "CONTEXTUAL_HIERARCHY",
+          ragGroupIds: []
+        },
+
+        pedagogy: {
+          mode: "RESEARCH",
+          diagnoseFirst: false,
+          activeRetrieval: false,
+          adaptiveDifficulty: true,
+          misconceptionRepair: true,
+          masteryTracking: false,
+
+          strategy:
+            "Build an explicit claim-to-evidence chain. Never claim to have inspected a source unless it was supplied or retrieved. Clearly distinguish what the evidence establishes from interpretation, inference and uncertainty."
+        },
+
+        toolUi: {
+          category: "RESEARCH_AND_SCHOLARSHIP",
+          label: "Audit Research Claims",
+          shortDescription:
+            "Check whether important claims are actually supported.",
+          requiresExplicitInvocation: true,
+          persistentPrimaryExperience: true
+        },
+
+        createdAt: now,
+        updatedAt: now
+      },
+
+      {
+        tenantId,
+
+        agentId: "CURRICULUM_COHERENCE",
+        agentType: "AGENT",
+
+        name: "Curriculum Coherence",
+
+        description:
+          "Program-level curriculum analysis that maps concepts, competencies, prerequisites, reinforcement and assessment across courses.",
+
+        modelSpecName: "Instructor Assistant",
+
+        experienceModelSpecs: {
+          INSTRUCTOR: "Instructor Assistant",
+          COLLEGE_FACULTY: "Instructor Assistant",
+          SCHOOL_TEACHER: "School Teaching Assistant",
+
+          RESEARCHER: "PhD & Post-Doc Research",
+          INSTITUTION_ADMIN: "Instructor Assistant"
+        },
+
+        enabled: true,
+
+        allowedRoles: [
+          "INSTRUCTOR",
+          "INSTITUTION_ADMIN"
+        ],
+
+        audiences: [
+          "SCHOOL_TEACHER",
+          "COLLEGE_FACULTY",
+          "RESEARCHER"
+        ],
+
+        integrityPolicyId,
+
+        capabilities: [
+          "CURRICULUM_COHERENCE.USE",
+          "CURRICULUM_COHERENCE.MAP",
+          "CURRICULUM_COHERENCE.AUDIT",
+          "CURRICULUM_COHERENCE.REPORT"
+        ],
+
+        tools: [],
+        mcpServers: [],
+
+        workflow: {
+          type: "CURRICULUM_SYSTEM_ANALYSIS",
+
+          steps: [
+            "Identify program and course learning outcomes",
+            "Extract concepts, competencies and prerequisites",
+            "Map where competencies are introduced",
+            "Map where competencies are reinforced",
+            "Map where mastery is expected",
+            "Identify missing or late prerequisites",
+            "Identify unnecessary duplication",
+            "Identify sequencing discontinuities",
+            "Map learning outcomes to assessment evidence",
+            "Identify outcomes that are never meaningfully assessed",
+            "Distinguish documented structure from inferred dependencies",
+            "Generate evidence-based curriculum improvement options"
+          ]
+        },
+
+        curriculumPolicy: {
+          analyzeProgramAsSystem: true,
+          identifyPrerequisiteGaps: true,
+          identifyDuplication: true,
+          identifySequencingProblems: true,
+          mapOutcomeAssessmentAlignment: true,
+          distinguishFactsFromRecommendations: true,
+          preserveFacultyAuthority: true
+        },
+
+        modelPolicy: {
+          mode: "PERSONA_ROUTE",
+          costTier: "ADVANCED"
+        },
+
+        researchMaturityPolicy: {
+          adaptive: true,
+          allowedLevels: [
+            "DEVELOPING",
+            "INDEPENDENT",
+            "ADVANCED"
+          ]
+        },
+
+        visibility: "INSTITUTION",
+
+        ragPolicy: {
+          personalRag: "INHERIT_USER_ACCESS",
+          sharedScopeMode: "CONTEXTUAL_HIERARCHY",
+          ragGroupIds: []
+        },
+
+        pedagogy: {
+          mode: "EXPLAINER",
+          diagnoseFirst: false,
+          activeRetrieval: false,
+          adaptiveDifficulty: false,
+          misconceptionRepair: false,
+          masteryTracking: false,
+
+          strategy:
+            "Treat the curriculum as an interconnected learning system. Distinguish documented curriculum facts from inferred relationships and recommendations. Provide decision support rather than replacing faculty or curriculum-committee judgment."
+        },
+
+        toolUi: {
+          category: "TEACHING_AND_CURRICULUM",
+          label: "Review Curriculum Coherence",
+          shortDescription:
+            "Find prerequisite gaps, duplication and outcome-assessment problems.",
+          requiresExplicitInvocation: true,
+          persistentPrimaryExperience: true
         },
 
         createdAt: now,

@@ -559,11 +559,11 @@ const ChatForm = memo(function ChatForm({
             <div
               onClick={handleContainerClick}
               className={cn(
-                'relative flex w-full flex-grow flex-col overflow-hidden rounded-t-3xl border pb-4 text-text-primary transition-all duration-200 sm:rounded-3xl sm:pb-0',
-                isTextAreaFocused ? 'shadow-lg' : 'shadow-md',
+                'relative flex w-full flex-grow flex-col overflow-hidden rounded-t-3xl border pb-4 text-text-primary transition-all duration-200 sm:rounded-3xl sm:pb-0 ring-1 ring-black/[0.025] dark:ring-white/[0.035]',
+                isTextAreaFocused ? 'shadow-[0_10px_35px_rgba(15,23,42,0.12)]' : 'shadow-[0_5px_20px_rgba(15,23,42,0.07)]',
                 isTemporary
                   ? 'border-violet-800/60 bg-violet-950/10'
-                  : 'border-border-light bg-surface-chat',
+                  : 'border-slate-200/90 bg-gradient-to-b from-white to-slate-50/55 dark:border-border-light dark:from-surface-chat dark:to-surface-chat',
               )}
             >
               {project ? <ProjectLandingChip project={project} /> : null}
@@ -653,7 +653,7 @@ const ChatForm = memo(function ChatForm({
               )}
               <div
                 className={cn(
-                  '@container items-between flex gap-2 pb-2',
+                  '@container items-between flex min-w-0 gap-1.5 pb-2 sm:gap-2',
                   isRTL ? 'flex-row-reverse' : 'flex-row',
                 )}
               >

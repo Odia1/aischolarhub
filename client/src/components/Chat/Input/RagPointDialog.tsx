@@ -60,19 +60,19 @@ export default function RagPointDialog({ isOpen, onOpenChange }: RagPointDialogP
             </p>
             {isLoading && (
               <div className="flex items-center gap-2 py-3 text-sm text-text-secondary">
-                <Spinner className="size-4" /> Loading available RAG Points…
+                <Spinner className="size-4" /> Loading available Knowledge Sources…
               </div>
             )}
             {isError && (
               <p className="text-sm text-text-destructive">
-                Available RAG Points could not be loaded. Try opening this dialog again.
+                Available Knowledge Sources could not be loaded. Try opening this dialog again.
               </p>
             )}
             {!isLoading && !isError && points.length === 0 && (
-              <p className="text-sm text-text-secondary">No RAG Points are available.</p>
+              <p className="text-sm text-text-secondary">No Knowledge Sources are available for your account.</p>
             )}
             <fieldset className="space-y-2" disabled={isLoading || isError}>
-              <legend className="sr-only">Available RAG Points</legend>
+              <legend className="sr-only">Available Knowledge Sources</legend>
               {points.map((point) => (
                 <label
                   key={point.key}

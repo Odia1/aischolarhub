@@ -19,7 +19,6 @@ import {
 } from '~/hooks';
 import ArtifactsSubMenu from '~/components/Chat/Input/ArtifactsSubMenu';
 import MCPSubMenu from '~/components/Chat/Input/MCPSubMenu';
-import RagPointDialog from './RagPointDialog';
 import { useGetStartupConfig } from '~/data-provider';
 import { useBadgeRowContext } from '~/Providers';
 import { cn } from '~/utils';
@@ -76,7 +75,7 @@ const ToolsDropdown = ({ disabled }: ToolsDropdownProps) => {
   const showMemory = canUseMemory && memoryEnabled && user?.personalization?.memories !== false;
 
   const [isPopoverActive, setIsPopoverActive] = useState(false);
-  const [isRagDialogOpen, setIsRagDialogOpen] = useState(false);
+
   const isDisabled = disabled ?? false;
   const {
     skills,
@@ -169,50 +168,7 @@ const ToolsDropdown = ({ disabled }: ToolsDropdownProps) => {
   const dropdownItems: MenuItemProps[] = [];
 
   if (fileSearchEnabled && canUseFileSearch) {
-    dropdownItems.push({
-      onClick: handleFileSearchToggle,
-      hideOnClick: false,
-      render: (props) => (
-        <div {...props}>
-          <div className="flex items-center gap-2">
-            <VectorIcon className="icon-md" />
-            <span>{localize('com_assistants_file_search')}</span>
-          </div>
-          <div className="flex items-center gap-1">
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                setIsPopoverActive(false);
-                setIsRagDialogOpen(true);
-              }}
-              className="rounded p-1 text-text-secondary transition-all duration-200 hover:bg-surface-secondary hover:text-text-primary hover:shadow-sm"
-              aria-label="Choose RAG Points"
-            >
-              <Settings className="h-4 w-4" aria-hidden="true" />
-            </button>
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                setIsFileSearchPinned?.(!isFileSearchPinned);
-              }}
-              className={cn(
-                'rounded p-1 transition-all duration-200',
-                'hover:bg-surface-secondary hover:shadow-sm',
-                !isFileSearchPinned && 'text-text-secondary hover:text-text-primary',
-              )}
-              aria-label={isFileSearchPinned ? 'Unpin' : 'Pin'}
-            >
-              <div className="h-4 w-4">
-                <PinIcon unpin={isFileSearchPinned} />
-              </div>
-            </button>
-          </div>
-        </div>
-      ),
-    });
-  }
+}
 
   if (canUseWebSearch && webSearchEnabled) {
     dropdownItems.push({
@@ -434,7 +390,6 @@ const ToolsDropdown = ({ disabled }: ToolsDropdownProps) => {
         items={dropdownItems}
         iconClassName="mr-0"
       />
-      <RagPointDialog isOpen={isRagDialogOpen} onOpenChange={setIsRagDialogOpen} />
     </>
   );
 };

@@ -15,6 +15,8 @@ import type { BadgeItem } from '~/common';
 import CodeInterpreter from './CodeInterpreter';
 import { BadgeRowProvider } from '~/Providers';
 import ToolsDropdown from './ToolsDropdown';
+import AcademicToolsDropdown from './AcademicToolsDropdown';
+import KnowledgeSourcesButton from './KnowledgeSourcesButton';
 import { useChatBadges } from '~/hooks';
 import ToolDialogs from './ToolDialogs';
 import FileSearch from './FileSearch';
@@ -329,8 +331,24 @@ function BadgeRow({
       specName={specName}
       isSubmitting={isSubmitting}
     >
-      <div ref={containerRef} className="relative flex flex-wrap items-center gap-2">
-        {showEphemeralBadges === true && <ToolsDropdown />}
+      <div
+        ref={containerRef}
+        className="
+          relative flex min-w-0 max-w-full flex-nowrap items-center gap-1.5
+          overflow-x-auto overscroll-x-contain py-0.5
+          @sm:flex-wrap @sm:gap-2 @sm:overflow-visible
+        "
+      >
+        {showEphemeralBadges === true && (
+          <>
+            <AcademicToolsDropdown
+              disabled={isSubmitting}
+              specName={specName}
+            />
+            <KnowledgeSourcesButton disabled={isSubmitting} />
+            <ToolsDropdown disabled={isSubmitting} />
+          </>
+        )}
         {tempBadges.map((badge, index) => (
           <React.Fragment key={badge.id}>
             {dragState.draggedBadge && dragState.insertIndex === index && ghostBadge && (

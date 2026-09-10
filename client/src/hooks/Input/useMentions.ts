@@ -163,6 +163,17 @@ export default function useMentions({
      * Use agentsMap which already contains permission-filtered agents (consistent with other components).
      */
     return specs.filter((spec) => {
+      /**
+       * Specialized AI Scholar Hub Academic Agents are invoked from the
+       * dedicated Academic Tools control, not the model/experience menu.
+       */
+      if (
+        typeof spec.name === 'string' &&
+        spec.name.startsWith('AIH Academic Agent · ')
+      ) {
+        return false;
+      }
+
       if (spec.preset?.endpoint === EModelEndpoint.agents && spec.preset?.agent_id) {
         return spec.preset.agent_id in agentsMap;
       }

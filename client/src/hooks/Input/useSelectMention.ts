@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 import { useRecoilValue } from 'recoil';
 import { useSearchParams } from 'react-router-dom';
 import { EModelEndpoint, isAgentsEndpoint, isAssistantsEndpoint } from 'librechat-data-provider';
@@ -233,6 +233,60 @@ export default function useSelectMention({
       routeChatProjectId,
     ],
   );
+
+
+  /**
+   * AI Scholar Hub Academic Tools use the exact same ModelSpec switch
+   * pathway as the normal selector. The event only transports a spec
+   * name; this hook still performs endpoint/model/conversation switching.
+   *
+   * More than one Mention component can mount useSelectMention, therefore
+   * mark the shared Event object once so the selection executes only once.
+   */
+  useEffect(() => {
+    const handleAcademicToolSelection = (event: Event) => {
+      const handledEvent = event as Event & {
+        __aihAcademicToolHandled?: boolean;
+      };
+
+      if (handledEvent.__aihAcademicToolHandled) {
+        return;
+      }
+
+      const customEvent =
+        event as CustomEvent<{ specName?: string }>;
+
+      const specName =
+        customEvent.detail?.specName?.trim();
+
+      if (!specName) {
+        return;
+      }
+
+      const spec = modelSpecs.find(
+        (candidate) => candidate.name === specName,
+      );
+
+      if (!spec) {
+        return;
+      }
+
+      handledEvent.__aihAcademicToolHandled = true;
+      onSelectSpec(spec);
+    };
+
+    window.addEventListener(
+      'aih:select-model-spec',
+      handleAcademicToolSelection,
+    );
+
+    return () => {
+      window.removeEventListener(
+        'aih:select-model-spec',
+        handleAcademicToolSelection,
+      );
+    };
+  }, [modelSpecs, onSelectSpec]);
 
   const onSelectPreset = useCallback(
     (_newPreset?: TPreset) => {
