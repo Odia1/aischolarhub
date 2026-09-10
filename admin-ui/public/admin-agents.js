@@ -31,7 +31,8 @@
       'LITERATURE_REVIEW',
       'RESEARCH_GAP_FINDER',
       'EDUCATION_CAREER_PATHWAYS',
-      'COURSE_KNOWLEDGE'
+      'COURSE_KNOWLEDGE',
+      'MUSIC_STUDIO_AGENT'
     ]);
 
     const esc = v => String(v ?? '')

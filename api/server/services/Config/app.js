@@ -580,9 +580,105 @@ async function applyAcademicIntelligence(appConfig, options = {}) {
     ? appConfig.modelSpecs.list
     : [];
 
-  const list = specs
+  /*
+   * Primary MODE records own their original ModelSpecs.
+   *
+   * Specialized AGENT records derive an additional selectable ModelSpec from
+   * a governed primary experience. This keeps model/provider routing in the
+   * existing experience layer while allowing domain agents to appear to users
+   * as distinct capabilities.
+   */
+  const effectiveSpecs = [...specs];
+  const effectiveAgentMap = new Map(agentMap);
+
+  const effectiveAcademicAudience =
+    role === 'INSTRUCTOR'
+      ? instructorAudience
+      : String(
+          academicProfile?.academicAudience ||
+          (role === 'USER' ? 'UNDERGRADUATE' : '')
+        ).trim().toUpperCase();
+
+  for (const specializedAgent of agents) {
+    if (String(specializedAgent.agentType || '').toUpperCase() !== 'AGENT')
+      continue;
+
+    const allowedRoles = Array.isArray(specializedAgent.allowedRoles)
+      ? specializedAgent.allowedRoles.map(x => String(x).toUpperCase())
+      : [];
+
+    if (allowedRoles.length && !allowedRoles.includes(role))
+      continue;
+
+    const audiences = Array.isArray(specializedAgent.audiences)
+      ? specializedAgent.audiences.map(x => String(x).toUpperCase())
+      : [];
+
+    if (
+      effectiveAcademicAudience &&
+      audiences.length &&
+      !audiences.includes(effectiveAcademicAudience)
+    )
+      continue;
+
+    const bindings =
+      specializedAgent.experienceModelSpecs &&
+      typeof specializedAgent.experienceModelSpecs === 'object'
+        ? specializedAgent.experienceModelSpecs
+        : {};
+
+    const baseModelSpecName = String(
+      bindings[effectiveAcademicAudience] ||
+      bindings[role] ||
+      specializedAgent.modelSpecName ||
+      ''
+    ).trim();
+
+    if (!baseModelSpecName)
+      continue;
+
+    const baseSpec = specs.find(
+      candidate =>
+        String(candidate?.name || '').trim() === baseModelSpecName
+    );
+
+    if (!baseSpec) {
+      logger.warn(
+        `[academicIntelligence] specializedAgent=${specializedAgent.agentId} baseModelSpec=${baseModelSpecName} unavailable`
+      );
+      continue;
+    }
+
+    const derivedName =
+      `AIH Academic Agent · ${String(
+        specializedAgent.agentId || specializedAgent._id
+      ).trim()}`;
+
+    if (effectiveAgentMap.has(derivedName))
+      continue;
+
+    effectiveAgentMap.set(derivedName, specializedAgent);
+
+    effectiveSpecs.push({
+      ...baseSpec,
+      name: derivedName,
+      label: String(
+        specializedAgent.name ||
+        specializedAgent.agentId ||
+        baseSpec.label ||
+        baseSpec.name ||
+        ''
+      ).trim(),
+      default: false,
+      preset: {
+        ...(baseSpec.preset || {})
+      }
+    });
+  }
+
+  const list = effectiveSpecs
     .filter(spec => {
-      const agent = agentMap.get(
+      const agent = effectiveAgentMap.get(
         String(spec?.name || '').trim()
       );
 
@@ -607,7 +703,7 @@ async function applyAcademicIntelligence(appConfig, options = {}) {
       );
     })
     .map(spec => {
-      const agent = agentMap.get(
+      const agent = effectiveAgentMap.get(
         String(spec?.name || '').trim()
       );
 

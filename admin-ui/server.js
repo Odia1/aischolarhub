@@ -191,7 +191,8 @@ const CORE_ACADEMIC_AGENT_IDS = new Set([
   "LITERATURE_REVIEW",
   "RESEARCH_GAP_FINDER",
   "EDUCATION_CAREER_PATHWAYS",
-  "COURSE_KNOWLEDGE"
+  "COURSE_KNOWLEDGE",
+  "MUSIC_STUDIO_AGENT"
 ]);
 
 const ACADEMIC_AUDIENCES = new Set([
@@ -5021,6 +5022,143 @@ async function ensureCoreAcademicAgents(tenantId) {
         createdAt: now,
         updatedAt: now
       }
+,
+      {
+        tenantId,
+        agentId: "MUSIC_STUDIO_AGENT",
+        agentType: "AGENT",
+        name: "Music Studio Agent",
+        description:
+          "Role-aware music learning, theory, analysis, composition guidance, pedagogy and scholarly music support.",
+        modelSpecName: "Undergrad Socratic Tutor",
+
+        /*
+         * Specialized Academic Agents derive a user-facing ModelSpec from the
+         * appropriate primary experience.  The base experience controls model
+         * routing and general interaction style; this agent adds the music
+         * domain specialization.
+         */
+        experienceModelSpecs: {
+          USER: "Undergrad Socratic Tutor",
+          UNDERGRADUATE: "Undergrad Socratic Tutor",
+          SCHOOL_STUDENT: "K-12 Socratic Tutor",
+
+          INSTRUCTOR: "Instructor Assistant",
+          COLLEGE_FACULTY: "Instructor Assistant",
+          SCHOOL_TEACHER: "School Teaching Assistant",
+
+          RESEARCHER: "PhD & Post-Doc Research",
+          INSTITUTION_ADMIN: "Instructor Assistant"
+        },
+
+        /*
+         * Release D safety gate:
+         * registration does not automatically expose the capability.
+         * Institution administration must explicitly enable it.
+         */
+        enabled: false,
+
+        allowedRoles: [
+          "USER",
+          "INSTRUCTOR",
+          "INSTITUTION_ADMIN"
+        ],
+
+        audiences: [
+          "SCHOOL_STUDENT",
+          "SCHOOL_TEACHER",
+          "UNDERGRADUATE",
+          "COLLEGE_FACULTY",
+          "RESEARCHER"
+        ],
+
+        integrityPolicyId,
+
+        /*
+         * D1 capability declaration only.
+         * ANALYZE/SEARCH service tools are added in later Music work packages.
+         * GENERATE intentionally remains unavailable.
+         */
+        capabilities: [
+          "MUSIC.USE",
+          "MUSIC.ANALYZE",
+          "MUSIC.SEARCH"
+        ],
+
+        tools: [],
+        mcpServers: [],
+
+        workflow: {
+          type: "MUSIC_EDUCATION_AND_ANALYSIS",
+          steps: [
+            "Establish the learner or instructor's musical objective",
+            "Explain music theory, rhythm, melody, harmony, form, timbre and notation at the appropriate level",
+            "Use authorized source material and tools when factual audio or score analysis is required",
+            "Distinguish measured musical features from interpretation",
+            "Explain uncertainty in key, chord, instrument and transcription estimates",
+            "Support original composition and transformation rather than imitation",
+            "Preserve academic integrity, attribution, copyright and institutional access boundaries"
+          ]
+        },
+
+        modelPolicy: {
+          mode: "PERSONA_ROUTE",
+          costTier: "BALANCED"
+        },
+
+        researchMaturityPolicy: {
+          adaptive: true,
+          allowedLevels: [
+            "NOVICE",
+            "DEVELOPING",
+            "INDEPENDENT",
+            "ADVANCED"
+          ]
+        },
+
+        visibility: "INSTITUTION",
+
+        ragPolicy: {
+          personalRag: "INHERIT_USER_ACCESS",
+          sharedScopeMode: "CONTEXTUAL_HIERARCHY",
+          ragGroupIds: []
+        },
+
+        pedagogy: {
+          /*
+           * Do not impose a second global pedagogy here.
+           * The selected primary experience remains authoritative:
+           *
+           * school learner  -> K-12 guided/Socratic experience
+           * undergraduate   -> undergraduate learning experience
+           * school teacher  -> School Teaching Assistant
+           * college faculty -> Instructor Assistant, direct/non-Socratic
+           * researcher      -> Research Synthesizer
+           */
+          mode: "EXPLAINER",
+          diagnoseFirst: false,
+          activeRetrieval: false,
+          adaptiveDifficulty: true,
+          misconceptionRepair: true,
+          masteryTracking: false,
+          strategy:
+            "Apply music-domain expertise within the user's primary academic experience. For learners, teach at the demonstrated level and encourage understanding rather than answer copying. For teachers and faculty, respond directly as a professional colleague and do not impose Socratic questioning. For research work, distinguish evidence, analysis, interpretation and uncertainty. Never invent measured audio properties, score contents, citations, or source access."
+        },
+
+        musicPolicy: {
+          version: "release-d1",
+          analysisEnabled: false,
+          catalogSearchEnabled: false,
+          generationEnabled: false,
+          exportEnabled: false,
+          voiceCloningEnabled: false,
+          instrumentalGenerationOnly: true
+        },
+
+        createdAt: now,
+        updatedAt: now
+      }
+
     ];
 
     let created = 0;
