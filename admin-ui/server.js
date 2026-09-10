@@ -2078,9 +2078,20 @@ app.post("/api/users/bulk", async (req, res) => {
       const name = String(r.name || "").trim();
       const username = String(r.username || "").trim() || null;
       const email = String(r.email || "").trim().toLowerCase();
-      const role = String(r.role || "USER").trim();
-      const institutionId = String(r.institutionId || r.tenantId || "").trim();
-      const ragAccess = parseRagAccess(r.ragAccess);
+      const requestedRole = String(r.role || "USER").trim().toUpperCase();
+      const role = requestedRole === "INSTRUCTOR" ? "Instructor" : requestedRole;
+      // CSV headers are normalized to lowercase by parseCSV.
+      const institutionId = String(r.institutionid || r.tenantid || "").trim();
+      const ragAccess = parseRagAccess(r.ragaccess);
+      const requestedAudience = String(
+        r.instructorprofile || r.academicaudience || ""
+      ).trim().toUpperCase();
+      const gradeBands = normalizeProfileList(r.grades || r.gradebands);
+      const subjects = normalizeProfileList(r.subjects);
+      const curriculum = String(r.curriculum || "").trim().slice(0, 160);
+      let institutionCategory = null;
+      let resolvedAcademicAudience = null;
+      let resolvedInstitutionId = institutionId;
 
       if (ragAccess === undefined) {
         errors.push(`Row ${rowNo}: ragAccess must be true/false, yes/no, or enabled/disabled`);
@@ -2104,6 +2115,7 @@ app.post("/api/users/bulk", async (req, res) => {
 
       if (["USER", "Instructor", "INSTITUTION_ADMIN"].includes(role)) {
         const effectiveTenantId = isInstitutionAdmin(req.admin) ? actorTenant(req) : institutionId;
+        resolvedInstitutionId = effectiveTenantId;
         if (!effectiveTenantId || !/^[-a-zA-Z0-9_.]{1,128}$/.test(effectiveTenantId)) {
           errors.push(`Row ${rowNo}: institutionId is required for institution-scoped users`);
           continue;
@@ -2120,6 +2132,20 @@ app.post("/api/users/bulk", async (req, res) => {
         if (institution.status === "disabled") {
           errors.push(`Row ${rowNo}: institution "${effectiveTenantId}" is disabled`);
           continue;
+        }
+        institutionCategory = normalizeInstitutionCategory(institution.category);
+
+        if (role === "Instructor") {
+          if (institutionCategory === "SCHOOL") {
+            resolvedAcademicAudience = "SCHOOL_TEACHER";
+          } else if (institutionCategory === "HIGHER_EDUCATION") {
+            resolvedAcademicAudience = "COLLEGE_FACULTY";
+          } else if (INSTRUCTOR_AUDIENCES.has(requestedAudience)) {
+            resolvedAcademicAudience = requestedAudience;
+          } else {
+            errors.push(`Row ${rowNo}: instructorProfile is required for an Instructor at a Mixed institution`);
+            continue;
+          }
         }
 
         /*
@@ -2155,6 +2181,12 @@ app.post("/api/users/bulk", async (req, res) => {
 
       const existing = await users.findOne({ email });
 
+      const teachingProfile = normalizeTeachingProfile(
+        { gradeBands, subjects, curriculum },
+        role,
+        resolvedAcademicAudience
+      );
+
       if (existing) {
         preview.push({
           row: rowNo,
@@ -2162,8 +2194,11 @@ app.post("/api/users/bulk", async (req, res) => {
           username,
           email,
           role,
-          institutionId,
+          institutionId: resolvedInstitutionId,
           ragAccess,
+          institutionCategory,
+          academicAudience: resolvedAcademicAudience,
+          teachingProfile,
           status: "skipped",
           reason: "Email already exists"
         });
@@ -2174,8 +2209,11 @@ app.post("/api/users/bulk", async (req, res) => {
           username,
           email,
           role,
-          institutionId,
+          institutionId: resolvedInstitutionId,
           ragAccess,
+          institutionCategory,
+          academicAudience: resolvedAcademicAudience,
+          teachingProfile,
           status: "new"
         });
       }
@@ -2218,6 +2256,8 @@ app.post("/api/users/bulk", async (req, res) => {
           avatar: null,
           provider: "local",
           role: item.role,
+          academicAudience: item.academicAudience,
+          teachingProfile: item.teachingProfile,
           ragAccess: item.ragAccess === true,
           ...(["USER", "Instructor", "INSTITUTION_ADMIN"].includes(item.role)
             ? { tenantId: isInstitutionAdmin(req.admin) ? actorTenant(req) : String(item.institutionId || "").trim() || null }
@@ -2278,6 +2318,9 @@ app.post("/api/users/bulk", async (req, res) => {
           name: item.name,
           email: item.email,
           role: item.role,
+          institutionId: item.institutionId,
+          academicAudience: item.academicAudience,
+          teachingProfile: item.teachingProfile,
           ragAccess: item.ragAccess === true,
           emailSent
         });
@@ -6572,16 +6615,25 @@ app.delete("/api/model-entitlements/:id", async (req, res) => {
 
 app.get("/api/users/export", async (_req, res) => {
   const rows = await users.find(userScope(_req), {
-    projection: { name: 1, username: 1, email: 1, role: 1, provider: 1, ragAccess: 1, createdAt: 1 }
+    projection: {
+      name: 1, username: 1, email: 1, role: 1, tenantId: 1,
+      provider: 1, ragAccess: 1, academicAudience: 1,
+      teachingProfile: 1, createdAt: 1
+    }
   }).sort({ createdAt: -1 }).toArray();
 
   const esc = v => `"${String(v ?? "").replaceAll('"', '""')}"`;
 
   const csv = [
-    "name,username,email,role,provider,ragAccess,createdAt",
+    "name,username,email,role,institutionId,provider,ragAccess,instructorProfile,grades,subjects,curriculum,instructionalLanguage,createdAt",
     ...rows.map(u => [
-      u.name, u.username, u.email, u.role, u.provider,
+      u.name, u.username, u.email, u.role, u.tenantId || "", u.provider,
       normalizedRagAccess(u),
+      u.academicAudience || "",
+      (u.teachingProfile?.gradeBands || []).join(","),
+      (u.teachingProfile?.subjects || []).join(","),
+      u.teachingProfile?.curriculum || "",
+      u.teachingProfile?.instructionalLanguage || "",
       u.createdAt?.toISOString?.() || ""
     ].map(esc).join(","))
   ].join("\n");

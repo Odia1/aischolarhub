@@ -1,0 +1,5 @@
+name,username,email,role,institutionId,ragAccess,instructorProfile,grades,subjects,curriculum
+School Teacher,school.teacher,teacher@example-school.org,Instructor,SCHOOL_ID,true,,"6,7,8","Science,Mathematics",State Curriculum
+College Faculty,college.faculty,faculty@example-university.edu,Instructor,UNIVERSITY_ID,true,,,,
+Mixed Teacher,mixed.teacher,teacher@example-mixed.edu,Instructor,MIXED_ID,true,SCHOOL_TEACHER,"8,9",English,State Curriculum
+Student One,student.one,student@example-school.org,USER,SCHOOL_ID,true,,,,

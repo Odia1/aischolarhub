@@ -1205,7 +1205,7 @@ form{
   <p>
     CSV format:
     <code>
-      name,username,email,role,institutionId,ragAccess
+      name,username,email,role,institutionId,ragAccess,instructorProfile,grades,subjects,curriculum
     </code>
   </p>
 
@@ -1216,6 +1216,10 @@ form{
     <b>institutionId</b> is required.
     <b>ragAccess</b> is optional and defaults to
     <b>false</b>.
+    School and College/University institutions resolve the instructor profile
+    automatically. For a Mixed institution, use
+    <b>SCHOOL_TEACHER</b> or <b>COLLEGE_FACULTY</b>.
+    Quote comma-separated grade or subject lists.
   </p>
 
   <p class="rag-help">
@@ -1561,8 +1565,6 @@ function tenantOptions(
   select,
   selected = ""
 ) {
-  // Refreshing role-derived controls must not reset a tenant the
-  // administrator has just selected.
   const desiredTenant = selected || select.value || "";
 
   select.innerHTML =
