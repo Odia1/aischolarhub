@@ -19,9 +19,7 @@ import AcademicToolsDropdown from './AcademicToolsDropdown';
 import KnowledgeSourcesButton from './KnowledgeSourcesButton';
 import { useChatBadges } from '~/hooks';
 import ToolDialogs from './ToolDialogs';
-import FileSearch from './FileSearch';
 import Artifacts from './Artifacts';
-import MCPSelect from './MCPSelect';
 import WebSearch from './WebSearch';
 import Memory from './Memory';
 import Skills from './Skills';
@@ -387,17 +385,6 @@ function BadgeRow({
               isInChat={isInChat}
             />
           </div>
-        )}
-        {showEphemeralBadges === true && (
-          <>
-            <WebSearch />
-            <CodeInterpreter />
-            <FileSearch />
-            <Skills />
-            <Memory />
-            <Artifacts />
-            <MCPSelect />
-          </>
         )}
         {ghostBadge && (
           <div

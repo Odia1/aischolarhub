@@ -46,7 +46,7 @@ const KnowledgeSourcesButton = ({
           className="size-4 transition-transform group-hover:scale-105"
           aria-hidden="true"
         />
-        <span className="hidden whitespace-nowrap @sm:inline">
+        <span className="whitespace-nowrap">
           Knowledge Sources
         </span>
       </button>
