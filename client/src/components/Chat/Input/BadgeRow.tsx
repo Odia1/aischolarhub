@@ -339,15 +339,15 @@ function BadgeRow({
           @sm:flex-wrap @sm:gap-2 @sm:overflow-visible
         "
       >
+        <AcademicToolsDropdown
+          disabled={isSubmitting}
+          specName={specName}
+        />
+
+        <KnowledgeSourcesButton disabled={isSubmitting} />
+
         {showEphemeralBadges === true && (
-          <>
-            <AcademicToolsDropdown
-              disabled={isSubmitting}
-              specName={specName}
-            />
-            <KnowledgeSourcesButton disabled={isSubmitting} />
-            <ToolsDropdown disabled={isSubmitting} />
-          </>
+          <ToolsDropdown disabled={isSubmitting} />
         )}
         {tempBadges.map((badge, index) => (
           <React.Fragment key={badge.id}>
