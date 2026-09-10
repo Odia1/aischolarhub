@@ -1561,6 +1561,10 @@ function tenantOptions(
   select,
   selected = ""
 ) {
+  // Refreshing role-derived controls must not reset a tenant the
+  // administrator has just selected.
+  const desiredTenant = selected || select.value || "";
+
   select.innerHTML =
     institutionsCache
       .map(
@@ -1575,9 +1579,11 @@ function tenantOptions(
       )
       .join("");
 
-  if (selected) {
-    select.value =
-      selected;
+  if (
+    desiredTenant &&
+    Array.from(select.options).some(option => option.value === desiredTenant)
+  ) {
+    select.value = desiredTenant;
   }
 }
 
