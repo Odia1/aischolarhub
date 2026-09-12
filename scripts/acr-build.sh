@@ -89,6 +89,16 @@ if [[ ! -f Dockerfile ]]; then
     exit 1
 fi
 
+echo
+echo "===== RELEASE ASSET GATE ====="
+
+if [[ ! -x scripts/release-tooling/validate-release-assets.sh ]]; then
+    echo "ERROR: release asset validator is missing."
+    exit 1
+fi
+
+scripts/release-tooling/validate-release-assets.sh source
+
 if ! command -v az >/dev/null 2>&1; then
     echo "ERROR: Azure CLI is not installed."
     exit 1
