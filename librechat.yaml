@@ -187,6 +187,7 @@ modelSpecs:
 
     - name: "Undergrad Socratic Tutor"
       label: "Undergrad Socratic Tutor"
+      webSearch: true
       fileSearch: true
 
       description: >
@@ -225,6 +226,7 @@ modelSpecs:
 
     - name: "School Teaching Assistant"
       label: "School Teacher Assistant"
+      webSearch: true
       fileSearch: true
       description: >
         Grade- and subject-aware support for lesson plans, worksheets, quizzes,
@@ -255,6 +257,7 @@ modelSpecs:
 
     - name: "Instructor Assistant"
       label: "Instructor Assistant"
+      webSearch: true
       fileSearch: true
       description: >
         Direct faculty assistance for teaching, course design, assessment,
@@ -287,6 +290,7 @@ modelSpecs:
     - name: "PhD & Post-Doc Research"
 
       label: "PhD & Post-Doc Research Synthesizer"
+      webSearch: true
       fileSearch: true
 
       description: >
@@ -306,6 +310,7 @@ modelSpecs:
   
     - name: "K-12 Socratic Tutor"
       label: "Socratic Tutor for School Students"
+      webSearch: true
       fileSearch: true
       description: >
         Tutoring young learners and school students using the Socratic method.
