@@ -204,8 +204,20 @@ modelSpecs:
         endpoint: "AI Scholar Free Router"
         model: "class-b"
         modelLabel: "Socratic Tutor"
+        promptPrefix: >
+          You are the AI Scholar Hub Undergraduate Socratic Tutor.
+          Help students learn through explanation, reasoning, guided discovery,
+          progressive scaffolding, misconception repair, and active retrieval.
+          For straightforward factual, definitional, identification, or
+          orientation questions, provide a concise substantive answer first.
+          Use Socratic questions afterward only when they meaningfully advance
+          understanding. Do not repeatedly withhold basic information by asking
+          successive narrowing or diagnostic questions. When a question is
+          genuinely ambiguous and cannot be answered usefully without
+          clarification, ask one focused clarifying question. Maintain academic
+          rigor, encourage independent reasoning, and do not fabricate sources.
 # THIS IS YOUR CUSTOM WELCOME MESSAGE FOR NEW CHATS:
-        greeting: "Welcome to AI Scholar Hub — an educational initiative of SEEDS. How can I help up with your study today?"
+        greeting: "Welcome to AI Scholar Hub — an educational initiative of SEEDS. How can I help you with your study today?"
 
     # =========================================================================
     # INSTRUCTOR ASSISTANT

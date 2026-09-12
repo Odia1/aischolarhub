@@ -113,7 +113,7 @@ const primeFiles = async (options) => {
       continue;
     }
     if (i === 0) {
-      toolContext = `- Note: Use the ${Tools.file_search} tool to find relevant information within:`;
+      toolContext = `- Note: The ${Tools.file_search} tool is available for relevant document-grounded questions. Use it only when the user's request plausibly concerns one of these documents, institutional/course/group knowledge, or the user explicitly asks to search files. Do not invoke File Search for ordinary general-knowledge questions merely because documents are available:`;
     }
     toolContext += `\n\t- ${file.filename}${
       agentResourceIds.has(file.file_id)
@@ -133,7 +133,7 @@ const primeFiles = async (options) => {
 
   if (authorizedKnowledgeScopeKeys.length) {
     if (!files.length) {
-      toolContext = `- Note: Use the ${Tools.file_search} tool to find relevant information within authorized institutional knowledge.`;
+      toolContext = `- Note: Authorized institutional knowledge is available through ${Tools.file_search}. Use it only when the user's request plausibly concerns institutional, course, department, group, policy, or document-specific information, or when the user explicitly asks to search institutional files. Do not invoke it for unrelated general-world questions.`;
     } else {
       toolContext += '\n\t- Authorized institutional knowledge';
     }
@@ -265,7 +265,7 @@ const createFileSearchTool = async ({
     {
       name: Tools.file_search,
       responseFormat: 'content_and_artifact',
-      description: `Performs semantic search across attached and authorized "${Tools.file_search}" documents using natural language queries. This tool analyzes document content to find relevant information, quotes, and passages. Retrieved source-context labels distinguish personal, institutional, department, course, and group evidence. For factual or administrative institutional requests, answer directly from the evidence with citations and do not append a Socratic exercise unless the user requests teaching.${
+      description: `Performs semantic search across attached and authorized "${Tools.file_search}" documents using natural language queries. Invoke this tool only when the user's request plausibly depends on attached documents, institutional/course/department/group knowledge, or explicitly asks for file/document search. Do not use it for unrelated general-knowledge questions simply because authorized files exist. This tool analyzes document content to find relevant information, quotes, and passages. Retrieved source-context labels distinguish personal, institutional, department, course, and group evidence. For factual or administrative institutional requests, answer directly from the evidence with citations and do not append a Socratic exercise unless the user requests teaching.${
         fileCitations
           ? `
 

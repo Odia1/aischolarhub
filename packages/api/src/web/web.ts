@@ -269,6 +269,20 @@ export async function loadWebSearchAuth({
   ] as const;
   const authTypes: [TWebSearchCategories, AuthType][] = [];
   for (const category of categories) {
+    /**
+     * AI Scholar Hub: SearXNG is a complete centrally managed search provider.
+     * Do not force students to configure an unrelated scraper such as
+     * Firecrawl when no scraperProvider is explicitly configured.
+     */
+    if (
+      category === SearchCategories.SCRAPERS &&
+      webSearchConfig?.searchProvider === SearchProviders.SEARXNG &&
+      !webSearchConfig?.scraperProvider
+    ) {
+      authTypes.push([category, AuthType.SYSTEM_DEFINED]);
+      continue;
+    }
+
     const [isCategoryAuthenticated, isUserProvided] = await checkAuth(category);
     if (!isCategoryAuthenticated) {
       authenticated = false;
@@ -279,7 +293,7 @@ export async function loadWebSearchAuth({
   }
 
   const scraperProvider =
-    authResult.scraperProvider ?? webSearchConfig?.scraperProvider ?? ScraperProviders.FIRECRAWL;
+    authResult.scraperProvider ?? webSearchConfig?.scraperProvider;
   let scraperOptionsTimeout: number | undefined;
   if (scraperProvider === ScraperProviders.TAVILY) {
     scraperOptionsTimeout = webSearchConfig?.tavilyScraperOptions?.timeout;
