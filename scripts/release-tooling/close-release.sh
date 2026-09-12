@@ -15,6 +15,7 @@ source "$MANIFEST"
 : "${EXPECTED_API_IMAGE:?}"
 : "${ROLLBACK_API_IMAGE:=}"
 : "${IMAGE_REPO:=seeds.azurecr.io/aischolarhub-custom}"
+: "${RETAIN_API_IMAGES:=}"
 
 cd "$PROD_ROOT"
 
@@ -48,25 +49,55 @@ docker system df
 docker image prune -f
 docker builder prune -af
 
-CURRENT_TAG="${EXPECTED_API_IMAGE##*:}"
-ROLLBACK_TAG="${ROLLBACK_API_IMAGE##*:}"
+declare -A KEEP=()
+
+KEEP["$EXPECTED_API_IMAGE"]=1
+
+if [[ -n "$ROLLBACK_API_IMAGE" ]]; then
+  KEEP["$ROLLBACK_API_IMAGE"]=1
+fi
+
+IFS=',' read -ra EXTRA_KEEP <<<"$RETAIN_API_IMAGES"
+for image in "${EXTRA_KEEP[@]}"; do
+  image="${image// /}"
+  [[ -n "$image" ]] && KEEP["$image"]=1
+done
+
+# Protect any image currently referenced by a running container.
+while IFS= read -r image; do
+  [[ -n "$image" ]] && KEEP["$image"]=1
+done < <(
+  docker ps -q |
+  xargs -r docker inspect --format '{{.Config.Image}}' 2>/dev/null |
+  sort -u
+)
 
 mapfile -t OLD_IMAGES < <(
   docker image ls "$IMAGE_REPO" --format '{{.Repository}}:{{.Tag}}' |
-  awk -v current="$CURRENT_TAG" -v rollback="$ROLLBACK_TAG" '
-    $0 !~ /:<none>$/ {
-      n=split($0,a,":"); tag=a[n];
-      if(tag!=current && (rollback=="" || tag!=rollback)) print $0
-    }'
+  grep -v ':<none>$' || true
 )
 
 if ((${#OLD_IMAGES[@]})); then
   echo
-  echo "===== REMOVING OBSOLETE AIH IMAGE TAGS ====="
-  printf '%s\n' "${OLD_IMAGES[@]}"
+  echo "===== AIH IMAGE RETENTION REVIEW ====="
+
   for image in "${OLD_IMAGES[@]}"; do
-    docker image rm "$image" || true
+    if [[ -n "${KEEP[$image]:-}" ]]; then
+      echo "KEEP    $image"
+    else
+      echo "REMOVE  $image"
+    fi
   done
+
+  echo
+  echo "===== REMOVING UNRETAINED AIH IMAGE TAGS ====="
+
+  for image in "${OLD_IMAGES[@]}"; do
+    if [[ -z "${KEEP[$image]:-}" ]]; then
+      docker image rm "$image" || true
+    fi
+  done
+
   docker image prune -f
 fi
 

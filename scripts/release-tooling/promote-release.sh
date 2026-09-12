@@ -53,17 +53,17 @@ if [[ -n "${EXPECTED_API_DIGEST:-}" ]]; then
 fi
 
 if [[ "$PROMOTE_LIBRECHAT" == "1" ]]; then
-  : "${LIBRECHAT_SOURCE:=$DEV_ROOT/librechat.yaml}"
+  [[ -n "${LIBRECHAT_SOURCE:-}" ]] ||     die "PROMOTE_LIBRECHAT=1 requires explicit LIBRECHAT_SOURCE release artifact"
   require_file "$LIBRECHAT_SOURCE"
   cp -a "$LIBRECHAT_SOURCE" "$PROD_ROOT/librechat.yaml"
-  pass "librechat.yaml promoted"
+  pass "librechat.yaml promoted from frozen release artifact"
 fi
 
 if [[ "$PROMOTE_COMPOSE" == "1" ]]; then
-  : "${COMPOSE_SOURCE:=$DEV_ROOT/docker-compose.yml}"
+  [[ -n "${COMPOSE_SOURCE:-}" ]] ||     die "PROMOTE_COMPOSE=1 requires explicit COMPOSE_SOURCE release artifact"
   require_file "$COMPOSE_SOURCE"
   cp -a "$COMPOSE_SOURCE" "$PROD_ROOT/docker-compose.yml"
-  pass "Compose promoted"
+  pass "Compose promoted from frozen release artifact"
 fi
 
 # Set the API image deterministically without touching other service definitions.

@@ -16,7 +16,6 @@ source "$MANIFEST"
 : "${PROD_API_CONTAINER:=aih-prod-api}"
 : "${PROD_MODEL_ROUTER_CONTAINER:=aih-prod-model-router}"
 : "${PROD_SEARXNG_CONTAINER:=aih-prod-searxng}"
-: "${API_HEALTH_URL:=http://127.0.0.1:3082/health}"
 : "${EXPECTED_ACADEMIC_AGENT_COUNT:=3}"
 : "${EXPECTED_WEBSEARCH_PERSONA_COUNT:=5}"
 : "${MIN_CLASS_A:=1}"
@@ -30,8 +29,33 @@ running="$(docker inspect "$PROD_API_CONTAINER" --format '{{.Config.Image}}')"
 [[ "$running" == "$EXPECTED_API_IMAGE" ]] || die "wrong PROD API image: $running"
 pass "exact API image"
 
-curl -fsS --max-time 5 "$API_HEALTH_URL" >/dev/null
-pass "API health"
+docker exec -i "$PROD_API_CONTAINER" node - <<'NODE'
+const http = require('http');
+
+const req = http.get(
+  'http://127.0.0.1:3080/health',
+  {timeout: 5000},
+  res => {
+    if (res.statusCode !== 200) {
+      console.error(`FAIL: API health HTTP ${res.statusCode}`);
+      process.exit(1);
+    }
+    res.resume();
+    res.on('end', () => console.log('PASS: API health'));
+  }
+);
+
+req.on('timeout', () => {
+  req.destroy();
+  console.error('FAIL: API health timeout');
+  process.exit(1);
+});
+
+req.on('error', err => {
+  console.error('FAIL: API health:', err.message);
+  process.exit(1);
+});
+NODE
 
 container_env_has "$PROD_API_CONTAINER" "SEARXNG_INSTANCE_URL" || die "SEARXNG_INSTANCE_URL missing from API"
 pass "SearXNG environment"
