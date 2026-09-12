@@ -1,48 +1,78 @@
 # AI Scholar Hub release tooling
 
-This tooling turns an AIH release into a deployment contract rather than only a Docker image.
+This tooling treats a release as a deployment contract rather than only a Docker image.
+
+## Deployment boundaries
+
+- **DEV-only administration plane:** `admin-ui`, `admin-panel`, and administration interfaces.
+- **ACA user plane:** `ash-web` plus only the runtime services required by user-facing AI Scholar Hub features.
+- **VM PROD:** retains its own Compose-based verification and promotion workflow.
+
+The ACA runtime dependencies currently required by `ash-web` are:
+
+- `model-router`
+- `gemini-proxy`
+- `academic-research-mcp`
+- `searxng`
+
+They are not administration interfaces.
 
 ## Files
-- `promote-aca-ui.sh` — promotes the exact DEV-tested UI/API image to the existing Azure Container App. It auto-discovers only when exactly one ACA app uses the AIH image repository; otherwise it fails and requires explicit `ACA_RESOURCE_GROUP` / `ACA_APP_NAME`.
-- `promote-release.sh` — VM PROD promotion: immutable image, mutable config checkpoints, environment gates, managed runtime dependencies, idempotent migrations, API deployment, verification.
-- `verify-release.sh` — acceptance gate for API, SearXNG, model-router, Academic Agents, persona Web Search configuration, and runtime services.
-- `close-release.sh` — refuses closure without a fresh passing verification, writes the final release fingerprint, safely prunes dangling images/build cache, and retains current + one rollback AIH image.
-- `release-e.env.example` — Release E manifest template.
 
-## Safety properties
-- no secrets are printed;
-- PROD is never rebuilt;
-- exact DEV-tested image is promoted;
-- required runtime services must be Compose-managed;
-- no `docker system prune -a`;
-- no volume pruning;
-- cleanup occurs only after verification;
-- promotion is serialized with `flock`;
-- configuration is checkpointed before mutation;
-- release-specific DB/schema changes live as idempotent migrations.
+- `promote-aca-ui.sh` — promotes one exact immutable user UI/API image only after the ACA runtime dependency gate passes.
+- `validate-aca-runtime.sh` — ACA-specific dependency/topology/asset gate. It prevents promotion when Compose-only hostnames are unresolved, admin interfaces are present, or runtime apps are absent.
+- `promote-release.sh` — VM PROD promotion.
+- `verify-release.sh` — VM PROD acceptance gate. ACA checks intentionally live in `validate-aca-runtime.sh`.
+- `validate-release-assets.sh` — verifies configured release assets exist in committed Git/image content.
+- `close-release.sh` — release closure and safe cleanup.
+- `release-e.env.example` — Release E deployment contract.
 
-## ACA UI promotion
-Before Release E work begins, the current DEV-tested Release-D image can be pushed to the existing ACA UI:
+## ACA rules
 
-```bash
-ACA_IMAGE=seeds.azurecr.io/aischolarhub-custom:dev-20260912-c33a0b62c-release-d-uat-v3 \
-./scripts/promote-aca-ui.sh
+1. Do not promote `admin-ui` or `admin-panel` to ACA.
+2. A Docker Compose hostname is not automatically valid in ACA.
+3. Any hostname referenced by the user-facing configuration must map to:
+   - a same-environment ACA app,
+   - a deliberate localhost sidecar, or
+   - an explicit reachable external/private endpoint.
+4. `academic-research` MCP currently requires a concrete URL in `librechat.yaml`; `${...}` interpolation is rejected by LibreChat's MCP domain validation as `unknown`.
+5. The ACA icon gate requires `/images/favicon-16x16.png` to return HTTP 200 with `Content-Type: image/png`.
+6. The runtime gate is executed before and after `promote-aca-ui.sh`.
+7. `verify-release.sh` remains a VM PROD verifier and is not overloaded with ACA logic.
+
+## Current Release-E runtime images
+
+Built from committed Release-E HEAD `d049b3414`:
+
+```text
+seeds.azurecr.io/aih-model-router:release-e-d049b3414
+seeds.azurecr.io/aih-gemini:release-e-d049b3414
+seeds.azurecr.io/aih-mcp:release-e-d049b3414
+seeds.azurecr.io/aih-searxng:release-e-d049b3414
 ```
 
-If auto-discovery finds zero or multiple candidate apps:
+## ACA promotion
+
+Use explicit resource group/app/image values:
 
 ```bash
-ACA_RESOURCE_GROUP=<existing-resource-group> \
-ACA_APP_NAME=<existing-container-app> \
-ACA_IMAGE=seeds.azurecr.io/aischolarhub-custom:dev-20260912-c33a0b62c-release-d-uat-v3 \
-./scripts/promote-aca-ui.sh
+clear
+
+ACA_RESOURCE_GROUP="AI-SCHOLAR-HUB-ACA-TEST" \
+ACA_APP_NAME="ash-web" \
+ACA_IMAGE="seeds.azurecr.io/aischolarhub-custom:<exact-tested-tag>" \
+scripts/release-tooling/promote-aca-ui.sh
 ```
+
+The script refuses promotion unless the ACA user-runtime gate passes first.
 
 ## Release E workflow
+
 1. Finish DEV implementation and UAT.
-2. Build one immutable ACR image from committed Git HEAD.
-3. Record its tag and digest in `release-e.env`.
-4. Put any DB changes in `release-migrations/release-e/*.sh`, written idempotently.
-5. Put intentionally promoted bind-mounted files under `release-artifacts/release-e/` and enable their manifest flags.
-6. Run `promote-release.sh release-e.env`.
-7. After acceptance/soak, run `close-release.sh release-e.env`.
+2. Build immutable artifacts from committed Git HEAD.
+3. Validate tracked assets.
+4. Validate ACA runtime dependencies before promotion.
+5. Promote the exact tested ACA UI/API image.
+6. Run the ACA runtime gate again after deployment.
+7. Keep VM PROD promotion/verification separate.
+8. Close the release only after the relevant environment-specific verification passes.

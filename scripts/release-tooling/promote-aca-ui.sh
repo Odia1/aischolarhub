@@ -7,28 +7,28 @@ require_cmd az
 require_cmd python3
 require_cmd curl
 
-IMAGE="${ACA_IMAGE:-seeds.azurecr.io/aischolarhub-custom:dev-20260912-c33a0b62c-release-d-uat-v3}"
+IMAGE="${ACA_IMAGE:-}"
 IMAGE_REPO="${ACA_IMAGE_REPO:-seeds.azurecr.io/aischolarhub-custom}"
 RG="${ACA_RESOURCE_GROUP:-}"
 APP="${ACA_APP_NAME:-}"
-HEALTH_PATH="${ACA_HEALTH_PATH:-/}"
-ALLOW_AUTO_DISCOVERY="${ACA_ALLOW_AUTO_DISCOVERY:-1}"
+HEALTH_PATH="${ACA_HEALTH_PATH:-/health}"
+ALLOW_AUTO_DISCOVERY="${ACA_ALLOW_AUTO_DISCOVERY:-0}"
 
-note "ACA UI promotion"
+[[ -n "$IMAGE" ]] || die "ACA_IMAGE is required; promote an exact immutable DEV-tested image"
+
+note "ACA user UI/API promotion"
 echo "Image: $IMAGE"
 
 az account show >/dev/null 2>&1 || die "Azure CLI is not authenticated"
 
 if [[ -z "$RG" || -z "$APP" ]]; then
   [[ "$ALLOW_AUTO_DISCOVERY" == "1" ]] || die "ACA_RESOURCE_GROUP and ACA_APP_NAME are required"
-
   mapfile -t MATCHES < <(
     az containerapp list -o json |
     python3 -c '
 import json,sys
 repo=sys.argv[1]
-apps=json.load(sys.stdin)
-for a in apps:
+for a in json.load(sys.stdin):
     rg=a.get("resourceGroup","")
     name=a.get("name","")
     containers=((a.get("properties") or {}).get("template") or {}).get("containers") or []
@@ -37,25 +37,24 @@ for a in apps:
         print(f"{rg}\t{name}")
 ' "$IMAGE_REPO"
   )
-
-  [[ "${#MATCHES[@]}" -eq 1 ]] || {
-    printf 'Candidate matches:\n%s\n' "${MATCHES[*]:-(none)}" >&2
-    die "ACA discovery expected exactly one app; set ACA_RESOURCE_GROUP and ACA_APP_NAME explicitly"
-  }
-
+  [[ "${#MATCHES[@]}" -eq 1 ]] || die "ACA discovery expected exactly one app; set ACA_RESOURCE_GROUP and ACA_APP_NAME explicitly"
   RG="${MATCHES[0]%%$'\t'*}"
   APP="${MATCHES[0]#*$'\t'}"
 fi
 
+export ACA_RESOURCE_GROUP="$RG"
+export ACA_APP_NAME="$APP"
+export ACA_IMAGE="$IMAGE"
+
 echo "Resource group: $RG"
 echo "Container app:  $APP"
 
-OLD_IMAGE="$(
-  az containerapp show -g "$RG" -n "$APP" \
-    --query 'properties.template.containers[0].image' -o tsv
-)"
-[[ -n "$OLD_IMAGE" ]] || die "could not read current ACA image"
+# Fail before changing Azure if the current ACA runtime topology cannot satisfy
+# the user-facing configuration.
+ACA_POST_DEPLOY_VERIFY=0 "$SCRIPT_DIR/validate-aca-runtime.sh"
 
+OLD_IMAGE="$(az containerapp show -g "$RG" -n "$APP" --query 'properties.template.containers[0].image' -o tsv)"
+[[ -n "$OLD_IMAGE" ]] || die "could not read current ACA image"
 echo "Previous image: $OLD_IMAGE"
 
 if [[ "$OLD_IMAGE" == "$IMAGE" ]]; then
@@ -65,10 +64,7 @@ else
   az containerapp update -g "$RG" -n "$APP" --image "$IMAGE" >/dev/null
 fi
 
-NEW_IMAGE="$(
-  az containerapp show -g "$RG" -n "$APP" \
-    --query 'properties.template.containers[0].image' -o tsv
-)"
+NEW_IMAGE="$(az containerapp show -g "$RG" -n "$APP" --query 'properties.template.containers[0].image' -o tsv)"
 [[ "$NEW_IMAGE" == "$IMAGE" ]] || die "ACA image mismatch after update: $NEW_IMAGE"
 pass "ACA image promoted"
 
@@ -76,14 +72,9 @@ STATE="$(az containerapp show -g "$RG" -n "$APP" --query 'properties.provisionin
 [[ "$STATE" == "Succeeded" ]] || die "ACA provisioning state is $STATE"
 pass "ACA provisioning succeeded"
 
+ACA_POST_DEPLOY_VERIFY=1 "$SCRIPT_DIR/validate-aca-runtime.sh"
+
 FQDN="$(az containerapp show -g "$RG" -n "$APP" --query 'properties.configuration.ingress.fqdn' -o tsv)"
-if [[ -n "$FQDN" ]]; then
-  CODE="$(curl -L -sS -o /dev/null -w '%{http_code}' --max-time 15 "https://${FQDN}${HEALTH_PATH}" || true)"
-  case "$CODE" in
-    2*|3*|401|403) pass "ACA ingress responded HTTP $CODE" ;;
-    *) echo "WARN: ACA ingress health returned HTTP ${CODE:-none}; image/provisioning checks passed" ;;
-  esac
-fi
 
 STAMP="${ACA_PROMOTION_STAMP:-$SCRIPT_DIR/../../release-checkpoints/ACA-UI-LAST-PROMOTION.txt}"
 mkdir -p "$(dirname "$STAMP")"
@@ -95,5 +86,7 @@ mkdir -p "$(dirname "$STAMP")"
   echo "promoted_image=$NEW_IMAGE"
   echo "provisioning_state=$STATE"
   [[ -n "${FQDN:-}" ]] && echo "fqdn=$FQDN"
+  echo "runtime_gate=passed"
 } > "$STAMP"
+
 pass "ACA promotion checkpoint written: $STAMP"
