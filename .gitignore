@@ -214,3 +214,5 @@ checkpoints/
 # Local release deployment manifest
 /release-e.env
 /release-checkpoints/
+
+__pycache__/
