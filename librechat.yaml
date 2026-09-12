@@ -134,7 +134,7 @@ endpoints:
 
     - name: "AI Scholar Free Router"
       apiKey: "${GEMINI_PROXY_API_KEY}"
-      baseURL: "http://model-router:8000/v1/"
+      baseURL: "${MODEL_ROUTER_BASE_URL}"
       iconURL: "/images/favicon-16x16.png"
       actions: true
       headers:
@@ -152,7 +152,7 @@ endpoints:
     # reference this name while persona-to-class mappings are migrated.
     - name: "Gemini Academic Assistant"
       apiKey: "${GEMINI_PROXY_API_KEY}"
-      baseURL: "http://gemini-proxy:8000/v1/"
+      baseURL: "${GEMINI_PROXY_BASE_URL}"
       iconURL: "/images/favicon-16x16.png"
       actions: true
       models:
