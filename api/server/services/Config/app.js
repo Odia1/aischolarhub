@@ -12,6 +12,7 @@ const loadCustomConfig = require('./loadCustomConfig');
 const getLogStores = require('~/cache/getLogStores');
 const paths = require('~/config/paths');
 const db = require('~/models');
+const { buildRegionalContextOverlay } = require('./regionalContext');
 
 const loadBaseConfig = async () => {
   /** @type {TCustomConfig} */
@@ -415,7 +416,12 @@ async function applyAcademicIntelligence(appConfig, options = {}) {
 
       mongo.collection('institutions').findOne(
         { _id: tenantId },
-        { projection: { category: 1 } }
+        {
+          projection: {
+            category: 1,
+            regionalContext: 1
+          }
+        }
       ),
 
       userId && mongoose.Types.ObjectId.isValid(userId)
@@ -575,6 +581,9 @@ async function applyAcademicIntelligence(appConfig, options = {}) {
         'Ask one concise clarification only when a missing detail materially affects the requested teaching artifact.'
       ].join('\n')
     : '';
+
+  const regionalContextOverlay =
+    buildRegionalContextOverlay(institutionProfile);
 
   const specs = Array.isArray(appConfig?.modelSpecs?.list)
     ? appConfig.modelSpecs.list
@@ -816,6 +825,7 @@ async function applyAcademicIntelligence(appConfig, options = {}) {
       const promptPrefix = [
         basePrompt,
         stablePolicy,
+        regionalContextOverlay,
         RETRIEVAL_RESPONSE_POLICY,
         integrityDirective,
         learnerContext,
@@ -823,7 +833,7 @@ async function applyAcademicIntelligence(appConfig, options = {}) {
       ].filter(Boolean).join('\n\n');
 
       logger.info(
-        `[academicIntelligence] tenant=${tenantId} role=${role} persona=${personaId} promptVersion=${promptPolicy?.version ?? 'fallback'} integrityPolicy=${integrityPolicy ? `${integrityPolicyId}@${integrityPolicy.version}` : 'fallback'} promptChars=${promptPrefix.length} learnerContext=${learnerContext ? 'yes' : 'no'}`
+        `[academicIntelligence] tenant=${tenantId} role=${role} persona=${personaId} promptVersion=${promptPolicy?.version ?? 'fallback'} integrityPolicy=${integrityPolicy ? `${integrityPolicyId}@${integrityPolicy.version}` : 'fallback'} promptChars=${promptPrefix.length} learnerContext=${learnerContext ? 'yes' : 'no'} regionalContext=${regionalContextOverlay ? 'yes' : 'no'}`
       );
 
       return {

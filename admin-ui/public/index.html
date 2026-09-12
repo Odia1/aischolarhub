@@ -1092,6 +1092,141 @@ form{
 </dialog>
 
 <!-- ============================================================
+     REGIONAL & EDUCATIONAL CONTEXT
+     ============================================================ -->
+
+<dialog id="regionalDialog">
+
+<form id="regionalForm">
+
+  <h3>Regional &amp; Educational Context</h3>
+
+  <div
+    id="regionalInstitutionLabel"
+    class="muted"
+    style="margin-bottom:8px">
+  </div>
+
+  <label class="muted" for="rcountry">
+    Country
+  </label>
+  <input
+    id="rcountry"
+    placeholder="India">
+
+  <label class="muted" for="rcountryCode">
+    Country code
+  </label>
+  <input
+    id="rcountryCode"
+    maxlength="2"
+    placeholder="IN">
+
+  <label class="muted" for="rregion">
+    State / province / region
+  </label>
+  <input
+    id="rregion"
+    placeholder="Odisha">
+
+  <label class="muted" for="rregionCode">
+    Region code
+  </label>
+  <input
+    id="rregionCode"
+    maxlength="12"
+    placeholder="OD">
+
+  <label class="muted" for="rcity">
+    City
+  </label>
+  <input
+    id="rcity"
+    placeholder="Bhubaneswar">
+
+  <label class="muted" for="rtimezone">
+    Timezone
+  </label>
+  <input
+    id="rtimezone"
+    placeholder="Asia/Kolkata">
+
+  <label class="muted" for="rlocale">
+    Default locale
+  </label>
+  <input
+    id="rlocale"
+    placeholder="en-IN">
+
+  <label class="muted" for="rcurrency">
+    Currency
+  </label>
+  <input
+    id="rcurrency"
+    placeholder="INR">
+
+  <label class="muted" for="reducationSystem">
+    Education system
+  </label>
+  <input
+    id="reducationSystem"
+    placeholder="India">
+
+  <label class="muted" for="rlanguages">
+    Institution languages
+  </label>
+  <input
+    id="rlanguages"
+    placeholder="English, Odia, Hindi">
+
+  <label class="muted" for="rdevelopmentContext">
+    Resource context
+  </label>
+  <select id="rdevelopmentContext">
+    <option value="">
+      Not specified
+    </option>
+    <option value="LOW_RESOURCE">
+      Low-resource / access-sensitive
+    </option>
+    <option value="STANDARD">
+      Standard
+    </option>
+  </select>
+
+  <label
+    style="display:flex;align-items:center;gap:8px">
+
+    <input
+      id="rregionalEnabled"
+      type="checkbox"
+      checked
+      style="min-width:auto">
+
+    Enable regional adaptation when relevant
+  </label>
+
+  <p class="rag-help">
+    AI Scholar Hub uses this as the institution default.
+    An explicit location or jurisdiction in a user's request
+    takes precedence. Location-independent subjects are not
+    artificially regionalized.
+  </p>
+
+  <button class="primary">
+    Save Regional Context
+  </button>
+
+  <button
+    type="button"
+    onclick="regionalDialog.close()">
+    Cancel
+  </button>
+
+</form>
+</dialog>
+
+<!-- ============================================================
      MANAGE INSTITUTION DOMAINS
      ============================================================ -->
 
@@ -2000,6 +2135,12 @@ function renderInstitutions() {
           Manage Domains
         </button>
 
+        <button
+          type="button"
+          onclick="openRegionalDialog('${esc(i._id)}')">
+          Regional Context
+        </button>
+
         ${isInstitutionAdmin() ? "" : `
         <select id="institution-category-${esc(i._id)}" aria-label="Institution type">
           <option value="HIGHER_EDUCATION" ${(i.category || "HIGHER_EDUCATION") === "HIGHER_EDUCATION" ? "selected" : ""}>College / University</option>
@@ -2008,6 +2149,28 @@ function renderInstitutions() {
         </select>
         <button type="button" onclick="saveInstitutionCategory('${esc(i._id)}')">Save Type</button>`}
 
+      </div>
+
+      <div
+        style="margin-top:10px"
+        class="muted">
+        Regional context:
+        ${esc(
+          [
+            i.regionalContext?.city,
+            i.regionalContext?.region,
+            i.regionalContext?.country
+          ]
+            .filter(Boolean)
+            .join(", ")
+            || "Not configured"
+        )}
+        ${i.regionalContext?.currency
+          ? ` · ${esc(i.regionalContext.currency)}`
+          : ""}
+        ${i.regionalContext?.locale
+          ? ` · ${esc(i.regionalContext.locale)}`
+          : ""}
       </div>
 
       <div style="margin-top:10px">
@@ -2326,6 +2489,166 @@ assignForm.onsubmit =
       );
     }
   };
+
+let managingRegionalInstitutionId = null;
+
+function openRegionalDialog(id) {
+
+  const institution =
+    institutionsCache.find(
+      i =>
+        String(i._id) ===
+        String(id)
+    );
+
+  if (!institution) {
+    alert(
+      "Institution not found"
+    );
+    return;
+  }
+
+  managingRegionalInstitutionId =
+    institution._id;
+
+  const c =
+    institution.regionalContext ||
+    {};
+
+  regionalInstitutionLabel.textContent =
+    `${institution.name} — ${institution._id}`;
+
+  rcountry.value =
+    c.country || "";
+
+  rcountryCode.value =
+    c.countryCode || "";
+
+  rregion.value =
+    c.region || "";
+
+  rregionCode.value =
+    c.regionCode || "";
+
+  rcity.value =
+    c.city || "";
+
+  rtimezone.value =
+    c.timezone || "";
+
+  rlocale.value =
+    c.locale || "";
+
+  rcurrency.value =
+    c.currency || "";
+
+  reducationSystem.value =
+    c.educationSystem || "";
+
+  rlanguages.value =
+    Array.isArray(
+      c.languages
+    )
+      ? c.languages.join(", ")
+      : "";
+
+  rdevelopmentContext.value =
+    c.developmentContext || "";
+
+  rregionalEnabled.checked =
+    c.enabled !== false;
+
+  regionalDialog.showModal();
+}
+
+
+regionalForm.onsubmit =
+  async e => {
+
+    e.preventDefault();
+
+    if (
+      !managingRegionalInstitutionId
+    ) {
+      return;
+    }
+
+    try {
+
+      await api(
+        `/api/institutions/${encodeURIComponent(
+          managingRegionalInstitutionId
+        )}`,
+        {
+          method:
+            "PATCH",
+
+          headers: {
+            "Content-Type":
+              "application/json"
+          },
+
+          body:
+            JSON.stringify({
+              regionalContext: {
+                enabled:
+                  rregionalEnabled.checked,
+
+                country:
+                  rcountry.value,
+
+                countryCode:
+                  rcountryCode.value,
+
+                region:
+                  rregion.value,
+
+                regionCode:
+                  rregionCode.value,
+
+                city:
+                  rcity.value,
+
+                timezone:
+                  rtimezone.value,
+
+                locale:
+                  rlocale.value,
+
+                currency:
+                  rcurrency.value,
+
+                educationSystem:
+                  reducationSystem.value,
+
+                languages:
+                  rlanguages.value
+                    .split(",")
+                    .map(
+                      x =>
+                        x.trim()
+                    )
+                    .filter(Boolean),
+
+                developmentContext:
+                  rdevelopmentContext.value
+              }
+            })
+        }
+      );
+
+      regionalDialog.close();
+
+      await loadInstitutions();
+
+    } catch (e) {
+
+      alert(
+        e.message
+      );
+    }
+  };
+
 
 let managingInstitutionId = null;
 

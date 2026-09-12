@@ -999,6 +999,118 @@ function normalizeAcademicRagPolicy(value) {
 }
 
 
+
+function normalizeRegionalContext(input = {}) {
+  const value =
+    input &&
+    typeof input === "object" &&
+    !Array.isArray(input)
+      ? input
+      : {};
+
+  const compact = (raw, max) =>
+    String(raw ?? "")
+      .trim()
+      .replace(/\s+/g, " ")
+      .slice(0, max);
+
+  const languages = [];
+  const seen = new Set();
+
+  for (
+    const raw of
+    Array.isArray(value.languages)
+      ? value.languages
+      : []
+  ) {
+    const language =
+      compact(raw, 60);
+
+    const key =
+      language.toLowerCase();
+
+    if (
+      !language ||
+      seen.has(key)
+    ) {
+      continue;
+    }
+
+    seen.add(key);
+    languages.push(language);
+
+    if (languages.length >= 8)
+      break;
+  }
+
+  return {
+    enabled:
+      value.enabled !== false,
+
+    countryCode:
+      compact(
+        value.countryCode,
+        2
+      ).toUpperCase(),
+
+    country:
+      compact(
+        value.country,
+        80
+      ),
+
+    regionCode:
+      compact(
+        value.regionCode,
+        12
+      ).toUpperCase(),
+
+    region:
+      compact(
+        value.region,
+        100
+      ),
+
+    city:
+      compact(
+        value.city,
+        100
+      ),
+
+    timezone:
+      compact(
+        value.timezone,
+        80
+      ),
+
+    locale:
+      compact(
+        value.locale,
+        35
+      ),
+
+    currency:
+      compact(
+        value.currency,
+        12
+      ).toUpperCase(),
+
+    educationSystem:
+      compact(
+        value.educationSystem,
+        100
+      ),
+
+    languages,
+
+    developmentContext:
+      compact(
+        value.developmentContext,
+        40
+      ).toUpperCase()
+  };
+}
+
 function normalizePedagogy(input = {}) {
   const mode = String(input.mode || "SOCRATIC")
     .trim()
@@ -1400,6 +1512,7 @@ app.post("/api/institutions", async (req, res) => {
   try {
     const category = normalizeInstitutionCategory(req.body.category);
     const domains = normalizeInstitutionDomains(req.body.domains) || [];
+    const regionalContext = normalizeRegionalContext(req.body.regionalContext);
     await assertInstitutionDomainsAvailable(id, domains);
 
     const now = new Date();
@@ -1409,6 +1522,7 @@ app.post("/api/institutions", async (req, res) => {
       status: "enabled",
       category,
       domains,
+      regionalContext,
       createdAt: now,
       updatedAt: now
     };
@@ -1446,6 +1560,13 @@ app.patch("/api/institutions/:id", async (req, res) => {
   try {
     if (req.body.category !== undefined) {
       update.category = normalizeInstitutionCategory(req.body.category);
+    }
+
+    if (req.body.regionalContext !== undefined) {
+      update.regionalContext =
+        normalizeRegionalContext(
+          req.body.regionalContext
+        );
     }
     if (req.body.domains !== undefined) {
       const institution = await institutions.findOne(
