@@ -113,7 +113,7 @@ endpoints:
     - name: "Azure OpenAI Undergrad Tutor"
       apiKey: "${AZURE_SI_UG_API_KEY}"
       baseURL: "https://aischolar-si-ug.services.ai.azure.com/openai/v1/"
-      iconURL: "/images/aischolarhub-icon-100x55.png"
+      iconURL: "/images/favicon-16x16.png"
       actions: true
       models:
         default:
@@ -124,7 +124,7 @@ endpoints:
     - name: "Azure OpenAI Scholar Research"
       apiKey: "${AZURE_F1_API_KEY}"
       baseURL: "https://aischolar-f1.services.ai.azure.com/openai/v1/"
-      iconURL: "/images/aischolarhub-icon-100x55.png"
+      iconURL: "/images/favicon-16x16.png"
       actions: true
       models:
         default:
