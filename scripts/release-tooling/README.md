@@ -76,3 +76,21 @@ The script refuses promotion unless the ACA user-runtime gate passes first.
 6. Run the ACA runtime gate again after deployment.
 7. Keep VM PROD promotion/verification separate.
 8. Close the release only after the relevant environment-specific verification passes.
+
+## Release-independent ACA runtime reconciliation
+
+Use `ensure-aca-runtime.sh` for the ACA user-runtime services. The script discovers the environment, managed identity and registry from `ash-web`; only immutable image references and the resource group/app name are supplied.
+
+```bash
+ACA_RESOURCE_GROUP="<resource-group>" \
+ACA_APP_NAME="ash-web" \
+ACA_MODEL_ROUTER_IMAGE="<exact-image>" \
+ACA_GEMINI_PROXY_IMAGE="<exact-image>" \
+ACA_MCP_IMAGE="<exact-image>" \
+ACA_SEARXNG_IMAGE="<exact-image>" \
+scripts/release-tooling/ensure-aca-runtime.sh
+```
+
+It creates or updates the runtime apps idempotently, reconciles internal ingress and runtime URLs, and finishes by calling `validate-aca-runtime.sh`.
+
+User acceptance criteria are maintained separately in `docs/USER-ACCEPTANCE-TEST.md`.

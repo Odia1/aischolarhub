@@ -1242,3 +1242,60 @@ The underlying release lesson is retained: local presence is insufficient becaus
 ### Python build hygiene
 
 `__pycache__/` is ignored in Git as of commit `d049b3414`, preventing syntax-check artifacts from appearing as untracked release changes.
+
+## ACA runtime reconciliation and UAT
+
+The ACA user plane is maintained through release-independent runtime tooling.
+
+### `ensure-aca-runtime.sh`
+
+This script reconciles the four user-runtime services required by `ash-web`:
+
+- `model-router`
+- `gemini-proxy`
+- `academic-research-mcp`
+- `searxng`
+
+The script does not contain release tags, subscription IDs, ACA environment names, managed-identity IDs, or registry resource IDs. It discovers environment, identity and registry configuration from the existing `ash-web` anchor app.
+
+Immutable runtime image references are supplied as inputs:
+
+```bash
+ACA_RESOURCE_GROUP="<resource-group>" \
+ACA_APP_NAME="ash-web" \
+ACA_MODEL_ROUTER_IMAGE="<exact-image-ref>" \
+ACA_GEMINI_PROXY_IMAGE="<exact-image-ref>" \
+ACA_MCP_IMAGE="<exact-image-ref>" \
+ACA_SEARXNG_IMAGE="<exact-image-ref>" \
+scripts/release-tooling/ensure-aca-runtime.sh
+```
+
+The operation is idempotent:
+
+- missing runtime apps are created;
+- existing runtime apps are updated;
+- internal ingress is reconciled;
+- required environment variables/secrets are reconciled;
+- `ash-web` runtime URLs are reconciled;
+- `validate-aca-runtime.sh` runs at the end.
+
+The admin interfaces remain DEV-only.
+
+### User Acceptance Test
+
+Canonical acceptance criteria are maintained in:
+
+```text
+docs/USER-ACCEPTANCE-TEST.md
+```
+
+Infrastructure/listener health is necessary but not sufficient. Acceptance requires successful end-to-end tests for:
+
+1. AI Scholar Free Router;
+2. Gemini Academic Assistant;
+3. Web Search through SearXNG;
+4. Academic Research MCP;
+5. static asset MIME correctness;
+6. ACA runtime topology validation.
+
+The UAT is release-independent. Specific prompts/results may be recorded as evidence, but release names and image tags are not embedded in pass/fail logic.
