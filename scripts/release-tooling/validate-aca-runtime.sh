@@ -11,9 +11,9 @@ require_cmd curl
 RG="${ACA_RESOURCE_GROUP:-}"
 APP="${ACA_APP_NAME:-ash-web}"
 CONFIG="${ACA_SOURCE_CONFIG:-$SCRIPT_DIR/../../librechat.yaml}"
-IMAGE="${ACA_IMAGE:-}"
 HEALTH_PATH="${ACA_HEALTH_PATH:-/health}"
 ICON_PATH="${ACA_ICON_PATH:-/images/favicon-16x16.png}"
+REQUIRED_APPS="${ACA_REQUIRED_RUNTIME_APPS:-model-router,gemini-proxy,academic-research-mcp,searxng}"
 
 [[ -n "$RG" ]] || die "ACA_RESOURCE_GROUP is required"
 require_file "$CONFIG"
@@ -23,18 +23,7 @@ note "ACA user-runtime preflight"
 
 APP_JSON="$(az containerapp show -g "$RG" -n "$APP" -o json)"
 ENV_ID="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["properties"]["managedEnvironmentId"])' <<<"$APP_JSON")"
-[[ -n "$ENV_ID" ]] || die "could not determine ACA environment"
-
-MAIN_IMAGE="$(python3 -c '
-import json,sys
-j=json.load(sys.stdin)
-cs=j.get("properties",{}).get("template",{}).get("containers",[]) or []
-print(cs[0].get("image","") if cs else "")
-' <<<"$APP_JSON")"
-
-if [[ -n "$IMAGE" && "$MAIN_IMAGE" != "$IMAGE" ]]; then
-  echo "INFO: current ACA image differs from requested promotion image"
-fi
+[[ -n "$ENV_ID" ]] || die "could not determine ACA environment for $APP"
 
 CONTAINER_NAMES="$(python3 -c '
 import json,sys
@@ -48,16 +37,6 @@ if grep -Eiq '(^|[-_])(admin-ui|admin-panel)($|[-_])' <<<"$CONTAINER_NAMES"; the
 fi
 pass "ACA user app contains no admin interfaces"
 
-SAME_ENV_APPS="$(az containerapp list -g "$RG" -o json | python3 - "$ENV_ID" <<'PY'
-import json,sys
-env_id=sys.argv[1]
-apps=json.load(sys.stdin)
-for a in apps:
-    if (a.get("properties") or {}).get("managedEnvironmentId")==env_id:
-        print(a.get("name",""))
-PY
-)"
-
 WEB_ENV="$(python3 -c '
 import json,sys
 j=json.load(sys.stdin)
@@ -66,9 +45,9 @@ for e in (cs[0].get("env",[]) if cs else []):
     name=e.get("name","")
     value=e.get("value")
     if value is not None:
-        print(f"{name}\t{value}")
+        print(name+"\t"+str(value))
     elif e.get("secretRef"):
-        print(f"{name}\tsecretref:{e.get(\"secretRef\")}")
+        print(name+"\tsecretref:"+str(e.get("secretRef")))
 ' <<<"$APP_JSON")"
 
 env_value() {
@@ -76,36 +55,45 @@ env_value() {
   awk -F '\t' -v k="$key" '$1==k {print substr($0,index($0,$2)); exit}' <<<"$WEB_ENV"
 }
 
+same_env_app() {
+  local name="$1"
+  local dep_env
+  dep_env="$(timeout 20 az containerapp show -g "$RG" -n "$name" \
+    --query properties.managedEnvironmentId -o tsv 2>/dev/null || true)"
+  [[ -n "$dep_env" && "$dep_env" == "$ENV_ID" ]]
+}
+
 check_url_mapping() {
   local label="$1" value="$2"
-  [[ -n "$value" ]] || die "$label is missing from ACA ash-web environment"
+  local host
 
-  python3 - "$label" "$value" "$CONTAINER_NAMES" "$SAME_ENV_APPS" <<'PY'
+  [[ -n "$value" ]] || die "$label is missing from ACA $APP environment"
+
+  host="$(python3 -c '
 import sys
 from urllib.parse import urlparse
+u=urlparse(sys.argv[1])
+print((u.hostname or "").lower())
+' "$value")"
 
-label,value,containers,apps=sys.argv[1:]
-u=urlparse(value)
-host=(u.hostname or "").lower()
-if not host:
-    raise SystemExit(f"FAIL: {label} is not a valid absolute URL")
+  [[ -n "$host" ]] || die "$label is not a valid absolute URL: $value"
 
-docker_hosts={"model-router","gemini-proxy","searxng","academic-research-mcp",
-              "mongodb","meilisearch","rag_api","vectordb","ollama"}
-containers=set(filter(None,containers.splitlines()))
-apps=set(filter(None,apps.splitlines()))
+  if [[ "$host" == "127.0.0.1" || "$host" == "localhost" ]]; then
+    local count
+    count="$(grep -cve '^$' <<<"$CONTAINER_NAMES")"
+    (( count >= 2 )) || die "$label uses localhost but $APP has no runtime sidecar container"
+    pass "$label -> $value"
+    return
+  fi
 
-if host in {"127.0.0.1","localhost"}:
-    if len(containers) < 2:
-        raise SystemExit(f"FAIL: {label} uses localhost but ash-web has no runtime sidecar containers")
-elif host in docker_hosts:
-    if host not in apps:
-        raise SystemExit(
-            f"FAIL: {label} points to Compose-style host '{host}', "
-            f"but no same-environment ACA app named '{host}' exists"
-        )
-print(f"PASS: {label} -> {value}")
-PY
+  # A single-label hostname is treated as an ACA service-discovery name.
+  # Verify it directly instead of depending on az containerapp list JSON shape.
+  if [[ "$host" != *.* ]]; then
+    same_env_app "$host" || \
+      die "$label points to service '$host', but no same-environment ACA app named '$host' exists"
+  fi
+
+  pass "$label -> $value"
 }
 
 MODEL_ROUTER_URL="$(env_value MODEL_ROUTER_BASE_URL || true)"
@@ -116,26 +104,34 @@ check_url_mapping "MODEL_ROUTER_BASE_URL" "$MODEL_ROUTER_URL"
 check_url_mapping "GEMINI_PROXY_BASE_URL" "$GEMINI_PROXY_URL"
 check_url_mapping "SEARXNG_INSTANCE_URL" "$SEARXNG_URL"
 
-MCP_URL="$(python3 - "$CONFIG" <<'PY'
-import re,sys
-text=open(sys.argv[1],encoding="utf-8").read()
-m=re.search(r'(?ms)^\s*academic-research:\s*\n(?:.*\n){0,5}?\s*url:\s*["'\'']?([^"'\''\s]+)',text)
-print(m.group(1) if m else "")
-PY
-)"
+MCP_URL="$(awk '
+  /^[[:space:]]*academic-research:[[:space:]]*$/ {in_mcp=1; next}
+  in_mcp && /^[[:space:]]*url:[[:space:]]*/ {
+    sub(/^[[:space:]]*url:[[:space:]]*/, "")
+    gsub(/^["'\'' ]+|["'\'' ]+$/, "")
+    print
+    exit
+  }
+  in_mcp && /^[^[:space:]]/ {exit}
+' "$CONFIG")"
+
 [[ -n "$MCP_URL" ]] || die "academic-research MCP URL not found in librechat.yaml"
-[[ "$MCP_URL" != *'${'* ]] || die "MCP URL must be concrete; LibreChat domain validation does not safely resolve this placeholder"
+[[ "$MCP_URL" != *'${'* ]] || \
+  die "MCP URL must be concrete; LibreChat MCP domain validation does not safely resolve this placeholder"
 
 check_url_mapping "academic-research MCP URL" "$MCP_URL"
 
-if [[ "${ACA_REQUIRE_RUNTIME_APPS:-1}" == "1" ]]; then
-  for dep in model-router gemini-proxy searxng academic-research-mcp; do
-    grep -qx "$dep" <<<"$SAME_ENV_APPS" || die "required ACA runtime app missing from same environment: $dep"
-    state="$(az containerapp show -g "$RG" -n "$dep" --query properties.provisioningState -o tsv)"
-    [[ "$state" == "Succeeded" ]] || die "$dep provisioning state is $state"
-  done
-  pass "all required ACA runtime apps exist in the same environment"
-fi
+IFS=',' read -r -a required <<<"$REQUIRED_APPS"
+for dep in "${required[@]}"; do
+  dep="${dep//[[:space:]]/}"
+  [[ -n "$dep" ]] || continue
+  same_env_app "$dep" || die "required ACA runtime app missing or in another environment: $dep"
+
+  state="$(timeout 20 az containerapp show -g "$RG" -n "$dep" \
+    --query properties.provisioningState -o tsv)"
+  [[ "$state" == "Succeeded" ]] || die "$dep provisioning state is $state"
+done
+pass "required ACA runtime apps exist in the same environment"
 
 if [[ "${ACA_POST_DEPLOY_VERIFY:-0}" == "1" ]]; then
   FQDN="$(python3 -c '
@@ -144,7 +140,8 @@ print(json.load(sys.stdin)["properties"].get("configuration",{}).get("ingress",{
 ' <<<"$APP_JSON")"
   [[ -n "$FQDN" ]] || die "ACA FQDN missing"
 
-  code="$(curl -L -sS -o /dev/null -w '%{http_code}' --max-time 20 "https://${FQDN}${HEALTH_PATH}" || true)"
+  code="$(curl -L -sS -o /dev/null -w '%{http_code}' --max-time 20 \
+    "https://${FQDN}${HEALTH_PATH}" || true)"
   case "$code" in
     2*|3*|401|403) pass "ACA health endpoint responded HTTP $code" ;;
     *) die "ACA health endpoint returned HTTP ${code:-none}" ;;
