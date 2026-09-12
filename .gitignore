@@ -213,3 +213,4 @@ checkpoints/
 
 # Local release deployment manifest
 /release-e.env
+/release-checkpoints/
