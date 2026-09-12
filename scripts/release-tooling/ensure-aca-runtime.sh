@@ -21,6 +21,7 @@ MCP_IMAGE="${ACA_MCP_IMAGE:-}"
 SEARXNG_IMAGE="${ACA_SEARXNG_IMAGE:-}"
 
 GEMINI_ENV_FILE="${ACA_GEMINI_ENV_FILE:-.gemini-proxy.env}"
+CANONICAL_MONGO_SECRET="${ACA_MONGO_SECRET_NAME:-mongo-uri-current}"
 
 [[ -n "$RG" ]] || die "ACA_RESOURCE_GROUP is required"
 [[ -n "$MODEL_ROUTER_IMAGE" ]] || die "ACA_MODEL_ROUTER_IMAGE is required"
@@ -57,7 +58,13 @@ print(regs[0].get("server","") if regs else "")
 
 pass "discovered environment, identity and registry from $ANCHOR_APP"
 
-anchor_env_value() {
+anchor_secret_value() {
+  local name="$1"
+  az containerapp secret list -g "$RG" -n "$ANCHOR_APP" --show-values \
+    --query "[?name=='$name'].value | [0]" -o tsv
+}
+
+anchor_env_descriptor() {
   local key="$1"
   python3 - "$key" <<'PY' <<<"$ANCHOR_JSON"
 import json,sys
@@ -66,41 +73,60 @@ j=json.load(sys.stdin)
 cs=j.get("properties",{}).get("template",{}).get("containers",[]) or []
 for e in (cs[0].get("env",[]) if cs else []):
     if e.get("name")==key:
-        if e.get("value") is not None:
-            print(e.get("value"))
+        print((e.get("value") or "") + "\t" + (e.get("secretRef") or ""))
         raise SystemExit(0)
 raise SystemExit(1)
 PY
 }
 
-anchor_secret_value() {
-  local name="$1"
-  az containerapp secret list -g "$RG" -n "$ANCHOR_APP" --show-values \
-    --query "[?name=='$name'].value | [0]" -o tsv
+anchor_env_resolved_value() {
+  local key="$1" desc value secret
+  desc="$(anchor_env_descriptor "$key" 2>/dev/null || true)"
+  [[ -n "$desc" ]] || return 1
+  IFS=$'\t' read -r value secret <<<"$desc"
+  if [[ -n "$value" ]]; then
+    printf '%s' "$value"
+  elif [[ -n "$secret" ]]; then
+    anchor_secret_value "$secret"
+  else
+    return 1
+  fi
+}
+
+anchor_has_env() {
+  local key="$1"
+  python3 - "$key" <<'PY' <<<"$ANCHOR_JSON"
+import json,sys
+key=sys.argv[1]
+j=json.load(sys.stdin)
+cs=j.get("properties",{}).get("template",{}).get("containers",[]) or []
+names={e.get("name") for e in (cs[0].get("env",[]) if cs else [])}
+raise SystemExit(0 if key in names else 1)
+PY
 }
 
 copy_anchor_secret() {
-  local src="$1" dst="$2"
+  local src="$1"
   local value
   value="$(anchor_secret_value "$src")"
   [[ -n "$value" ]] || die "anchor secret missing: $src"
   printf '%s' "$value"
 }
 
-MONGO_URI="$(anchor_env_value MONGO_URI || anchor_env_value ATLAS_MONGO_DB_URI || true)"
-CF_IDS="$(anchor_env_value ASH_CLOUDFLARE_ACCOUNT_IDS || true)"
-ROUTER_ENABLED="$(anchor_env_value ASH_MODEL_ROUTER_ENABLED || true)"
+MONGO_URI="$(anchor_env_resolved_value MONGO_URI || anchor_env_resolved_value ATLAS_MONGO_DB_URI || true)"
+CF_IDS="$(anchor_env_resolved_value ASH_CLOUDFLARE_ACCOUNT_IDS || true)"
+ROUTER_ENABLED="$(anchor_env_resolved_value ASH_MODEL_ROUTER_ENABLED || true)"
 [[ -n "$MONGO_URI" ]] || die "MONGO_URI/ATLAS_MONGO_DB_URI missing on anchor app"
 [[ -n "$CF_IDS" ]] || die "ASH_CLOUDFLARE_ACCOUNT_IDS missing on anchor app"
 [[ -n "$ROUTER_ENABLED" ]] || ROUTER_ENABLED=true
 
-GP_KEY="$(copy_anchor_secret gemini-proxy-api-key gemini-proxy-api-key)"
-GOOGLE_KEYS="$(copy_anchor_secret ash-google-api-keys ash-google-api-keys)"
-GROQ_KEYS="$(copy_anchor_secret ash-groq-api-keys ash-groq-api-keys)"
-OPENROUTER_KEYS="$(copy_anchor_secret ash-openrouter-api-keys ash-openrouter-api-keys)"
-CF_TOKENS="$(copy_anchor_secret ash-cloudflare-api-tokens ash-cloudflare-api-tokens)"
-S2_KEY="$(copy_anchor_secret semantic-scholar-api-key semantic-scholar-api-key)"
-SX_SECRET="$(copy_anchor_secret searxng-secret searxng-secret)"
+GP_KEY="$(copy_anchor_secret gemini-proxy-api-key)"
+GOOGLE_KEYS="$(copy_anchor_secret ash-google-api-keys)"
+GROQ_KEYS="$(copy_anchor_secret ash-groq-api-keys)"
+OPENROUTER_KEYS="$(copy_anchor_secret ash-openrouter-api-keys)"
+CF_TOKENS="$(copy_anchor_secret ash-cloudflare-api-tokens)"
+S2_KEY="$(copy_anchor_secret semantic-scholar-api-key)"
+SX_SECRET="$(copy_anchor_secret searxng-secret)"
 
 ensure_app() {
   local name="$1" image="$2"
@@ -132,16 +158,30 @@ ensure_internal_tcp() {
     --output none
 }
 
+az containerapp secret set -g "$RG" -n "$ANCHOR_APP" \
+  --secrets "${CANONICAL_MONGO_SECRET}=${MONGO_URI}" >/dev/null
+az containerapp update -g "$RG" -n "$ANCHOR_APP" --set-env-vars \
+  "MONGO_URI=secretref:${CANONICAL_MONGO_SECRET}" \
+  "ATLAS_MONGO_DB_URI=secretref:${CANONICAL_MONGO_SECRET}" >/dev/null
+
+REMOVE_MONGO_ENV=()
+anchor_has_env MONGO_INITDB_ROOT_USERNAME && REMOVE_MONGO_ENV+=(MONGO_INITDB_ROOT_USERNAME)
+anchor_has_env MONGO_INITDB_ROOT_PASSWORD && REMOVE_MONGO_ENV+=(MONGO_INITDB_ROOT_PASSWORD)
+if [[ "${#REMOVE_MONGO_ENV[@]}" -gt 0 ]]; then
+  az containerapp update -g "$RG" -n "$ANCHOR_APP" \
+    --remove-env-vars "${REMOVE_MONGO_ENV[@]}" >/dev/null
+fi
+
 ensure_app "$MODEL_ROUTER_APP" "$MODEL_ROUTER_IMAGE"
 az containerapp secret set -g "$RG" -n "$MODEL_ROUTER_APP" --secrets \
-  mongo-uri="$MONGO_URI" \
+  "${CANONICAL_MONGO_SECRET}=${MONGO_URI}" \
   router-api-key="$GP_KEY" \
   google-keys="$GOOGLE_KEYS" \
   groq-keys="$GROQ_KEYS" \
   openrouter-keys="$OPENROUTER_KEYS" \
   cloudflare-tokens="$CF_TOKENS" >/dev/null
 az containerapp update -g "$RG" -n "$MODEL_ROUTER_APP" --set-env-vars \
-  MONGO_URI=secretref:mongo-uri \
+  "MONGO_URI=secretref:${CANONICAL_MONGO_SECRET}" \
   ASH_MODEL_ROUTER_ENABLED="$ROUTER_ENABLED" \
   ASH_MODEL_ROUTER_API_KEY=secretref:router-api-key \
   GEMINI_PROXY_API_KEY=secretref:router-api-key \
@@ -189,7 +229,6 @@ az containerapp update -g "$RG" -n "$SEARXNG_APP" --set-env-vars \
 ensure_internal_tcp "$SEARXNG_APP" 8080
 pass "$SEARXNG_APP reconciled"
 
-# Keep anchor URLs stable and release-independent.
 az containerapp update -g "$RG" -n "$ANCHOR_APP" --set-env-vars \
   MODEL_ROUTER_BASE_URL="http://${MODEL_ROUTER_APP}:8000/v1/" \
   GEMINI_PROXY_BASE_URL="http://${GEMINI_PROXY_APP}:8000/v1/" \
@@ -201,4 +240,5 @@ export ACA_REQUIRED_RUNTIME_APPS="${MODEL_ROUTER_APP},${GEMINI_PROXY_APP},${MCP_
 
 "$SCRIPT_DIR/validate-aca-runtime.sh"
 
+unset MONGO_URI GP_KEY GOOGLE_KEYS GROQ_KEYS OPENROUTER_KEYS CF_TOKENS S2_KEY SX_SECRET
 pass "ACA runtime reconciliation complete"

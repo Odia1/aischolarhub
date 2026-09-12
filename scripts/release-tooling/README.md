@@ -94,3 +94,19 @@ scripts/release-tooling/ensure-aca-runtime.sh
 It creates or updates the runtime apps idempotently, reconciles internal ingress and runtime URLs, and finishes by calling `validate-aca-runtime.sh`.
 
 User acceptance criteria are maintained separately in `docs/USER-ACCEPTANCE-TEST.md`.
+
+## Safe Compose lifecycle operations
+
+Use `compose-safe.sh` instead of invoking Compose directly for DEV/PROD lifecycle commands that depend on Mongo interpolation:
+
+```bash
+scripts/release-tooling/compose-safe.sh \
+  /opt/aischolarhub aih-dev \
+  up -d --no-deps --force-recreate api
+```
+
+The wrapper clears ambient `MONGO_URI`, `ATLAS_MONGO_DB_URI`, `MONGO_INITDB_ROOT_USERNAME`, and `MONGO_INITDB_ROOT_PASSWORD`, then loads the required interpolation variables from the selected `.env` inside an isolated subshell.
+
+Do not use rendered `docker compose config` output as a routine secret diagnostic.
+
+The canonical ACA Mongo secret is `mongo-uri-current`. `ensure-aca-runtime.sh` resolves either literal or secret-backed anchor Mongo configuration, normalizes both `ash-web` and `model-router` to `mongo-uri-current`, and removes obsolete Mongo bootstrap variables from `ash-web`.

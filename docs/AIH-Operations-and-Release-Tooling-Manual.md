@@ -1299,3 +1299,68 @@ Infrastructure/listener health is necessary but not sufficient. Acceptance requi
 6. ACA runtime topology validation.
 
 The UAT is release-independent. Specific prompts/results may be recorded as evidence, but release names and image tags are not embedded in pass/fail logic.
+
+## Mongo credential and Compose environment safety
+
+A 2026-09-12 credential rotation exposed two operational hazards:
+
+1. exported shell `MONGO_*` variables can override `.env` values during Compose interpolation;
+2. rendered `docker compose config` output can expose resolved secrets.
+
+### Canonical Compose invocation
+
+Use:
+
+```bash
+scripts/release-tooling/compose-safe.sh \
+  /opt/aischolarhub aih-dev \
+  up -d --no-deps --force-recreate api
+```
+
+and for PROD:
+
+```bash
+scripts/release-tooling/compose-safe.sh \
+  /opt/scholarhub aih-prod \
+  up -d --no-deps --force-recreate api
+```
+
+`compose-safe.sh` runs in a subshell, clears ambient Mongo variables, loads only the required root username/password from the selected `.env`, and invokes Compose with an explicit `--env-file`. Secrets are not printed.
+
+Do not routinely use `docker compose config` to diagnose secret interpolation.
+
+### ACA Mongo convention
+
+The canonical ACA Mongo secret name is:
+
+```text
+mongo-uri-current
+```
+
+`ash-web`:
+
+```text
+MONGO_URI          -> secretref:mongo-uri-current
+ATLAS_MONGO_DB_URI -> secretref:mongo-uri-current
+```
+
+`model-router`:
+
+```text
+MONGO_URI -> secretref:mongo-uri-current
+```
+
+`ash-web` must not carry `MONGO_INITDB_ROOT_USERNAME` or `MONGO_INITDB_ROOT_PASSWORD`; ACA does not run the MongoDB server in that app.
+
+### Credential rotation acceptance
+
+After a Mongo credential change, verify:
+
+- DEV API connects to MongoDB;
+- PROD API connects to MongoDB;
+- ACA runtime validation passes;
+- `ash-web` and `model-router` show no new Mongo authentication failures;
+- old `.env` backups containing retired credentials are deleted after recovery is no longer needed;
+- obsolete ACA secrets are deleted only after all references are removed.
+
+The detailed acceptance gate is UAT-07 in `docs/USER-ACCEPTANCE-TEST.md`.

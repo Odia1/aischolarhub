@@ -125,3 +125,26 @@ The script reports:
 ## Acceptance decision
 
 A deployment is accepted only when UAT-01 through UAT-06 pass. Listener health alone is insufficient; the four end-to-end user interactions must succeed.
+
+## UAT-07 — Mongo credential rotation / environment consistency
+
+Run this test after any Mongo credential rotation or secret migration.
+
+**Pass criteria**
+
+- DEV API logs show `Connected to MongoDB` and no new `Authentication failed`.
+- PROD API logs show `Connected to MongoDB` and no new `Authentication failed`.
+- ACA `validate-aca-runtime.sh` passes.
+- ACA `ash-web` and `model-router` have no new `AuthenticationFailed`, `SCRAM`, `unauthorized`, or `MongoServerError` entries.
+- `ash-web` exposes only `MONGO_URI` and `ATLAS_MONGO_DB_URI` for Mongo connectivity; both reference the canonical ACA secret `mongo-uri-current`.
+- `model-router` `MONGO_URI` references `mongo-uri-current`.
+- ACA does not retain `MONGO_INITDB_ROOT_USERNAME` or `MONGO_INITDB_ROOT_PASSWORD` on `ash-web`.
+- Obsolete Mongo secrets are removed only after no current environment variable references them.
+
+**Operational rule**
+
+Do not use `docker compose config` as a routine secret diagnostic because rendered configuration may expose resolved credentials. For DEV/PROD Compose lifecycle operations, use `scripts/release-tooling/compose-safe.sh`, which isolates the operation from stale exported `MONGO_*` variables.
+
+## Acceptance decision update
+
+A deployment that includes a Mongo credential change must pass UAT-07 in addition to UAT-01 through UAT-06.
