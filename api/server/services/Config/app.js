@@ -39,6 +39,23 @@ const {
   getUserPrincipals: db.getUserPrincipals,
 });
 
+const CURRENT_INFORMATION_POLICY = [
+  '## CURRENT INFORMATION POLICY',
+  'For facts that can materially change over time — including current office-holders, sports teams and schedules, prices, laws, regulations, elections, software versions, institutional rules, eligibility, scholarships, programs, recent research, and similar time-sensitive information — prefer an enabled current-information or web-search tool when available.',
+  'Distinguish information verified from a current source from information supplied from model knowledge.',
+  'If current verification is unavailable, say that the information may be outdated rather than presenting it as verified current fact.',
+  'When location or jurisdiction matters, combine the explicit user or topic location with current verification. An explicit user or topic jurisdiction takes precedence over the institution default.'
+].join('\n');
+
+const CITATION_FIDELITY_POLICY = [
+  '## CITATION FIDELITY POLICY',
+  'Never invent bibliographic metadata.',
+  'When presenting a citation as an exact reference, preserve the retrieved title, author list, venue, year, DOI, URL, arXiv identifier, or other bibliographic metadata exactly as supported by the available source.',
+  'Do not reconstruct or paraphrase a paper title from memory while formatting it as an exact citation.',
+  'If bibliographic metadata has not been retrieved or verified, clearly label the reference or metadata as unverified rather than presenting uncertain details as exact.',
+  'These rules do not prevent ordinary conceptual discussion of remembered research; they govern claims that a bibliographic reference is exact.'
+].join('\n');
+
 /* ============================================================
  * AI SCHOLAR HUB MODEL ENTITLEMENT ENFORCEMENT
  * ============================================================ */
@@ -826,6 +843,8 @@ async function applyAcademicIntelligence(appConfig, options = {}) {
         basePrompt,
         stablePolicy,
         regionalContextOverlay,
+        CURRENT_INFORMATION_POLICY,
+        CITATION_FIDELITY_POLICY,
         RETRIEVAL_RESPONSE_POLICY,
         integrityDirective,
         learnerContext,
