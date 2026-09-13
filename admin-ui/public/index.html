@@ -666,6 +666,21 @@ form{
   </div>
 </header>
 
+
+<div id="adminInstitutionScopeBar"
+     style="display:flex;align-items:center;gap:10px;padding:10px 20px;background:#f7f8fa;border-bottom:1px solid #ddd">
+  <strong>Institution scope:</strong>
+  <input id="adminInstitutionScopeSearch"
+         list="adminInstitutionScopeList"
+         aria-label="Institution scope"
+         placeholder="All Institutions or search institution..."
+         autocomplete="off"
+         style="min-width:320px">
+  <datalist id="adminInstitutionScopeList"></datalist>
+  <input id="adminInstitutionScope" type="hidden" value="">
+  <span id="adminInstitutionScopeHint" class="muted"></span>
+</div>
+
 <main>
 
 <nav id="adminTabs" class="admin-tabs" aria-label="Administration functions">
@@ -1425,6 +1440,400 @@ function ownTenant() {
   ).trim();
 }
 
+const ADMIN_INSTITUTION_SCOPE_KEY =
+  "aiScholarHubAdminInstitutionScope";
+
+function adminScopeTenant() {
+  if (isInstitutionAdmin()) {
+    return ownTenant();
+  }
+
+  return String(
+    document.getElementById(
+      "adminInstitutionScope"
+    )?.value || ""
+  ).trim();
+}
+
+window.adminScopeTenant =
+  adminScopeTenant;
+
+function refreshAdminInstitutionScope() {
+  const bar =
+    document.getElementById(
+      "adminInstitutionScopeBar"
+    );
+
+  const hidden =
+    document.getElementById(
+      "adminInstitutionScope"
+    );
+
+  const search =
+    document.getElementById(
+      "adminInstitutionScopeSearch"
+    );
+
+  const list =
+    document.getElementById(
+      "adminInstitutionScopeList"
+    );
+
+  const hint =
+    document.getElementById(
+      "adminInstitutionScopeHint"
+    );
+
+  if (
+    !bar ||
+    !hidden ||
+    !search ||
+    !list ||
+    !currentMe
+  ) {
+    return;
+  }
+
+  const institutional =
+    isInstitutionAdmin();
+
+  const institutionLabel =
+    tenantId => {
+      if (!tenantId) {
+        return "All Institutions";
+      }
+
+      const institution =
+        institutionsCache.find(
+          i =>
+            String(i._id) ===
+            String(tenantId)
+        );
+
+      return institution
+        ? `${institution.name} (${institution._id})`
+        : String(tenantId);
+    };
+
+  const resolveInstitutionInput =
+    value => {
+      const raw =
+        String(value || "")
+          .trim();
+
+      if (
+        !raw ||
+        raw.toLowerCase() ===
+          "all institutions"
+      ) {
+        return "";
+      }
+
+      const exactId =
+        institutionsCache.find(
+          i =>
+            String(i._id)
+              .toLowerCase() ===
+            raw.toLowerCase()
+        );
+
+      if (exactId) {
+        return String(exactId._id);
+      }
+
+      const exactLabel =
+        institutionsCache.find(
+          i =>
+            institutionLabel(i._id)
+              .toLowerCase() ===
+            raw.toLowerCase()
+        );
+
+      if (exactLabel) {
+        return String(exactLabel._id);
+      }
+
+      const exactName =
+        institutionsCache.filter(
+          i =>
+            String(i.name || "")
+              .trim()
+              .toLowerCase() ===
+            raw.toLowerCase()
+        );
+
+      if (exactName.length === 1) {
+        return String(
+          exactName[0]._id
+        );
+      }
+
+      return null;
+    };
+
+  window.adminInstitutionScopeLabel =
+    institutionLabel;
+
+  list.innerHTML =
+    `<option value="All Institutions"></option>` +
+    institutionsCache
+      .map(
+        i =>
+          `<option value="${esc(
+            institutionLabel(i._id)
+          )}"></option>`
+      )
+      .join("");
+
+  let selected = "";
+
+  if (institutional) {
+    selected = ownTenant();
+
+    hidden.value = selected;
+    search.value =
+      institutionLabel(selected);
+    search.disabled = true;
+
+    if (hint) {
+      hint.textContent =
+        "Locked to your institution";
+    }
+  } else {
+    try {
+      selected =
+        sessionStorage.getItem(
+          ADMIN_INSTITUTION_SCOPE_KEY
+        ) || "";
+    } catch (_) {}
+
+    const valid =
+      !selected ||
+      institutionsCache.some(
+        i =>
+          String(i._id) ===
+          String(selected)
+      );
+
+    if (!valid) {
+      selected = "";
+    }
+
+    hidden.value = selected;
+    search.value =
+      institutionLabel(selected);
+    search.disabled = false;
+
+    if (hint) {
+      hint.textContent =
+        selected
+          ? "Applies across administration tabs"
+          : "Platform-wide view";
+    }
+  }
+
+  scopeNotice.textContent =
+    institutional
+      ? `Institution scope: ${
+          institutionLabel(selected)
+        }`
+      : selected
+        ? `Institution scope: ${
+            institutionLabel(selected)
+          }`
+        : "Platform-wide administration";
+
+  const applyScope =
+    async tenantId => {
+      hidden.value =
+        tenantId || "";
+
+      search.value =
+        institutionLabel(
+          hidden.value
+        );
+
+      if (!institutional) {
+        try {
+          sessionStorage.setItem(
+            ADMIN_INSTITUTION_SCOPE_KEY,
+            hidden.value
+          );
+        } catch (_) {}
+      }
+
+      if (hint) {
+        hint.textContent =
+          hidden.value
+            ? "Applies across administration tabs"
+            : "Platform-wide view";
+      }
+
+      scopeNotice.textContent =
+        hidden.value
+          ? `Institution scope: ${
+              institutionLabel(
+                hidden.value
+              )
+            }`
+          : "Platform-wide administration";
+
+      window.dispatchEvent(
+        new CustomEvent(
+          "aih-admin-scope-change",
+          {
+            detail: {
+              tenantId:
+                adminScopeTenant()
+            }
+          }
+        )
+      );
+
+      if (
+        typeof loadUsers ===
+        "function"
+      ) {
+        await loadUsers();
+      }
+
+      if (
+        typeof loadInstitutionUsage ===
+        "function"
+      ) {
+        await loadInstitutionUsage();
+      }
+    };
+
+  const commitSearchScope =
+    async ({ alertInvalid = false } = {}) => {
+      const resolved =
+        resolveInstitutionInput(
+          search.value
+        );
+
+      if (resolved === null) {
+        if (alertInvalid) {
+          search.value =
+            institutionLabel(
+              hidden.value
+            );
+
+          alert(
+            "Select a valid institution from the list, enter an exact institution ID, or choose All Institutions."
+          );
+        }
+
+        return false;
+      }
+
+      await applyScope(
+        resolved
+      );
+
+      return true;
+    };
+
+  /*
+   * datalist selection fires "input" immediately in Chromium.
+   * Commit only exact resolvable values; partial typing remains untouched.
+   */
+  search.onfocus =
+    () => {
+      /*
+       * Make the searchable scope behave like a real picker:
+       * typing immediately replaces the current label.
+       */
+      setTimeout(() => {
+        try {
+          search.select();
+        } catch (_) {}
+      }, 0);
+    };
+
+  search.oninput =
+    async () => {
+      const raw =
+        String(search.value || "")
+          .trim();
+
+      /*
+       * Empty and partial input are editing states.
+       * Do not rewrite "All Institutions" while the user is typing.
+       */
+      if (!raw) {
+        return;
+      }
+
+      const resolved =
+        resolveInstitutionInput(raw);
+
+      if (resolved === null) {
+        return;
+      }
+
+      await applyScope(
+        resolved
+      );
+    };
+
+  search.onchange =
+    async () => {
+      const raw =
+        String(search.value || "")
+          .trim();
+
+      /*
+       * If the user leaves the field empty, restore the active
+       * scope rather than interpreting deletion as All Institutions.
+       */
+      if (!raw) {
+        search.value =
+          institutionLabel(
+            hidden.value
+          );
+        return;
+      }
+
+      await commitSearchScope({
+        alertInvalid: true
+      });
+    };
+
+  search.onkeydown =
+    event => {
+      if (
+        event.key ===
+        "Escape"
+      ) {
+        search.value =
+          institutionLabel(
+            hidden.value
+          );
+
+        search.blur();
+      }
+    };
+
+  /*
+   * Synchronize the data immediately with the scope that was
+   * restored from sessionStorage (or locked for Institution Admin).
+   * Without this, the visible picker can say SEEDS while data that
+   * loaded earlier still reflects All Institutions.
+   */
+  Promise.resolve()
+    .then(() =>
+      applyScope(
+        hidden.value
+      )
+    )
+    .catch(err => {
+      console.error(
+        "[admin-scope-initial-apply]",
+        err
+      );
+    });
+}
 function getDomain(email) {
   const v =
     String(email || "")
@@ -1905,6 +2314,7 @@ async function loadInstitutions() {
   renderInstitutions();
 
   refreshTenantControls();
+  refreshAdminInstitutionScope();
 }
 
 function institutionMatchesSearch(institution, query) {
@@ -2825,10 +3235,22 @@ async function deleteInstitutionDomain(domain) {
   }
 }
 
+function quotaEscape(value){
+  return String(value ?? "").replace(/[&<>"']/g, ch => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;"
+  })[ch]);
+}
+
+async function loadInstitutionUsage(){const h=document.getElementById("institutionUsageHost"),st=document.getElementById("institutionUsageStatus");if(!h||!st)return;st.textContent="Loading institution usage...";try{const scopeTenant=adminScopeTenant();
+const d=await api(`/api/usage/institutions${scopeTenant?`?tenantId=${encodeURIComponent(scopeTenant)}`:""}`),rows=Array.isArray(d.institutions)?d.institutions:[];h.innerHTML=rows.length?`<div style="overflow:auto"><table style="width:100%;border-collapse:collapse;background:#fff"><thead><tr><th>Institution</th><th>Accounts</th><th>Max accounts</th><th>Tokens this month</th><th>Monthly token limit</th><th></th></tr></thead><tbody>${rows.map(r=>`<tr><td style="padding:8px;border-top:1px solid #eee"><strong>${quotaEscape(r.name||r.id)}</strong><div class="muted">${quotaEscape(r.id)}</div></td><td style="text-align:right">${Number(r.usage?.accountCount||0).toLocaleString()}</td><td><input id="qa-${encodeURIComponent(r.id)}" type="number" min="1" value="${r.limits?.maxAccounts??""}" placeholder="Unlimited" style="width:130px"></td><td style="text-align:right">${Number(r.usage?.monthlyTokens||0).toLocaleString()}</td><td><input id="qt-${encodeURIComponent(r.id)}" type="number" min="1" value="${r.limits?.monthlyTokens??""}" placeholder="Unlimited" style="width:170px"></td><td><button onclick='saveInstitutionLimits(${JSON.stringify(r.id)})'>Save</button></td></tr>`).join("")}</tbody></table></div>`:"<div class='muted'>No institutions available.</div>";const u=rows[0]?.usage;st.textContent=u?.periodStart?`UTC billing month: ${new Date(u.periodStart).toISOString().slice(0,10)} to ${new Date(u.periodEnd).toISOString().slice(0,10)}`:"";}catch(e){st.textContent=e.message||"Failed to load institution usage";}}
+async function saveInstitutionLimits(id){const k=encodeURIComponent(id),a=document.getElementById(`qa-${k}`),t=document.getElementById(`qt-${k}`);try{await api(`/api/institutions/${encodeURIComponent(id)}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({limits:{maxAccounts:a?.value?Number(a.value):null,monthlyTokens:t?.value?Number(t.value):null}})});await loadInstitutionUsage();}catch(e){alert(e.message);}}
+
 institutionForm.onsubmit =
-function quotaEscape(v){return String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
-async function loadInstitutionUsage(){const h=document.getElementById("institutionUsageHost"),st=document.getElementById("institutionUsageStatus");if(!h||!st)return;st.textContent="Loading institution usage...";try{const d=await api("/api/usage/institutions"),rows=Array.isArray(d.institutions)?d.institutions:[];h.innerHTML=rows.length?`<div style="overflow:auto"><table style="width:100%;border-collapse:collapse;background:#fff"><thead><tr><th>Institution</th><th>Accounts</th><th>Max accounts</th><th>Tokens this month</th><th>Monthly token limit</th><th></th></tr></thead><tbody>${rows.map(r=>`<tr><td style="padding:8px;border-top:1px solid #eee"><strong>${quotaEscape(r.name||r.id)}</strong><div class="muted">${quotaEscape(r.id)}</div></td><td style="text-align:right">${Number(r.usage?.accountCount||0).toLocaleString()}</td><td><input id="qa-${encodeURIComponent(r.id)}" type="number" min="1" value="${r.limits?.maxAccounts??""}" placeholder="Unlimited" style="width:130px"></td><td style="text-align:right">${Number(r.usage?.monthlyTokens||0).toLocaleString()}</td><td><input id="qt-${encodeURIComponent(r.id)}" type="number" min="1" value="${r.limits?.monthlyTokens??""}" placeholder="Unlimited" style="width:170px"></td><td><button onclick='saveInstitutionLimits(${JSON.stringify(r.id)})'>Save</button></td></tr>`).join("")}</tbody></table></div>`:"<div class='muted'>No institutions available.</div>";const u=rows[0]?.usage;st.textContent=u?.periodStart?`UTC billing month: ${new Date(u.periodStart).toISOString().slice(0,10)} to ${new Date(u.periodEnd).toISOString().slice(0,10)}`:"";}catch(e){st.textContent=e.message||"Failed to load institution usage";}}
-async function saveInstitutionLimits(id){const k=encodeURIComponent(id),a=document.getElementById(`qa-${k}`),t=document.getElementById(`qt-${k}`);try{await api(`/api/institutions/${encodeURIComponent(id)}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({limits:{maxAccounts:a?.value?Number(a.value):null,monthlyTokens:t?.value?Number(t.value):null}})});await loadInstitutionUsage();}catch(e){alert(e.message);}}\n\n  async e => {
+  async e => {
     e.preventDefault();
 
     try {
@@ -3844,7 +4266,13 @@ async function loadUsers() {
 
     const data =
       await api(
-        `/api/users?q=${q}&role=${r}`
+        `/api/users?q=${q}&role=${r}${
+          adminScopeTenant()
+            ? `&tenantId=${encodeURIComponent(
+                adminScopeTenant()
+              )}`
+            : ""
+        }`
       );
 
     status.textContent =

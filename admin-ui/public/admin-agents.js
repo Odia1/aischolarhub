@@ -17,7 +17,10 @@
     if (!host) return;
 
     const state = {
-      tenantId: String(currentMe.tenantId || ''),
+      tenantId:
+        typeof window.adminScopeTenant === 'function'
+          ? String(window.adminScopeTenant() || '')
+          : String(currentMe.tenantId || ''),
       institutions: [],
       agents: []
     };
@@ -73,17 +76,11 @@
             </div>
 
             <div style="display:flex;gap:8px;flex-wrap:wrap">
-              ${role === 'INSTITUTION_ADMIN' ? '' : `
-                <select id="agentTenant">
-                  <option value="">Select institution...</option>
-                  ${state.institutions.map(i => `
-                    <option value="${esc(i._id)}"
-                      ${String(i._id)===state.tenantId?'selected':''}>
-                      ${esc(i.name || i._id)}
-                    </option>
-                  `).join('')}
-                </select>
-              `}
+              <span class="muted">
+                ${state.tenantId
+                  ? `Institution: ${esc(state.tenantId)}`
+                  : 'Select an institution above'}
+              </span>
 
               <button type="button" class="primary"
                 onclick="openAcademicAgentForm()"
@@ -153,14 +150,6 @@
         </div>
       `;
 
-      const tenant = document.getElementById('agentTenant');
-
-      if (tenant) {
-        tenant.onchange = async () => {
-          state.tenantId = tenant.value;
-          await loadAgents();
-        };
-      }
     }
 
     function popup(title, body, save) {
@@ -368,23 +357,39 @@
     }
 
     async function load() {
-      if (role !== 'INSTITUTION_ADMIN') {
-        const d = await fetch('/api/ai-policy/catalog', {
-          credentials:'same-origin'
-        }).then(async r => {
-          const x = await r.json();
-          if (!r.ok) throw new Error(x.error || 'Failed to load institutions');
-          return x;
-        });
-
-        state.institutions = d.institutions || [];
-
-        if (!state.tenantId && state.institutions.length)
-          state.tenantId = String(state.institutions[0]._id);
-      }
+      state.tenantId =
+        typeof window.adminScopeTenant === 'function'
+          ? String(window.adminScopeTenant() || '')
+          : String(currentMe.tenantId || '');
 
       await loadAgents();
     }
+
+    window.addEventListener(
+      'aih-admin-scope-change',
+      async event => {
+        state.tenantId =
+          String(
+            event?.detail?.tenantId ||
+            (
+              typeof window.adminScopeTenant === 'function'
+                ? window.adminScopeTenant()
+                : ''
+            ) ||
+            ''
+          );
+
+        try {
+          await loadAgents();
+        } catch (e) {
+          host.innerHTML =
+            `<div class="admin-placeholder">
+               <h2>Academic Agents</h2>
+               <div style="color:#a00">${esc(e.message)}</div>
+             </div>`;
+        }
+      }
+    );
 
     load().catch(e => {
       host.innerHTML = `

@@ -123,7 +123,10 @@
     const esc2 = v => String(v ?? '').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#039;');
     const id = x => String(x?._id || x?.id || '');
     const arg = x => encodeURIComponent(JSON.stringify(x));
-    const scope = () => String(currentMe?.tenantId || '').trim();
+    const scope = () =>
+      typeof window.adminScopeTenant === 'function'
+        ? String(window.adminScopeTenant() || '').trim()
+        : String(currentMe?.tenantId || '').trim();
     const canDelete = () => true;
 
     function dialog(title, body, onSubmit){
@@ -877,7 +880,20 @@
 
     window.loadOrganizationAdmin = async function(){
       try{
-        const q=scope()?`?tenantId=${encodeURIComponent(scope())}`:'';
+        if(!scope()){
+          state.departments=[];
+          state.courses=[];
+          state.groups=[];
+          state.rag=[];
+          state.ragGroups=[];
+          state.users=[];
+          const n=document.getElementById('orgScopeText');
+          if(n)n.textContent='Select an institution above to manage Groups, Structure, and RAG.';
+          render();
+          return;
+        }
+
+        const q=`?tenantId=${encodeURIComponent(scope())}`;
         const [d,c,g,r,rg,u]=await Promise.all([
           api(`/api/departments${q}`),
           api(`/api/courses${q}`),
@@ -896,6 +912,11 @@
         render();
       }catch(e){console.error('[organization-admin]',e);const n=document.getElementById('orgScopeText');if(n)n.textContent=e.message}
     };
+
+    window.addEventListener(
+      'aih-admin-scope-change',
+      () => loadOrganizationAdmin()
+    );
 
     loadOrganizationAdmin();
   };

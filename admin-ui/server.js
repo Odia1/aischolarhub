@@ -1445,6 +1445,22 @@ app.get("/api/users", async (req, res) => {
     const limit = Math.min(Math.max(parseInt(req.query.limit || "0", 10) || 0, 0), 100);
     const filter = userScope(req);
 
+    if (!isInstitutionAdmin(req.admin)) {
+      const requestedTenantId =
+        String(req.query.tenantId || "").trim();
+
+      if (requestedTenantId) {
+        if (!(await institutionExists(requestedTenantId))) {
+          return res.status(404).json({
+            error: "Institution not found"
+          });
+        }
+
+        filter.tenantId =
+          requestedTenantId;
+      }
+    }
+
     if (q) {
       /*
        * User search is tenant-aware and server-side.
@@ -1498,7 +1514,23 @@ app.get("/api/users", async (req, res) => {
 
 app.get("/api/usage/institutions", async (req, res) => {
   try {
-    const filter=isInstitutionAdmin(req.admin)?{_id:actorTenant(req)}:{};
+    let filter=isInstitutionAdmin(req.admin)?{_id:actorTenant(req)}:{};
+
+    if (!isInstitutionAdmin(req.admin)) {
+      const requestedTenantId =
+        String(req.query.tenantId || "").trim();
+
+      if (requestedTenantId) {
+        if (!(await institutionExists(requestedTenantId))) {
+          return res.status(404).json({
+            error: "Institution not found"
+          });
+        }
+
+        filter = { _id: requestedTenantId };
+      }
+    }
+
     const list=await institutions.find(filter,{projection:{_id:1,name:1,status:1,limits:1}}).sort({name:1}).toArray(); const rows=[];
     for(const i of list){const usage=await institutionUsage(i._id);const limits=normalizeInstitutionLimits(i.limits||{});rows.push({id:i._id,name:i.name,status:i.status,limits,usage,remaining:{accounts:limits.maxAccounts==null?null:Math.max(limits.maxAccounts-usage.accountCount,0),monthlyTokens:limits.monthlyTokens==null?null:Math.max(limits.monthlyTokens-usage.monthlyTokens,0)}});}
     res.json({institutions:rows});
