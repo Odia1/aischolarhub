@@ -2013,26 +2013,35 @@ app.post("/api/users", async (req, res) => {
     });
 
     /*
-     * An institution with SSO_REQUIRED deliberately does not issue
-     * a local password setup email. The account is provisioned in AIH,
-     * but authentication must occur through the configured IdP.
+     * Automatic local-password setup mail is LOCAL-only.
+     *
+     * SSO_OPTIONAL accounts may still use local authentication, but AIH
+     * must not send an unsolicited password-reset/setup message merely
+     * because the account was provisioned.
+     *
+     * SSO_REQUIRED accounts never receive local-password setup mail.
      */
-    if (institutionAuthPolicy?.mode === "SSO_REQUIRED") {
-      await audit("USER_SSO_PROVISIONED", req, {
-        targetUserId: result.insertedId,
-        targetEmail: email,
-        targetRole: role,
-        safeDetails: {
-          institutionId: tenantId,
-          provider: institutionAuthPolicy.provider || null
-        }
-      });
+    const authMode = institutionAuthPolicy?.mode || "LOCAL";
+    const ssoRequired = authMode === "SSO_REQUIRED";
+
+    if (authMode !== "LOCAL") {
+      if (ssoRequired) {
+        await audit("USER_SSO_PROVISIONED", req, {
+          targetUserId: result.insertedId,
+          targetEmail: email,
+          targetRole: role,
+          safeDetails: {
+            institutionId: tenantId,
+            provider: institutionAuthPolicy.provider || null
+          }
+        });
+      }
 
       return res.status(201).json({
         ok: true,
         id: result.insertedId,
         emailSent: false,
-        ssoRequired: true,
+        ssoRequired,
         provider: institutionAuthPolicy.provider || null
       });
     }
@@ -2674,10 +2683,14 @@ app.post("/api/users/bulk", async (req, res) => {
         await users.insertOne(doc);
 
         let emailSent = false;
+        const authMode =
+          item.institutionAuthPolicy?.mode || "LOCAL";
         const ssoRequired =
-          item.institutionAuthPolicy?.mode === "SSO_REQUIRED";
+          authMode === "SSO_REQUIRED";
+        const autoPasswordSetup =
+          authMode === "LOCAL";
 
-        if (!ssoRequired) {
+        if (autoPasswordSetup) {
           try {
             const librechatUrl =
               process.env.LIBRECHAT_INTERNAL_URL ||
@@ -2707,7 +2720,7 @@ app.post("/api/users/bulk", async (req, res) => {
               emailError
             );
           }
-        } else {
+        } else if (ssoRequired) {
           await audit("USER_SSO_PROVISIONED", req, {
             targetEmail: item.email,
             targetRole: item.role,

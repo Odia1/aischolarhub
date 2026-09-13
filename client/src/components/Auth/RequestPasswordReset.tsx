@@ -45,7 +45,35 @@ function RequestPasswordReset() {
   const requestPasswordReset = useRequestPasswordResetMutation();
   const { isLoading } = requestPasswordReset;
 
-  const onSubmit = (data: TRequestPasswordReset) => {
+  const onSubmit = async (data: TRequestPasswordReset) => {
+    try {
+      const policyResponse = await fetch('/api/auth/login-policy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ email: data.email }),
+      });
+
+      if (policyResponse.ok) {
+        const policy = await policyResponse.json();
+
+        if (policy?.passwordResetAllowed === false) {
+          /*
+           * Preserve the same generic response used by password reset.
+           * Do not reveal whether the account exists or why reset is unavailable.
+           */
+          setHeaderText('com_auth_reset_password_link_sent');
+          setBodyText(<ResetPasswordBodyText />);
+          return;
+        }
+      }
+    } catch {
+      /*
+       * UI policy lookup is advisory. The reset service remains authoritative
+       * and independently suppresses SSO_REQUIRED reset tokens.
+       */
+    }
+
     requestPasswordReset.mutate(data, {
       onSuccess: (data: TRequestPasswordResetResponse) => {
         if (data.link && !startupConfig?.emailEnabled) {

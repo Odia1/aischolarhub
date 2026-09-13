@@ -17,7 +17,12 @@ const {
 const { verify2FAWithTempToken } = require('~/server/controllers/auth/TwoFactorAuthController');
 const { logoutController } = require('~/server/controllers/auth/LogoutController');
 const { loginController } = require('~/server/controllers/auth/LoginController');
-const { findBalanceByUser, upsertBalanceFields } = require('~/models');
+const {
+  findBalanceByUser,
+  upsertBalanceFields,
+  findUser,
+  getInstitutionById,
+} = require('~/models');
 const { getAppConfig } = require('~/server/services/Config');
 const middleware = require('~/server/middleware');
 
@@ -39,6 +44,85 @@ const getCloudFrontAuthCookieRefreshResult = (req, res) => {
 
 const ldapAuth = !!process.env.LDAP_URL && !!process.env.LDAP_USER_SEARCH_BASE;
 //Local
+
+/*
+ * Pre-login UX policy lookup.
+ *
+ * This endpoint intentionally exposes only authentication capabilities.
+ * It never returns tenant, role, user id, institution name, or an
+ * account-existence flag.
+ */
+router.post('/login-policy', middleware.loginPolicyLimiter, async (req, res) => {
+  const genericLocal = {
+    passwordAllowed: true,
+    passwordResetAllowed: true,
+    ssoRequired: false,
+    provider: null,
+  };
+
+  try {
+    const email =
+      typeof req.body?.email === 'string'
+        ? req.body.email.trim().toLowerCase()
+        : '';
+
+    if (!email || email.length > 120 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return res.json(genericLocal);
+    }
+
+    const user = await findUser({ email }, 'tenantId');
+
+    /*
+     * Unknown users and platform-scoped users receive the same LOCAL-capable
+     * response. Domain appearance alone never determines authorization.
+     */
+    if (!user?.tenantId) {
+      return res.json(genericLocal);
+    }
+
+    const institution = await getInstitutionById(String(user.tenantId));
+
+    /*
+     * Fail closed for tenant accounts whose institution is unavailable.
+     * Do not disclose why access is unavailable.
+     */
+    if (!institution || institution.status === 'disabled') {
+      return res.json({
+        passwordAllowed: false,
+        passwordResetAllowed: false,
+        ssoRequired: false,
+        provider: null,
+      });
+    }
+
+    const mode = institution.authPolicy?.mode ?? 'LOCAL';
+    const provider = institution.authPolicy?.provider ?? null;
+
+    if (mode === 'SSO_REQUIRED') {
+      return res.json({
+        passwordAllowed: false,
+        passwordResetAllowed: false,
+        ssoRequired: true,
+        provider,
+      });
+    }
+
+    return res.json({
+      passwordAllowed: true,
+      passwordResetAllowed: true,
+      ssoRequired: false,
+      provider: mode === 'SSO_OPTIONAL' ? provider : null,
+    });
+  } catch (error) {
+    /*
+     * UX discovery must never weaken authentication. A lookup failure falls
+     * back to the normal login form; authoritative login middleware still
+     * rejects local authentication when institution policy requires SSO.
+     */
+    return res.json(genericLocal);
+  }
+});
+
 router.post('/logout', middleware.requireJwtAuth, logoutController);
 router.post(
   '/login',

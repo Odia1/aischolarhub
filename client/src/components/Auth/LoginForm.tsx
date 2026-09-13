@@ -26,6 +26,12 @@ const LoginForm: React.FC<TLoginFormProps> = ({ onSubmit, startupConfig, error, 
   } = useForm<TLoginUser>();
   const [showResendLink, setShowResendLink] = useState<boolean>(false);
   const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
+  const [loginPolicy, setLoginPolicy] = useState<{
+    passwordAllowed: boolean;
+    passwordResetAllowed: boolean;
+    ssoRequired: boolean;
+    provider: string | null;
+  } | null>(null);
 
   const { data: config } = useGetStartupConfig();
   const useUsernameLogin = config?.ldap?.username;
@@ -73,6 +79,51 @@ const LoginForm: React.FC<TLoginFormProps> = ({ onSubmit, startupConfig, error, 
     resendLinkMutation.mutate({ email });
   };
 
+  const resolveLoginPolicy = async () => {
+    if (useUsernameLogin) {
+      setLoginPolicy(null);
+      return;
+    }
+
+    const email = String(getValues('email') || '').trim();
+
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setLoginPolicy(null);
+      return;
+    }
+
+    try {
+      const response = await fetch('/api/auth/login-policy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ email }),
+      });
+
+      if (!response.ok) {
+        setLoginPolicy(null);
+        return;
+      }
+
+      const policy = await response.json();
+      setLoginPolicy(policy);
+    } catch {
+      setLoginPolicy(null);
+    }
+  };
+
+  const ssoRequired = loginPolicy?.ssoRequired === true;
+  const passwordAllowed = loginPolicy?.passwordAllowed !== false;
+  const passwordResetAllowed = loginPolicy?.passwordResetAllowed !== false;
+
+  const emailRegistration = register('email', {
+    required: localize('com_auth_email_required'),
+    maxLength: { value: 120, message: localize('com_auth_email_max_length') },
+    validate: useUsernameLogin
+      ? undefined
+      : (value) => validateEmail(value, localize('com_auth_email_pattern')),
+  });
+
   return (
     <>
       {showResendLink && (
@@ -92,7 +143,12 @@ const LoginForm: React.FC<TLoginFormProps> = ({ onSubmit, startupConfig, error, 
         className="mt-6"
         aria-label="Login form"
         method="POST"
-        onSubmit={handleSubmit((data) => onSubmit(data))}
+        onSubmit={handleSubmit((data) => {
+          if (ssoRequired) {
+            return;
+          }
+          onSubmit(data);
+        })}
       >
         <div className="mb-4">
           <div className="relative">
@@ -101,13 +157,11 @@ const LoginForm: React.FC<TLoginFormProps> = ({ onSubmit, startupConfig, error, 
               id="email"
               autoComplete={useUsernameLogin ? 'username' : 'email'}
               aria-label={localize('com_auth_email')}
-              {...register('email', {
-                required: localize('com_auth_email_required'),
-                maxLength: { value: 120, message: localize('com_auth_email_max_length') },
-                validate: useUsernameLogin
-                  ? undefined
-                  : (value) => validateEmail(value, localize('com_auth_email_pattern')),
-              })}
+              {...emailRegistration}
+              onBlur={(event) => {
+                emailRegistration.onBlur(event);
+                void resolveLoginPolicy();
+              }}
               aria-invalid={!!errors.email}
               className={authInputClassName}
               placeholder=" "
@@ -120,41 +174,56 @@ const LoginForm: React.FC<TLoginFormProps> = ({ onSubmit, startupConfig, error, 
           </div>
           {renderError('email')}
         </div>
-        <div className="mb-2">
-          <div className="relative">
-            <SecretInput
-              id="password"
-              autoComplete="current-password"
-              aria-label={localize('com_auth_password')}
-              {...register('password', {
-                required: localize('com_auth_password_required'),
-                minLength: {
-                  value: startupConfig?.minPasswordLength || 8,
-                  message: localize('com_auth_password_min_length'),
-                },
-                maxLength: { value: 128, message: localize('com_auth_password_max_length') },
-              })}
-              aria-invalid={!!errors.password}
-              className={authSecretInputClassName}
-              placeholder=" "
-              label={localize('com_auth_password')}
-              labelClassName={authLabelClassName}
-              controlsClassName="right-2"
-              buttonClassName={authSecretButtonClassName}
-            />
-          </div>
-          {renderError('password')}
-        </div>
-        {startupConfig.passwordResetEnabled && (
-          <a
-            href="/forgot-password"
-            className="inline-flex p-1 text-sm font-medium text-accent-primary underline decoration-transparent transition-all duration-200 hover:text-accent-primary-hover hover:decoration-accent-primary-hover focus:text-accent-primary-hover focus:decoration-accent-primary-hover"
-          >
-            {localize('com_auth_password_forgot')}
-          </a>
+        {passwordAllowed && (
+          <>
+            <div className="mb-2">
+              <div className="relative">
+                <SecretInput
+                  id="password"
+                  autoComplete="current-password"
+                  aria-label={localize('com_auth_password')}
+                  {...register('password', {
+                    required: passwordAllowed ? localize('com_auth_password_required') : false,
+                    minLength: {
+                      value: startupConfig?.minPasswordLength || 8,
+                      message: localize('com_auth_password_min_length'),
+                    },
+                    maxLength: { value: 128, message: localize('com_auth_password_max_length') },
+                  })}
+                  aria-invalid={!!errors.password}
+                  className={authSecretInputClassName}
+                  placeholder=" "
+                  label={localize('com_auth_password')}
+                  labelClassName={authLabelClassName}
+                  controlsClassName="right-2"
+                  buttonClassName={authSecretButtonClassName}
+                />
+              </div>
+              {renderError('password')}
+            </div>
+
+            {startupConfig.passwordResetEnabled && passwordResetAllowed && (
+              <a
+                href="/forgot-password"
+                className="inline-flex p-1 text-sm font-medium text-accent-primary underline decoration-transparent transition-all duration-200 hover:text-accent-primary-hover hover:decoration-accent-primary-hover focus:text-accent-primary-hover focus:decoration-accent-primary-hover"
+              >
+                {localize('com_auth_password_forgot')}
+              </a>
+            )}
+          </>
         )}
 
-        {requireCaptcha && (
+        {ssoRequired && (
+          <div className="mt-2 rounded-md border border-border-light bg-surface-secondary px-3 py-2 text-sm text-text-secondary">
+            {loginPolicy?.provider === 'GOOGLE'
+              ? 'Your institution requires Google sign-in. Use Continue with Google below.'
+              : loginPolicy?.provider === 'MICROSOFT_ENTRA'
+                ? 'Your institution requires Microsoft sign-in.'
+                : 'Your institution requires single sign-on.'}
+          </div>
+        )}
+
+        {requireCaptcha && !ssoRequired && (
           <div className="my-4 flex justify-center">
             <Turnstile
               siteKey={startupConfig.turnstile!.siteKey}
@@ -169,18 +238,20 @@ const LoginForm: React.FC<TLoginFormProps> = ({ onSubmit, startupConfig, error, 
           </div>
         )}
 
-        <div className="mt-6">
-          <Button
-            aria-label={localize('com_auth_continue')}
-            data-testid="login-button"
-            type="submit"
-            disabled={(requireCaptcha && !turnstileToken) || isSubmitting}
-            variant="submit"
-            className="h-12 w-full rounded-2xl"
-          >
-            {isSubmitting ? <Spinner /> : localize('com_auth_continue')}
-          </Button>
-        </div>
+        {!ssoRequired && (
+          <div className="mt-6">
+            <Button
+              aria-label={localize('com_auth_continue')}
+              data-testid="login-button"
+              type="submit"
+              disabled={(requireCaptcha && !turnstileToken) || isSubmitting}
+              variant="submit"
+              className="h-12 w-full rounded-2xl"
+            >
+              {isSubmitting ? <Spinner /> : localize('com_auth_continue')}
+            </Button>
+          </div>
+        )}
       </form>
     </>
   );

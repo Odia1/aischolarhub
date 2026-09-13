@@ -22,6 +22,7 @@ const {
 } = require('@librechat/api');
 const {
   findUser,
+  getInstitutionById,
   findToken,
   createUser,
   updateUser,
@@ -469,6 +470,41 @@ const requestPasswordReset = async (req) => {
     return {
       message: 'If an account with that email exists, a password reset link has been sent to it.',
     };
+  }
+
+  /*
+   * AI Scholar Hub institutional authentication policy.
+   *
+   * SSO_REQUIRED tenant accounts must never receive, create, or consume
+   * local-password reset/setup credentials. Return the generic response
+   * so this endpoint does not disclose account existence or auth policy.
+   */
+  if (user.tenantId) {
+    try {
+      const institution = await getInstitutionById(String(user.tenantId));
+      const authMode = institution?.authPolicy?.mode ?? 'LOCAL';
+
+      if (
+        !institution ||
+        institution.status === 'disabled' ||
+        authMode === 'SSO_REQUIRED'
+      ) {
+        logger.info(
+          `[requestPasswordReset] Local password reset suppressed for tenant-managed account [Tenant: ${user.tenantId}]`,
+        );
+        return {
+          message: 'If an account with that email exists, a password reset link has been sent to it.',
+        };
+      }
+    } catch (err) {
+      logger.error(
+        '[requestPasswordReset] Failed to resolve institution auth policy; suppressing password reset:',
+        err,
+      );
+      return {
+        message: 'If an account with that email exists, a password reset link has been sent to it.',
+      };
+    }
   }
 
   await Promise.all([
