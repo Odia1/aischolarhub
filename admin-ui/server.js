@@ -1512,6 +1512,99 @@ app.get("/api/users", async (req, res) => {
   }
 });
 
+
+function normalizeInstitutionAuthPolicy(value, existing = {}) {
+  const source =
+    value && typeof value === "object"
+      ? value
+      : {};
+
+  const previous =
+    existing && typeof existing === "object"
+      ? existing
+      : {};
+
+  const mode = String(
+    source.mode !== undefined
+      ? source.mode
+      : previous.mode || "LOCAL"
+  ).trim().toUpperCase();
+
+  if (!["LOCAL", "SSO_OPTIONAL", "SSO_REQUIRED"].includes(mode)) {
+    const e = new Error("Invalid institution authentication mode");
+    e.statusCode = 400;
+    throw e;
+  }
+
+  let provider =
+    source.provider !== undefined
+      ? String(source.provider || "").trim().toUpperCase() || null
+      : previous.provider || null;
+
+  if (
+    provider !== null &&
+    !["GOOGLE", "MICROSOFT_ENTRA"].includes(provider)
+  ) {
+    const e = new Error("Invalid institution SSO provider");
+    e.statusCode = 400;
+    throw e;
+  }
+
+  if (mode === "LOCAL") {
+    provider = null;
+  }
+
+  if (
+    (mode === "SSO_OPTIONAL" || mode === "SSO_REQUIRED") &&
+    !provider
+  ) {
+    const e = new Error("An SSO provider is required when institutional SSO is enabled");
+    e.statusCode = 400;
+    throw e;
+  }
+
+  const domains = normalizeInstitutionDomains(
+    source.domains !== undefined
+      ? source.domains
+      : previous.domains || []
+  ) || [];
+
+  const provisioning = "PREPROVISIONED_ONLY";
+
+  let entraTenantId =
+    source.entraTenantId !== undefined
+      ? String(source.entraTenantId || "").trim() || null
+      : String(previous.entraTenantId || "").trim() || null;
+
+  if (provider !== "MICROSOFT_ENTRA") {
+    entraTenantId = null;
+  }
+
+  if (
+    provider === "MICROSOFT_ENTRA" &&
+    (mode === "SSO_OPTIONAL" || mode === "SSO_REQUIRED") &&
+    !entraTenantId
+  ) {
+    const e = new Error("Microsoft Entra Tenant ID is required for Microsoft SSO");
+    e.statusCode = 400;
+    throw e;
+  }
+
+  if (entraTenantId && entraTenantId.length > 128) {
+    const e = new Error("Microsoft Entra Tenant ID is too long");
+    e.statusCode = 400;
+    throw e;
+  }
+
+  return {
+    mode,
+    provider,
+    domains,
+    provisioning,
+    entraTenantId
+  };
+}
+
 app.get("/api/usage/institutions", async (req, res) => {
   try {
     let filter=isInstitutionAdmin(req.admin)?{_id:actorTenant(req)}:{};
@@ -1580,6 +1673,10 @@ app.post("/api/institutions", async (req, res) => {
     const domains = normalizeInstitutionDomains(req.body.domains) || [];
     const regionalContext = normalizeRegionalContext(req.body.regionalContext);
     const limits = normalizeInstitutionLimits(req.body.limits);
+    const authPolicy = normalizeInstitutionAuthPolicy({
+      ...(req.body.authPolicy || {}),
+      domains
+    });
     await assertInstitutionDomainsAvailable(id, domains);
 
     const now = new Date();
@@ -1591,6 +1688,7 @@ app.post("/api/institutions", async (req, res) => {
       domains,
       regionalContext,
       limits,
+      authPolicy,
       createdAt: now,
       updatedAt: now
     };
@@ -1636,6 +1734,27 @@ app.patch("/api/institutions/:id", async (req, res) => {
           req.body.regionalContext
         );
     }
+
+    if (req.body.authPolicy !== undefined) {
+      const existing = await institutions.findOne(
+        { _id: id },
+        { projection: { authPolicy: 1, domains: 1 } }
+      );
+
+      if (!existing)
+        return res.status(404).json({ error: "Institution not found" });
+
+      update.authPolicy = normalizeInstitutionAuthPolicy(
+        {
+          ...req.body.authPolicy,
+          domains:
+            req.body.authPolicy?.domains !== undefined
+              ? req.body.authPolicy.domains
+              : existing.domains || []
+        },
+        existing.authPolicy || {}
+      );
+    }
     if (req.body.limits !== undefined) {
       const existing = await institutions.findOne({ _id: id }, { projection: { limits: 1 } });
       if (!existing) return res.status(404).json({ error: "Institution not found" });
@@ -1644,7 +1763,7 @@ app.patch("/api/institutions/:id", async (req, res) => {
     if (req.body.domains !== undefined) {
       const institution = await institutions.findOne(
         { _id: id },
-        { projection: { domains: 1 } }
+        { projection: { domains: 1, authPolicy: 1 } }
       );
 
       if (!institution)
@@ -1661,6 +1780,20 @@ app.patch("/api/institutions/:id", async (req, res) => {
       );
 
       update.domains = domains;
+
+      const existingPolicy =
+        update.authPolicy ||
+        institution.authPolicy ||
+        {};
+
+      update.authPolicy =
+        normalizeInstitutionAuthPolicy(
+          {
+            ...existingPolicy,
+            domains
+          },
+          existingPolicy
+        );
     }
 
     const result = await institutions.findOneAndUpdate(
@@ -1853,6 +1986,22 @@ app.post("/api/users", async (req, res) => {
 
     const result = await users.insertOne(doc);
 
+    let institutionAuthPolicy = null;
+
+    if (tenantId) {
+      const institution = await institutions.findOne(
+        { _id: tenantId },
+        { projection: { authPolicy: 1 } }
+      );
+
+      institutionAuthPolicy =
+        institution?.authPolicy || {
+          mode: "LOCAL",
+          provider: null,
+          provisioning: "PREPROVISIONED_ONLY"
+        };
+    }
+
     await audit("USER_CREATED", req, {
       targetUserId: result.insertedId,
       targetEmail: email,
@@ -1862,6 +2011,31 @@ app.post("/api/users", async (req, res) => {
         emailSent: false
       }
     });
+
+    /*
+     * An institution with SSO_REQUIRED deliberately does not issue
+     * a local password setup email. The account is provisioned in AIH,
+     * but authentication must occur through the configured IdP.
+     */
+    if (institutionAuthPolicy?.mode === "SSO_REQUIRED") {
+      await audit("USER_SSO_PROVISIONED", req, {
+        targetUserId: result.insertedId,
+        targetEmail: email,
+        targetRole: role,
+        safeDetails: {
+          institutionId: tenantId,
+          provider: institutionAuthPolicy.provider || null
+        }
+      });
+
+      return res.status(201).json({
+        ok: true,
+        id: result.insertedId,
+        emailSent: false,
+        ssoRequired: true,
+        provider: institutionAuthPolicy.provider || null
+      });
+    }
 
     /*
      * Reuse LibreChat's native password-reset service through its
@@ -2298,6 +2472,7 @@ app.post("/api/users/bulk", async (req, res) => {
       let institutionCategory = null;
       let resolvedAcademicAudience = null;
       let resolvedInstitutionId = institutionId;
+      let institutionAuthPolicy = null;
 
       if (ragAccess === undefined) {
         errors.push(`Row ${rowNo}: ragAccess must be true/false, yes/no, or enabled/disabled`);
@@ -2340,6 +2515,13 @@ app.post("/api/users/bulk", async (req, res) => {
           continue;
         }
         institutionCategory = normalizeInstitutionCategory(institution.category);
+
+        institutionAuthPolicy =
+          institution.authPolicy || {
+            mode: "LOCAL",
+            provider: null,
+            provisioning: "PREPROVISIONED_ONLY"
+          };
 
         if (role === "Instructor") {
           if (institutionCategory === "SCHOOL") {
@@ -2403,6 +2585,7 @@ app.post("/api/users/bulk", async (req, res) => {
           institutionId: resolvedInstitutionId,
           ragAccess,
           institutionCategory,
+          institutionAuthPolicy,
           academicAudience: resolvedAcademicAudience,
           teachingProfile,
           status: "skipped",
@@ -2418,6 +2601,7 @@ app.post("/api/users/bulk", async (req, res) => {
           institutionId: resolvedInstitutionId,
           ragAccess,
           institutionCategory,
+          institutionAuthPolicy,
           academicAudience: resolvedAcademicAudience,
           teachingProfile,
           status: "new"
@@ -2490,35 +2674,50 @@ app.post("/api/users/bulk", async (req, res) => {
         await users.insertOne(doc);
 
         let emailSent = false;
+        const ssoRequired =
+          item.institutionAuthPolicy?.mode === "SSO_REQUIRED";
 
-        try {
-          const librechatUrl =
-            process.env.LIBRECHAT_INTERNAL_URL ||
-            "http://api:3080";
+        if (!ssoRequired) {
+          try {
+            const librechatUrl =
+              process.env.LIBRECHAT_INTERNAL_URL ||
+              "http://api:3080";
 
-          const resetResponse = await fetch(
-            `${librechatUrl}/api/auth/requestPasswordReset`,
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ email: item.email })
+            const resetResponse = await fetch(
+              `${librechatUrl}/api/auth/requestPasswordReset`,
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ email: item.email })
+              }
+            );
+
+            emailSent = resetResponse.ok;
+
+            if (!emailSent) {
+              const resetData = await resetResponse.json().catch(() => ({}));
+              console.error(
+                `[bulk-create] Setup email failed for ${item.email}:`,
+                resetData
+              );
             }
-          );
-
-          emailSent = resetResponse.ok;
-
-          if (!emailSent) {
-            const resetData = await resetResponse.json().catch(() => ({}));
+          } catch (emailError) {
             console.error(
-              `[bulk-create] Setup email failed for ${item.email}:`,
-              resetData
+              `[bulk-create] Setup email request failed for ${item.email}:`,
+              emailError
             );
           }
-        } catch (emailError) {
-          console.error(
-            `[bulk-create] Setup email request failed for ${item.email}:`,
-            emailError
-          );
+        } else {
+          await audit("USER_SSO_PROVISIONED", req, {
+            targetEmail: item.email,
+            targetRole: item.role,
+            safeDetails: {
+              institutionId: item.institutionId,
+              provider:
+                item.institutionAuthPolicy?.provider || null,
+              source: "bulk"
+            }
+          });
         }
 
         created.push({
@@ -2529,7 +2728,11 @@ app.post("/api/users/bulk", async (req, res) => {
           academicAudience: item.academicAudience,
           teachingProfile: item.teachingProfile,
           ragAccess: item.ragAccess === true,
-          emailSent
+          emailSent,
+          ssoRequired:
+            item.institutionAuthPolicy?.mode === "SSO_REQUIRED",
+          provider:
+            item.institutionAuthPolicy?.provider || null
         });
       } catch (e) {
         console.error(`Bulk create failed for ${item.email}:`, e);

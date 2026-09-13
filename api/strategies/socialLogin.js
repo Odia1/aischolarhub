@@ -3,7 +3,7 @@ const { ErrorTypes } = require('librechat-data-provider');
 const { isEnabled, isEmailDomainAllowed, resolveAppConfigForUser } = require('@librechat/api');
 const { createSocialUser, handleExistingUser } = require('./process');
 const { getAppConfig } = require('~/server/services/Config');
-const { findUser, updateUser } = require('~/models');
+const { findUser, updateUser, getInstitutionById } = require('~/models');
 
 const socialLogin =
   (provider, getProfileDetails, options = {}) =>
@@ -44,6 +44,66 @@ const socialLogin =
       const appConfig = existingUser?.tenantId
         ? await resolveAppConfigForUser(getAppConfig, existingUser)
         : baseConfig;
+
+      /*
+       * Institution SSO is determined exclusively by explicit institution
+       * configuration. Email-domain appearance never enables SSO.
+       *
+       * No tenantId:
+       *   platform-scoped account; institutional SSO policy does not apply.
+       *
+       * Tenant user:
+       *   provider login is permitted only when this institution explicitly
+       *   enables that provider through SSO_OPTIONAL or SSO_REQUIRED.
+       */
+      let institutionAuthPolicy = null;
+
+      if (existingUser?.tenantId) {
+        const institution = await getInstitutionById(String(existingUser.tenantId));
+
+        if (!institution || institution.status === 'disabled') {
+          logger.warn(
+            `[${provider}Login] Authentication blocked - institution unavailable`,
+          );
+          const institutionError = new Error(ErrorTypes.AUTH_FAILED);
+          institutionError.code = ErrorTypes.AUTH_FAILED;
+          institutionError.message = 'Institution access unavailable';
+          return cb(institutionError);
+        }
+
+        institutionAuthPolicy = institution.authPolicy ?? {
+          mode: 'LOCAL',
+          provider: null,
+          provisioning: 'PREPROVISIONED_ONLY',
+        };
+
+        const mode = institutionAuthPolicy.mode ?? 'LOCAL';
+
+        const configuredProvider =
+          institutionAuthPolicy.provider === 'GOOGLE'
+            ? 'google'
+            : institutionAuthPolicy.provider === 'MICROSOFT_ENTRA'
+              ? 'openid'
+              : null;
+
+        const ssoEnabled =
+          mode === 'SSO_OPTIONAL' ||
+          mode === 'SSO_REQUIRED';
+
+        if (
+          options.enforceInstitutionSsoPolicy === true &&
+          (!ssoEnabled || configuredProvider !== provider)
+        ) {
+          logger.warn(
+            `[${provider}Login] Authentication blocked - provider not enabled for tenant`,
+          );
+
+          const policyError = new Error(ErrorTypes.AUTH_FAILED);
+          policyError.code = ErrorTypes.AUTH_FAILED;
+          policyError.message = 'SSO provider is not enabled for this institution';
+          return cb(policyError);
+        }
+      }
 
       if (!isEmailDomainAllowed(email, appConfig?.registration?.allowedDomains)) {
         logger.error(
@@ -96,6 +156,62 @@ const socialLogin =
         await handleExistingUser(existingUser, avatarUrl, appConfig, email);
         return passResult(existingUser);
       } else if (existingUser) {
+        /*
+         * AI Scholar Hub pre-provisioned institutional SSO linking.
+         *
+         * This path NEVER creates an account. It only permits a verified
+         * external identity to be attached to an already-provisioned,
+         * tenant-scoped AIH account when the caller explicitly enables
+         * allowPreprovisionedLink.
+         *
+         * Platform/admin OAuth deliberately does not enable this option.
+         */
+        if (
+          options.existingUsersOnly &&
+          options.allowPreprovisionedLink === true &&
+          options.enforceInstitutionSsoPolicy === true &&
+          existingUser.tenantId &&
+          institutionAuthPolicy &&
+          (
+            institutionAuthPolicy.mode === 'SSO_OPTIONAL' ||
+            institutionAuthPolicy.mode === 'SSO_REQUIRED'
+          ) &&
+          institutionAuthPolicy.provider === 'GOOGLE' &&
+          emailVerified === true &&
+          id &&
+          typeof id === 'string'
+        ) {
+          const providerUpdate = {
+            provider,
+            [providerKey]: id,
+            emailVerified: true,
+          };
+
+          await updateUser(existingUser._id, providerUpdate);
+
+          const linkedUser = await findUser({
+            _id: existingUser._id,
+            [providerKey]: id,
+          });
+
+          if (!linkedUser) {
+            logger.warn(
+              `[${provider}Login] Pre-provisioned identity link failed for ${email}`,
+            );
+            const linkError = new Error(ErrorTypes.AUTH_FAILED);
+            linkError.code = ErrorTypes.AUTH_FAILED;
+            return cb(linkError);
+          }
+
+          await handleExistingUser(linkedUser, avatarUrl, appConfig, email);
+
+          logger.info(
+            `[${provider}Login] Linked verified identity to pre-provisioned tenant account`,
+          );
+
+          return passResult(linkedUser);
+        }
+
         logger.info(
           `[${provider}Login] User ${email} already exists with provider ${existingUser.provider}`,
         );

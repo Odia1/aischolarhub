@@ -11,6 +11,7 @@ const {
 } = require('./messageValidation');
 const checkDomainAllowed = require('./checkDomainAllowed');
 const requireLocalAuth = require('./requireLocalAuth');
+const enforceInstitutionLocalAuth = require('./enforceInstitutionLocalAuth');
 const canDeleteAccount = require('./canDeleteAccount');
 const accessResources = require('./accessResources');
 const requireLdapAuth = require('./requireLdapAuth');
@@ -51,6 +52,7 @@ module.exports = {
   checkInviteUser,
   requireLdapAuth,
   requireLocalAuth,
+  enforceInstitutionLocalAuth,
   canDeleteAccount,
   configMiddleware,
   checkDomainAllowed,

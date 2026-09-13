@@ -56,6 +56,39 @@ const institutionSchema = new Schema<IInstitution>(
         default: null,
       },
     },
+    authPolicy: {
+      mode: {
+        type: String,
+        enum: ['LOCAL', 'SSO_OPTIONAL', 'SSO_REQUIRED'],
+        default: 'LOCAL',
+        required: true,
+      },
+      provider: {
+        type: String,
+        enum: ['GOOGLE', 'MICROSOFT_ENTRA'],
+        default: null,
+      },
+      domains: [
+        {
+          type: String,
+          trim: true,
+          lowercase: true,
+          maxlength: 253,
+        },
+      ],
+      provisioning: {
+        type: String,
+        enum: ['PREPROVISIONED_ONLY'],
+        default: 'PREPROVISIONED_ONLY',
+        required: true,
+      },
+      entraTenantId: {
+        type: String,
+        trim: true,
+        maxlength: 128,
+        default: null,
+      },
+    },
   },
   { timestamps: true, collection: 'institutions' },
 );

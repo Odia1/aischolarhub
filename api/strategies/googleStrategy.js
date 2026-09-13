@@ -10,8 +10,22 @@ const getProfileDetails = ({ profile }) => ({
   emailVerified: profile.emails[0].verified,
 });
 
-const googleLogin = socialLogin('google', getProfileDetails);
-const googleAdminLogin = socialLogin('google', getProfileDetails, { existingUsersOnly: true });
+/*
+ * AI Scholar Hub institutional security policy:
+ *
+ * Google authenticates identity; AIH authorizes access.
+ * Normal Google OAuth must never auto-provision an AIH account.
+ * Institution users must first be singly or bulk provisioned in AIH.
+ */
+const googleLogin = socialLogin('google', getProfileDetails, {
+  existingUsersOnly: true,
+  allowPreprovisionedLink: true,
+  enforceInstitutionSsoPolicy: true,
+});
+
+const googleAdminLogin = socialLogin('google', getProfileDetails, {
+  existingUsersOnly: true,
+});
 
 const getGoogleConfig = (callbackURL) => ({
   clientID: process.env.GOOGLE_CLIENT_ID,

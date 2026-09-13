@@ -1073,6 +1073,39 @@ form{
     Enter one or more email domains. A leading @ is optional.
   </div>
 
+  <fieldset style="margin:14px 0;padding:12px;border:1px solid #ddd;border-radius:8px">
+    <legend style="padding:0 6px;font-weight:600">Authentication</legend>
+
+    <label class="muted" for="iauthMode">Authentication mode</label>
+    <select id="iauthMode">
+      <option value="LOCAL">Local / password</option>
+      <option value="SSO_OPTIONAL">SSO optional</option>
+      <option value="SSO_REQUIRED">SSO required</option>
+    </select>
+
+    <div id="iauthProviderWrap" style="display:none">
+      <label class="muted" for="iauthProvider">SSO provider</label>
+      <select id="iauthProvider">
+        <option value="GOOGLE">Google Workspace</option>
+        <option value="MICROSOFT_ENTRA">Microsoft Entra ID</option>
+      </select>
+    </div>
+
+    <div id="ientraTenantWrap" style="display:none">
+      <label class="muted" for="ientraTenantId">Microsoft Entra Tenant ID</label>
+      <input
+        id="ientraTenantId"
+        maxlength="128"
+        placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx">
+    </div>
+
+    <div class="rag-help" style="margin-top:10px">
+      Provisioning: <strong>Pre-provisioned users only</strong>.
+      Successful Google or Microsoft authentication never creates an AI Scholar Hub account.
+      Email domains are used only for identity-provider routing.
+    </div>
+  </fieldset>
+
   <label class="muted" for="imaxAccounts">Maximum institution accounts</label>
   <input id="imaxAccounts" type="number" min="1" step="1" placeholder="Blank = unlimited">
   <label class="muted" for="imonthlyTokens">Monthly token limit</label>
@@ -2345,6 +2378,116 @@ function institutionMatchesSearch(institution, query) {
   );
 }
 
+
+function institutionAuthDescription(i) {
+  const p = i?.authPolicy || {};
+  const mode = p.mode || "LOCAL";
+
+  if (mode === "LOCAL") {
+    return "Local / password";
+  }
+
+  const provider =
+    p.provider === "GOOGLE"
+      ? "Google Workspace"
+      : p.provider === "MICROSOFT_ENTRA"
+        ? "Microsoft Entra ID"
+        : "Unconfigured provider";
+
+  return `${
+    mode === "SSO_REQUIRED"
+      ? "SSO required"
+      : "SSO optional"
+  } · ${provider}`;
+}
+
+async function saveInstitutionAuthPolicy(id) {
+  const key = encodeURIComponent(id);
+
+  const mode =
+    document.getElementById(`auth-mode-${key}`)?.value ||
+    "LOCAL";
+
+  const provider =
+    mode === "LOCAL"
+      ? null
+      : document.getElementById(`auth-provider-${key}`)?.value || null;
+
+  const entraTenantId =
+    provider === "MICROSOFT_ENTRA"
+      ? String(
+          document.getElementById(`auth-entra-${key}`)?.value || ""
+        ).trim() || null
+      : null;
+
+  if (mode !== "LOCAL" && !provider) {
+    return alert("Select an SSO provider.");
+  }
+
+  if (
+    provider === "MICROSOFT_ENTRA" &&
+    !entraTenantId
+  ) {
+    return alert("Microsoft Entra Tenant ID is required.");
+  }
+
+  try {
+    await api(
+      `/api/institutions/${encodeURIComponent(id)}`,
+      {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          authPolicy: {
+            mode,
+            provider,
+            provisioning: "PREPROVISIONED_ONLY",
+            entraTenantId
+          }
+        })
+      }
+    );
+
+    await loadInstitutions();
+  } catch (e) {
+    alert(e.message);
+  }
+}
+
+function refreshInstitutionAuthCard(id) {
+  const key = encodeURIComponent(id);
+
+  const mode =
+    document.getElementById(`auth-mode-${key}`)?.value ||
+    "LOCAL";
+
+  const provider =
+    document.getElementById(`auth-provider-${key}`);
+
+  const providerWrap =
+    document.getElementById(`auth-provider-wrap-${key}`);
+
+  const entraWrap =
+    document.getElementById(`auth-entra-wrap-${key}`);
+
+  if (providerWrap) {
+    providerWrap.style.display =
+      mode === "LOCAL"
+        ? "none"
+        : "";
+  }
+
+  if (entraWrap) {
+    entraWrap.style.display =
+      mode !== "LOCAL" &&
+      provider?.value === "MICROSOFT_ENTRA"
+        ? ""
+        : "none";
+  }
+}
+
 function renderInstitutions() {
   const institutionSearch =
     document.getElementById(
@@ -2512,6 +2655,98 @@ function renderInstitutions() {
           )}
         </span>
       </div>
+
+      <div style="margin-top:10px">
+        <div class="muted">Authentication</div>
+        <div>
+          <strong>${esc(
+            institutionAuthDescription(i)
+          )}</strong>
+        </div>
+        <div class="muted">
+          Provisioning: Pre-provisioned users only
+        </div>
+      </div>
+
+      ${
+        !isInstitutionAdmin()
+          ? `
+      <div style="margin-top:12px;padding:10px;border:1px solid #ddd;border-radius:8px;background:#fff">
+        <div style="font-weight:600;margin-bottom:8px">
+          Authentication Policy
+        </div>
+
+        <label class="muted">Mode</label>
+        <select
+          id="auth-mode-${encodeURIComponent(i._id)}"
+          onchange='refreshInstitutionAuthCard(${JSON.stringify(i._id)})'>
+          <option value="LOCAL" ${(i.authPolicy?.mode || "LOCAL") === "LOCAL" ? "selected" : ""}>
+            Local / password
+          </option>
+          <option value="SSO_OPTIONAL" ${i.authPolicy?.mode === "SSO_OPTIONAL" ? "selected" : ""}>
+            SSO optional
+          </option>
+          <option value="SSO_REQUIRED" ${i.authPolicy?.mode === "SSO_REQUIRED" ? "selected" : ""}>
+            SSO required
+          </option>
+        </select>
+
+        <div
+          id="auth-provider-wrap-${encodeURIComponent(i._id)}"
+          style="margin-top:8px;${
+            (i.authPolicy?.mode || "LOCAL") === "LOCAL"
+              ? "display:none"
+              : ""
+          }">
+
+          <label class="muted">Provider</label>
+
+          <select
+            id="auth-provider-${encodeURIComponent(i._id)}"
+            onchange='refreshInstitutionAuthCard(${JSON.stringify(i._id)})'>
+            <option value="GOOGLE" ${i.authPolicy?.provider === "GOOGLE" ? "selected" : ""}>
+              Google Workspace
+            </option>
+            <option value="MICROSOFT_ENTRA" ${i.authPolicy?.provider === "MICROSOFT_ENTRA" ? "selected" : ""}>
+              Microsoft Entra ID
+            </option>
+          </select>
+        </div>
+
+        <div
+          id="auth-entra-wrap-${encodeURIComponent(i._id)}"
+          style="margin-top:8px;${
+            i.authPolicy?.provider === "MICROSOFT_ENTRA" &&
+            (i.authPolicy?.mode === "SSO_OPTIONAL" ||
+             i.authPolicy?.mode === "SSO_REQUIRED")
+              ? ""
+              : "display:none"
+          }">
+
+          <label class="muted">Microsoft Entra Tenant ID</label>
+
+          <input
+            id="auth-entra-${encodeURIComponent(i._id)}"
+            maxlength="128"
+            value="${esc(i.authPolicy?.entraTenantId || "")}"
+            placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx">
+        </div>
+
+        <div class="rag-help" style="margin-top:8px">
+          Domains route users to the configured identity provider.
+          Only accounts already provisioned in AI Scholar Hub may authenticate.
+        </div>
+
+        <button
+          type="button"
+          style="margin-top:8px"
+          onclick='saveInstitutionAuthPolicy(${JSON.stringify(i._id)})'>
+          Save Authentication Policy
+        </button>
+      </div>
+      `
+          : ""
+      }
 
       <div style="margin-top:10px">
         <div class="muted">
@@ -3249,6 +3484,54 @@ async function loadInstitutionUsage(){const h=document.getElementById("instituti
 const d=await api(`/api/usage/institutions${scopeTenant?`?tenantId=${encodeURIComponent(scopeTenant)}`:""}`),rows=Array.isArray(d.institutions)?d.institutions:[];h.innerHTML=rows.length?`<div style="overflow:auto"><table style="width:100%;border-collapse:collapse;background:#fff"><thead><tr><th>Institution</th><th>Accounts</th><th>Max accounts</th><th>Tokens this month</th><th>Monthly token limit</th><th></th></tr></thead><tbody>${rows.map(r=>`<tr><td style="padding:8px;border-top:1px solid #eee"><strong>${quotaEscape(r.name||r.id)}</strong><div class="muted">${quotaEscape(r.id)}</div></td><td style="text-align:right">${Number(r.usage?.accountCount||0).toLocaleString()}</td><td><input id="qa-${encodeURIComponent(r.id)}" type="number" min="1" value="${r.limits?.maxAccounts??""}" placeholder="Unlimited" style="width:130px"></td><td style="text-align:right">${Number(r.usage?.monthlyTokens||0).toLocaleString()}</td><td><input id="qt-${encodeURIComponent(r.id)}" type="number" min="1" value="${r.limits?.monthlyTokens??""}" placeholder="Unlimited" style="width:170px"></td><td><button onclick='saveInstitutionLimits(${JSON.stringify(r.id)})'>Save</button></td></tr>`).join("")}</tbody></table></div>`:"<div class='muted'>No institutions available.</div>";const u=rows[0]?.usage;st.textContent=u?.periodStart?`UTC billing month: ${new Date(u.periodStart).toISOString().slice(0,10)} to ${new Date(u.periodEnd).toISOString().slice(0,10)}`:"";}catch(e){st.textContent=e.message||"Failed to load institution usage";}}
 async function saveInstitutionLimits(id){const k=encodeURIComponent(id),a=document.getElementById(`qa-${k}`),t=document.getElementById(`qt-${k}`);try{await api(`/api/institutions/${encodeURIComponent(id)}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({limits:{maxAccounts:a?.value?Number(a.value):null,monthlyTokens:t?.value?Number(t.value):null}})});await loadInstitutionUsage();}catch(e){alert(e.message);}}
 
+function refreshInstitutionAuthCreateControls() {
+  const mode = String(iauthMode?.value || "LOCAL");
+  const enabled = mode !== "LOCAL";
+
+  iauthProviderWrap.style.display =
+    enabled ? "" : "none";
+
+  ientraTenantWrap.style.display =
+    enabled && iauthProvider.value === "MICROSOFT_ENTRA"
+      ? ""
+      : "none";
+}
+
+iauthMode.onchange =
+  refreshInstitutionAuthCreateControls;
+
+iauthProvider.onchange =
+  refreshInstitutionAuthCreateControls;
+
+refreshInstitutionAuthCreateControls();
+
+function institutionAuthPolicyPayload() {
+  const mode = String(iauthMode.value || "LOCAL");
+
+  return {
+    mode,
+    provider:
+      mode === "LOCAL"
+        ? null
+        : String(iauthProvider.value || ""),
+    domains:
+      idomains.value
+        .split(/[\n,]+/)
+        .map(d =>
+          d.trim()
+            .toLowerCase()
+            .replace(/^@/, "")
+        )
+        .filter(Boolean),
+    provisioning: "PREPROVISIONED_ONLY",
+    entraTenantId:
+      mode !== "LOCAL" &&
+      iauthProvider.value === "MICROSOFT_ENTRA"
+        ? String(ientraTenantId.value || "").trim() || null
+        : null
+  };
+}
+
 institutionForm.onsubmit =
   async e => {
     e.preventDefault();
@@ -3277,6 +3560,8 @@ institutionForm.onsubmit =
                 maxAccounts: imaxAccounts.value ? Number(imaxAccounts.value) : null,
                 monthlyTokens: imonthlyTokens.value ? Number(imonthlyTokens.value) : null
               },
+              authPolicy:
+                institutionAuthPolicyPayload(),
               domains:
                 idomains.value
                   .split(/[\n,]+/)
