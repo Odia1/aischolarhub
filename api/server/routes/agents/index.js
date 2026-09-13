@@ -28,6 +28,7 @@ const {
   messageIpLimiter,
   configMiddleware,
   messageUserLimiter,
+  institutionTokenQuota,
 } = require('~/server/middleware');
 const SteerController = require('~/server/controllers/agents/steer');
 const {
@@ -1059,6 +1060,7 @@ router.use('/', v1);
 
 const chatRouter = express.Router();
 chatRouter.use(configMiddleware);
+chatRouter.use(institutionTokenQuota);
 
 if (isEnabled(LIMIT_MESSAGE_IP)) {
   chatRouter.use(unless(exemptAgentTriggerFromIpLimiter, messageIpLimiter));

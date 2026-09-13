@@ -1,5 +1,10 @@
 import type { FilterQuery } from 'mongoose';
-import type { IInstitution, InstitutionStatus } from '~/types/institution';
+import type {
+  IInstitution,
+  IInstitutionLimits,
+  InstitutionCategory,
+  InstitutionStatus,
+} from '~/types/institution';
 
 const INSTITUTION_ID_RE = /^[-a-zA-Z0-9_.]{1,128}$/;
 
@@ -9,10 +14,20 @@ export function createInstitutionMethods(
   listInstitutions: (options?: { limit?: number; offset?: number }) => Promise<IInstitution[]>;
   countInstitutions: () => Promise<number>;
   getInstitutionById: (id: string) => Promise<IInstitution | null>;
-  createInstitution: (data: { id: string; name: string }) => Promise<IInstitution>;
+  createInstitution: (data: {
+    id: string;
+    name: string;
+    category?: InstitutionCategory;
+    limits?: IInstitutionLimits;
+  }) => Promise<IInstitution>;
   updateInstitution: (
     id: string,
-    update: { name?: string; status?: InstitutionStatus },
+    update: {
+      name?: string;
+      status?: InstitutionStatus;
+      category?: InstitutionCategory;
+      limits?: IInstitutionLimits;
+    },
   ) => Promise<IInstitution | null>;
   deleteInstitution: (id: string) => Promise<unknown>;
   ensureInitialInstitution: () => Promise<void>;
@@ -37,15 +52,37 @@ export function createInstitutionMethods(
     return Institution().findById(id).lean<IInstitution>().exec();
   }
 
-  async function createInstitution(data: { id: string; name: string }) {
+  async function createInstitution(data: {
+    id: string;
+    name: string;
+    category?: InstitutionCategory;
+    limits?: IInstitutionLimits;
+  }) {
     if (!INSTITUTION_ID_RE.test(data.id)) throw new Error('Invalid institution id');
-    return Institution().create({ _id: data.id, name: data.name.trim(), status: 'enabled' });
+
+    return Institution().create({
+      _id: data.id,
+      name: data.name.trim(),
+      status: 'enabled',
+      ...(data.category !== undefined ? { category: data.category } : {}),
+      ...(data.limits !== undefined ? { limits: data.limits } : {}),
+    });
   }
 
-  async function updateInstitution(id: string, update: { name?: string; status?: InstitutionStatus }) {
+  async function updateInstitution(
+    id: string,
+    update: {
+      name?: string;
+      status?: InstitutionStatus;
+      category?: InstitutionCategory;
+      limits?: IInstitutionLimits;
+    },
+  ) {
     const set: Record<string, unknown> = {};
     if (update.name !== undefined) set.name = update.name.trim();
     if (update.status !== undefined) set.status = update.status;
+    if (update.category !== undefined) set.category = update.category;
+    if (update.limits !== undefined) set.limits = update.limits;
     return Institution().findByIdAndUpdate(id, { $set: set }, { new: true, runValidators: true })
       .lean<IInstitution>()
       .exec();

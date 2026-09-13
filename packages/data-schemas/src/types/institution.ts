@@ -18,6 +18,14 @@ export interface IInstitutionRegionalContext {
 }
 export type InstitutionCategory = 'SCHOOL' | 'HIGHER_EDUCATION' | 'MIXED';
 
+export interface IInstitutionLimits {
+  /** Maximum institution-scoped accounts. Undefined/null means unlimited. */
+  maxAccounts?: number | null;
+
+  /** Maximum prompt + completion tokens per UTC calendar month. */
+  monthlyTokens?: number | null;
+}
+
 export interface IInstitution extends Document {
   /** Canonical tenant identifier; stored as Mongo _id to avoid two tenancy keys. */
   _id: string;
@@ -25,6 +33,7 @@ export interface IInstitution extends Document {
   status: InstitutionStatus;
   regionalContext?: IInstitutionRegionalContext;
   category: InstitutionCategory;
+  limits?: IInstitutionLimits;
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -33,10 +42,12 @@ export interface CreateInstitutionInput {
   id: string;
   name: string;
   category?: InstitutionCategory;
+  limits?: IInstitutionLimits;
 }
 
 export interface UpdateInstitutionInput {
   name?: string;
   status?: InstitutionStatus;
   category?: InstitutionCategory;
+  limits?: IInstitutionLimits;
 }

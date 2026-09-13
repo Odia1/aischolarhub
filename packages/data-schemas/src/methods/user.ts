@@ -219,6 +219,22 @@ export function createUserMethods(
   /**
    * Creates a new user, optionally with a TTL of 1 week.
    */
+  async function assertInstitutionAccountCapacity(tenantIdValue: unknown, additionalAccounts: number = 1): Promise<void> {
+    const tenantId=String(tenantIdValue ?? '').trim();
+    if (!tenantId || additionalAccounts<=0) return;
+    const Institution=mongoose.connection.collection('institutions');
+    const User=mongoose.models.User;
+    const institution=await Institution.findOne({_id:tenantId},{projection:{_id:1,limits:1}});
+    const n=Number(institution?.limits?.maxAccounts);
+    const limit=Number.isSafeInteger(n)&&n>0?n:null;
+    if (!limit) return;
+    const current=await User.countDocuments({tenantId});
+    if (current+additionalAccounts>limit) {
+      const error=new Error(`Institution account limit reached (${current}/${limit})`) as Error & {code?:string;statusCode?:number};
+      error.code='INSTITUTION_ACCOUNT_LIMIT'; error.statusCode=409; throw error;
+    }
+  }
+
   async function createUser(
     data: CreateUserRequest,
     balanceConfig?: BalanceConfig,
@@ -227,6 +243,8 @@ export function createUserMethods(
   ): Promise<mongoose.Types.ObjectId | Partial<IUser>> {
     const User = mongoose.models.User;
     const Balance = mongoose.models.Balance;
+
+    await assertInstitutionAccountCapacity(data.tenantId, 1);
 
     const userData: Partial<IUser> = {
       ...data,
@@ -284,6 +302,12 @@ export function createUserMethods(
    */
   async function updateUser(userId: string, updateData: Partial<IUser>): Promise<IUser | null> {
     const User = mongoose.models.User;
+    if (updateData.tenantId !== undefined) {
+      const currentUser = await User.findById(userId).select('tenantId').lean();
+      const oldTenant=String(currentUser?.tenantId ?? '').trim();
+      const newTenant=String(updateData.tenantId ?? '').trim();
+      if (newTenant && newTenant!==oldTenant) await assertInstitutionAccountCapacity(newTenant,1);
+    }
     const updateOperation = {
       $set: updateData,
       $unset: { expiresAt: '' }, // Remove the expiresAt field to prevent TTL

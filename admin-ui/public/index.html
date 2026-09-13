@@ -688,7 +688,7 @@ form{
           onclick="showAdminTab('agents')">Academic Agents</button>
 
   <button type="button" class="admin-tab-button" data-admin-tab="cost"
-          onclick="showAdminTab('cost')">Usage & Cost</button>
+          onclick="showAdminTab('cost');loadInstitutionUsage()">Usage & Cost</button>
 
   <button type="button" class="admin-tab-button" data-admin-tab="audit"
           onclick="showAdminTab('audit')">Audit & Settings</button>
@@ -819,29 +819,9 @@ form{
   </div>
 </section>
 
-<section id="costTab"
-         class="admin-tab-panel"
-         data-admin-tab-panel="cost">
-
-  <div class="planned-placeholder">
-    <div class="planned-header">
-      <h2>Usage &amp; Cost</h2>
-      <span class="planned-badge">Planned</span>
-    </div>
-
-    <p class="planned-description">
-      Model policy, usage visibility and cost-management controls
-      will be administered here as AI Scholar Hub usage expands.
-    </p>
-
-    <ul class="planned-scope">
-      <li><strong>Model tiers:</strong> Economy, Balanced and Advanced policy controls</li>
-      <li><strong>Usage:</strong> institution, role and model consumption visibility</li>
-      <li><strong>Limits:</strong> quotas, budgets and policy-based usage controls</li>
-      <li><strong>Cost:</strong> provider and model cost monitoring</li>
-    </ul>
-  </div>
-
+<section id="costTab" class="admin-tab-panel" data-admin-tab-panel="cost">
+  <div style="display:flex;justify-content:space-between;align-items:center;gap:12px"><div><h2>Usage &amp; Cost</h2><div class="muted">Institution account and monthly-token guardrails. Blank limits mean unlimited.</div></div><button onclick="loadInstitutionUsage()">Refresh</button></div>
+  <div id="institutionUsageStatus" class="muted" style="margin:12px 0"></div><div id="institutionUsageHost"></div>
 </section>
 
 <section id="auditTab"
@@ -1077,6 +1057,12 @@ form{
     style="font-size:12px;margin:4px 0 10px">
     Enter one or more email domains. A leading @ is optional.
   </div>
+
+  <label class="muted" for="imaxAccounts">Maximum institution accounts</label>
+  <input id="imaxAccounts" type="number" min="1" step="1" placeholder="Blank = unlimited">
+  <label class="muted" for="imonthlyTokens">Monthly token limit</label>
+  <input id="imonthlyTokens" type="number" min="1" step="1" placeholder="Blank = unlimited">
+  <div class="muted" style="font-size:12px;margin:4px 0 10px">Token quota resets at 00:00 UTC on the first day of each month.</div>
 
   <button class="primary">
     Create Institution
@@ -2840,7 +2826,9 @@ async function deleteInstitutionDomain(domain) {
 }
 
 institutionForm.onsubmit =
-  async e => {
+function quotaEscape(v){return String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
+async function loadInstitutionUsage(){const h=document.getElementById("institutionUsageHost"),st=document.getElementById("institutionUsageStatus");if(!h||!st)return;st.textContent="Loading institution usage...";try{const d=await api("/api/usage/institutions"),rows=Array.isArray(d.institutions)?d.institutions:[];h.innerHTML=rows.length?`<div style="overflow:auto"><table style="width:100%;border-collapse:collapse;background:#fff"><thead><tr><th>Institution</th><th>Accounts</th><th>Max accounts</th><th>Tokens this month</th><th>Monthly token limit</th><th></th></tr></thead><tbody>${rows.map(r=>`<tr><td style="padding:8px;border-top:1px solid #eee"><strong>${quotaEscape(r.name||r.id)}</strong><div class="muted">${quotaEscape(r.id)}</div></td><td style="text-align:right">${Number(r.usage?.accountCount||0).toLocaleString()}</td><td><input id="qa-${encodeURIComponent(r.id)}" type="number" min="1" value="${r.limits?.maxAccounts??""}" placeholder="Unlimited" style="width:130px"></td><td style="text-align:right">${Number(r.usage?.monthlyTokens||0).toLocaleString()}</td><td><input id="qt-${encodeURIComponent(r.id)}" type="number" min="1" value="${r.limits?.monthlyTokens??""}" placeholder="Unlimited" style="width:170px"></td><td><button onclick='saveInstitutionLimits(${JSON.stringify(r.id)})'>Save</button></td></tr>`).join("")}</tbody></table></div>`:"<div class='muted'>No institutions available.</div>";const u=rows[0]?.usage;st.textContent=u?.periodStart?`UTC billing month: ${new Date(u.periodStart).toISOString().slice(0,10)} to ${new Date(u.periodEnd).toISOString().slice(0,10)}`:"";}catch(e){st.textContent=e.message||"Failed to load institution usage";}}
+async function saveInstitutionLimits(id){const k=encodeURIComponent(id),a=document.getElementById(`qa-${k}`),t=document.getElementById(`qt-${k}`);try{await api(`/api/institutions/${encodeURIComponent(id)}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({limits:{maxAccounts:a?.value?Number(a.value):null,monthlyTokens:t?.value?Number(t.value):null}})});await loadInstitutionUsage();}catch(e){alert(e.message);}}\n\n  async e => {
     e.preventDefault();
 
     try {
@@ -2863,6 +2851,10 @@ institutionForm.onsubmit =
                 iname.value,
               category:
                 icategory.value,
+              limits: {
+                maxAccounts: imaxAccounts.value ? Number(imaxAccounts.value) : null,
+                monthlyTokens: imonthlyTokens.value ? Number(imonthlyTokens.value) : null
+              },
               domains:
                 idomains.value
                   .split(/[\n,]+/)

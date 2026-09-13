@@ -22,7 +22,10 @@ const {
   ListModelsController,
   GetModelController,
 } = require('~/server/controllers/agents/openai');
-const { configMiddleware } = require('~/server/middleware');
+const {
+  configMiddleware,
+  institutionTokenQuota,
+} = require('~/server/middleware');
 const {
   checkAgentPermission,
   preAuthTenantMiddleware,
@@ -58,7 +61,12 @@ router.use(checkRemoteAgentsFeature);
  * Response (non-streaming):
  * - Standard OpenAI chat.completion format
  */
-router.post('/chat/completions', checkAgentPermission, OpenAIChatCompletionController);
+router.post(
+  '/chat/completions',
+  institutionTokenQuota,
+  checkAgentPermission,
+  OpenAIChatCompletionController,
+);
 
 /**
  * @route GET /v1/models

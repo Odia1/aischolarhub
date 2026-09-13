@@ -148,3 +148,43 @@ Do not use `docker compose config` as a routine secret diagnostic because render
 ## Acceptance decision update
 
 A deployment that includes a Mongo credential change must pass UAT-07 in addition to UAT-01 through UAT-06.
+
+## UAT-08 — ACA scale-to-zero performance
+
+**Configuration**
+
+- `ash-web`: minimum 1, maximum 3 replicas.
+- `model-router`, `gemini-proxy`, `academic-research-mcp`, and `searxng`:
+  minimum 0, maximum 3 replicas unless measurement justifies an exception.
+
+**Action**
+
+Run:
+
+```bash
+ACA_RESOURCE_GROUP="AI-SCHOLAR-HUB-ACA-TEST" \
+ACA_APP_NAME="ash-web" \
+scripts/release-tooling/measure-aca-coldstart.sh
+```
+
+**Pass criteria**
+
+- all runtime services wake and answer;
+- warm requests show no material regression;
+- scale-from-zero causes no user-visible failure;
+- preferably, cold-start penalty is under 4 seconds per dependency;
+- any service consistently exceeding that target is documented before
+  raising its minimum replicas or adding a warm-fallback mechanism;
+- `validate-aca-runtime.sh` still passes.
+
+
+## UAT-09 — Institution account and monthly-token quotas
+
+- Usage & Cost shows current accounts, monthly tokens, and limits per institution.
+- Blank limits mean unlimited; positive whole numbers are enforced.
+- Single, bulk, local/social account creation and tenant transfers cannot exceed `maxAccounts`.
+- Current month is UTC calendar month. Ordinary prompt/completion usage counts absolute `rawAmount`; structured prompts count absolute input + write + read tokens.
+- At or above `monthlyTokens`, a new Agent chat generation returns HTTP 429 with `INSTITUTION_MONTHLY_TOKEN_LIMIT`.
+- Existing in-flight generation may finish, so one admitted request can overshoot the cap.
+- Login, admin, conversation reads and RAG administration remain usable at the token cap.
+- Production UAT must verify transaction recording is enabled and model requests create token transactions.

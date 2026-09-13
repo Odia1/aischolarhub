@@ -36,6 +36,30 @@ const users = db.collection("users");
 const institutions = db.collection("institutions");
 const INSTITUTION_CATEGORIES = new Set(["SCHOOL", "HIGHER_EDUCATION", "MIXED"]);
 
+function normalizeInstitutionLimits(value = {}, current = {}) {
+  const v=value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  const parse=(x,f)=>{ if(x===undefined)return f??null; if(x===null||x==="")return null; const n=Number(x); if(!Number.isSafeInteger(n)||n<=0){const e=new Error("Institution limits must be positive whole numbers or blank for unlimited");e.statusCode=400;throw e;} return n; };
+  return {maxAccounts:parse(v.maxAccounts,current?.maxAccounts),monthlyTokens:parse(v.monthlyTokens,current?.monthlyTokens)};
+}
+function quotaTxTokens(tx) {
+  if(tx?.tokenType==="prompt" && (tx?.inputTokens!=null||tx?.writeTokens!=null||tx?.readTokens!=null))
+    return Math.abs(Number(tx.inputTokens)||0)+Math.abs(Number(tx.writeTokens)||0)+Math.abs(Number(tx.readTokens)||0);
+  return Math.abs(Number(tx?.rawAmount)||0);
+}
+function quotaMonthWindow(now=new Date()){return {start:new Date(Date.UTC(now.getUTCFullYear(),now.getUTCMonth(),1)),end:new Date(Date.UTC(now.getUTCFullYear(),now.getUTCMonth()+1,1))};}
+async function institutionUsage(tenantId){
+  const id=String(tenantId||"").trim(), {start,end}=quotaMonthWindow();
+  const us=await users.find({tenantId:id},{projection:{_id:1}}).toArray(); let monthlyTokens=0;
+  if(us.length){const c=transactions.find({user:{$in:us.map(x=>x._id)},createdAt:{$gte:start,$lt:end},tokenType:{$in:["prompt","completion"]}},{projection:{tokenType:1,rawAmount:1,inputTokens:1,writeTokens:1,readTokens:1}});for await(const tx of c)monthlyTokens+=quotaTxTokens(tx);}
+  return {accountCount:us.length,monthlyTokens,periodStart:start.toISOString(),periodEnd:end.toISOString()};
+}
+async function assertInstitutionAccountCapacity(tenantId,additional=1){
+  const id=String(tenantId||"").trim(); if(!id||additional<=0)return;
+  const i=await institutions.findOne({_id:id},{projection:{_id:1,limits:1}}); if(!i){const e=new Error("Institution not found");e.statusCode=400;throw e;}
+  const n=Number(i?.limits?.maxAccounts), limit=Number.isSafeInteger(n)&&n>0?n:null; if(!limit)return;
+  const current=await users.countDocuments({tenantId:id}); if(current+additional>limit){const e=new Error(`Institution account limit reached (${current}/${limit})`);e.statusCode=409;e.code="INSTITUTION_ACCOUNT_LIMIT";throw e;}
+}
+
 function normalizeInstitutionCategory(value) {
   const category = String(value || "HIGHER_EDUCATION").trim().toUpperCase();
   if (!INSTITUTION_CATEGORIES.has(category)) {
@@ -46,6 +70,7 @@ function normalizeInstitutionCategory(value) {
   return category;
 }
 const adminAudit = db.collection("adminAudit");
+const transactions = db.collection("transactions");
 
 const aiProviders = db.collection("aiProviders");
 const aiModels = db.collection("aiModels");
@@ -1471,6 +1496,15 @@ app.get("/api/users", async (req, res) => {
   }
 });
 
+app.get("/api/usage/institutions", async (req, res) => {
+  try {
+    const filter=isInstitutionAdmin(req.admin)?{_id:actorTenant(req)}:{};
+    const list=await institutions.find(filter,{projection:{_id:1,name:1,status:1,limits:1}}).sort({name:1}).toArray(); const rows=[];
+    for(const i of list){const usage=await institutionUsage(i._id);const limits=normalizeInstitutionLimits(i.limits||{});rows.push({id:i._id,name:i.name,status:i.status,limits,usage,remaining:{accounts:limits.maxAccounts==null?null:Math.max(limits.maxAccounts-usage.accountCount,0),monthlyTokens:limits.monthlyTokens==null?null:Math.max(limits.monthlyTokens-usage.monthlyTokens,0)}});}
+    res.json({institutions:rows});
+  } catch(e){console.error("[institution-usage]",e);res.status(500).json({error:"Failed to retrieve institution usage"});}
+});
+
 app.get("/api/institutions", async (req, res) => {
   try {
     if (isInstitutionAdmin(req.admin)) {
@@ -1513,6 +1547,7 @@ app.post("/api/institutions", async (req, res) => {
     const category = normalizeInstitutionCategory(req.body.category);
     const domains = normalizeInstitutionDomains(req.body.domains) || [];
     const regionalContext = normalizeRegionalContext(req.body.regionalContext);
+    const limits = normalizeInstitutionLimits(req.body.limits);
     await assertInstitutionDomainsAvailable(id, domains);
 
     const now = new Date();
@@ -1523,6 +1558,7 @@ app.post("/api/institutions", async (req, res) => {
       category,
       domains,
       regionalContext,
+      limits,
       createdAt: now,
       updatedAt: now
     };
@@ -1567,6 +1603,11 @@ app.patch("/api/institutions/:id", async (req, res) => {
         normalizeRegionalContext(
           req.body.regionalContext
         );
+    }
+    if (req.body.limits !== undefined) {
+      const existing = await institutions.findOne({ _id: id }, { projection: { limits: 1 } });
+      if (!existing) return res.status(404).json({ error: "Institution not found" });
+      update.limits = normalizeInstitutionLimits(req.body.limits, existing.limits || {});
     }
     if (req.body.domains !== undefined) {
       const institution = await institutions.findOne(
@@ -1742,6 +1783,8 @@ app.post("/api/users", async (req, res) => {
      * The user will establish their real password through LibreChat's
      * existing password-reset/setup mechanism.
      */
+    await assertInstitutionAccountCapacity(tenantId, tenantId ? 1 : 0);
+
     const bootstrapPassword = crypto.randomBytes(32).toString("hex");
     const now = new Date();
 
@@ -1836,6 +1879,7 @@ app.post("/api/users", async (req, res) => {
     });
   } catch (e) {
     console.error(e);
+    if (e?.statusCode) return res.status(e.statusCode).json({ error: e.message, code: e.code });
     res.status(500).json({ error: "Failed to create user" });
   }
 });
@@ -1975,6 +2019,10 @@ app.patch("/api/users/:id", async (req, res) => {
     }
 
     if (req.body.academicAudience !== undefined || req.body.role !== undefined) {
+    const oldQuotaTenant=String(user.tenantId||"").trim();
+    const newQuotaTenant=Object.prototype.hasOwnProperty.call(update,"tenantId")?String(update.tenantId||"").trim():oldQuotaTenant;
+    if(newQuotaTenant && newQuotaTenant!==oldQuotaTenant) await assertInstitutionAccountCapacity(newQuotaTenant,1);
+
       update.academicAudience = normalizeInstructorAudience(
         req.body.academicAudience !== undefined
           ? req.body.academicAudience
@@ -2031,6 +2079,7 @@ app.patch("/api/users/:id", async (req, res) => {
     res.json({ ok: true });
   } catch (e) {
     console.error(e);
+    if (e?.statusCode) return res.status(e.statusCode).json({ error: e.message, code: e.code });
     res.status(500).json({ error: "Failed to update user" });
   }
 });
@@ -2405,6 +2454,7 @@ app.post("/api/users/bulk", async (req, res) => {
           __v: 0
         };
 
+        if (doc.tenantId) await assertInstitutionAccountCapacity(doc.tenantId, 1);
         await users.insertOne(doc);
 
         let emailSent = false;
@@ -2453,7 +2503,7 @@ app.post("/api/users/bulk", async (req, res) => {
         console.error(`Bulk create failed for ${item.email}:`, e);
         failed.push({
           email: item.email,
-          error: "Failed to create user"
+          error: e?.statusCode ? e.message : "Failed to create user"
         });
       }
     }

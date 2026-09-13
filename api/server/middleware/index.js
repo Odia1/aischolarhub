@@ -28,6 +28,7 @@ const limiters = require('./limiters');
 const uaParser = require('./uaParser');
 const checkBan = require('./checkBan');
 const noIndex = require('./noIndex');
+const { institutionTokenQuota } = require('./institutionQuota');
 const roles = require('./roles');
 
 module.exports = {
@@ -37,6 +38,7 @@ module.exports = {
   ...roles,
   ...accessResources,
   noIndex,
+  institutionTokenQuota,
   checkBan,
   uaParser,
   setHeaders,

@@ -44,6 +44,18 @@ const institutionSchema = new Schema<IInstitution>(
       required: true,
       index: true,
     },
+    limits: {
+      maxAccounts: {
+        type: Number,
+        min: 1,
+        default: null,
+      },
+      monthlyTokens: {
+        type: Number,
+        min: 1,
+        default: null,
+      },
+    },
   },
   { timestamps: true, collection: 'institutions' },
 );
