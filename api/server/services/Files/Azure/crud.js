@@ -1,7 +1,6 @@
 const fs = require('fs');
 const path = require('path');
 const mime = require('mime');
-const axios = require('axios');
 const fetch = require('node-fetch');
 const { logger } = require('@librechat/data-schemas');
 const {
@@ -252,12 +251,34 @@ async function uploadFileToAzure({
  */
 async function getAzureFileStream(_req, fileURL) {
   try {
-    const response = await axios({
-      method: 'get',
-      url: fileURL,
-      responseType: 'stream',
-    });
-    return response.data;
+    const containerClient = await getAzureContainerClient(AZURE_CONTAINER_NAME);
+    if (!containerClient) {
+      throw new Error('Azure Blob Storage client is not initialized');
+    }
+
+    const url = new URL(fileURL);
+    const pathParts = url.pathname
+      .split('/')
+      .filter(Boolean)
+      .map((part) => decodeURIComponent(part));
+
+    if (pathParts[0] !== AZURE_CONTAINER_NAME) {
+      throw new Error('Azure blob URL does not match configured container');
+    }
+
+    const blobPath = pathParts.slice(1).join('/');
+    if (!blobPath) {
+      throw new Error('Azure blob URL does not contain a blob path');
+    }
+
+    const blockBlobClient = containerClient.getBlockBlobClient(blobPath);
+    const response = await blockBlobClient.download();
+
+    if (!response.readableStreamBody) {
+      throw new Error('Azure Blob Storage returned no readable stream');
+    }
+
+    return response.readableStreamBody;
   } catch (error) {
     logger.error('[getAzureFileStream] Error getting blob stream:', error);
     throw error;
