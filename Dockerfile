@@ -1,15 +1,25 @@
 # v0.8.8-rc1
 
 # Base node image
-FROM node:24.16.0-alpine AS node
+FROM node:24.16.0-alpine AS full-build
 
-RUN apk upgrade --no-cache
-RUN apk add --no-cache \
-    jemalloc \
-    tzdata \
-    python3 \
-    py3-pip \
-    uv
+# Install required runtime/build OS packages with retry.
+# Do not run a floating `apk upgrade` here: the pinned base image defines
+# the base OS patch level and makes builds more reproducible.
+RUN attempt=1; \
+    until apk add --no-cache \
+      jemalloc \
+      tzdata \
+      python3 \
+      py3-pip; do \
+        status=$?; \
+        if [ "$attempt" -ge 3 ]; then \
+          exit "$status"; \
+        fi; \
+        echo "apk add failed; retrying attempt $((attempt + 1))/3"; \
+        attempt=$((attempt + 1)); \
+        sleep 5; \
+    done
 
 # Set environment variable to use jemalloc
 ENV LD_PRELOAD=/usr/lib/libjemalloc.so.2
@@ -63,8 +73,29 @@ RUN \
     NODE_OPTIONS="--max-old-space-size=${NODE_MAX_OLD_SPACE_SIZE}" npm run frontend && \
     echo "=== VERIFY FRONTEND BUILD ===" && \
     ls -la /app/client/dist && \
-    test -f /app/client/dist/index.html && \
-    npm prune --production && \
+    test -f /app/client/dist/index.html
+
+# ============================================================
+# DEV / TEST IMAGE
+# ============================================================
+# Retains full devDependencies and source so DEV can run the
+# repository-native Jest/Babel/TypeScript test suites without
+# dynamically downloading tooling.
+FROM full-build AS dev-test
+
+ENV NODE_ENV=development
+WORKDIR /app
+
+# Default keeps this image useful for interactive DEV/testing.
+CMD ["npm", "run", "backend"]
+
+# ============================================================
+# PRODUCTION RUNTIME IMAGE
+# ============================================================
+# Prune all development/test dependencies from the accepted build.
+FROM full-build AS runtime
+
+RUN npm prune --production && \
     npm cache clean --force
 
 

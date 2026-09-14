@@ -216,3 +216,6 @@ checkpoints/
 /release-checkpoints/
 
 __pycache__/
+
+# Local/generated DEV runtime override
+docker-compose.override.yaml

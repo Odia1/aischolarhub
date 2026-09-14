@@ -36,6 +36,7 @@ export * from './accessRole';
 export * from './aclEntry';
 export * from './systemGrant';
 export * from './auditLog';
+export * from './supportKnowledge';
 export * from './group';
 export * from './organization';
 /* Config */

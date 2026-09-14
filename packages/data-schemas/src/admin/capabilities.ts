@@ -46,6 +46,12 @@ export const SystemCapabilities = {
    * would defeat the forensic guarantee.
    */
   READ_AUDIT_LOG: 'read:audit_log',
+
+  /**
+   * Platform-level authority to create, revise, publish, and retire
+   * authoritative documentation used by AIH Support.
+   */
+  MANAGE_SUPPORT_KNOWLEDGE: 'manage:support_knowledge',
 } as const;
 
 /** Base capabilities derived from the SystemCapabilities constant. */
@@ -275,6 +281,7 @@ export const CAPABILITY_CATEGORIES: CapabilityCategory[] = [
       SystemCapabilities.READ_USAGE,
       SystemCapabilities.READ_INSIGHTS,
       SystemCapabilities.READ_AUDIT_LOG,
+      SystemCapabilities.MANAGE_SUPPORT_KNOWLEDGE,
     ],
   },
 ];

@@ -519,7 +519,12 @@ export function createSystemGrantMethods(mongoose: typeof import('mongoose')): {
       try {
         const SystemGrant = mongoose.models.SystemGrant as Model<ISystemGrant>;
         const now = new Date();
-        const ops = Object.values(SystemCapabilities).map((capability) => ({
+        const ops = Object.values(SystemCapabilities)
+          .filter(
+            (capability) =>
+              capability !== SystemCapabilities.MANAGE_SUPPORT_KNOWLEDGE,
+          )
+          .map((capability) => ({
           updateOne: {
             filter: {
               principalType: PrincipalType.ROLE,
@@ -539,6 +544,40 @@ export function createSystemGrantMethods(mongoose: typeof import('mongoose')): {
           },
         }));
         await tenantSafeBulkWrite(SystemGrant, ops, { ordered: false });
+
+        /*
+         * AIH Support Knowledge is platform-governed.
+         *
+         * Only Platform Admin and Superadmin receive this capability.
+         * Institution Admins, Instructors, Users, and legacy ADMIN
+         * remain excluded.
+         */
+        const supportKnowledgeOps = ['PLATFORM_ADMIN', 'SUPERADMIN'].map(
+          (principalId) => ({
+            updateOne: {
+              filter: {
+                principalType: PrincipalType.ROLE,
+                principalId,
+                capability: SystemCapabilities.MANAGE_SUPPORT_KNOWLEDGE,
+                tenantId: { $exists: false },
+              },
+              update: {
+                $setOnInsert: {
+                  principalType: PrincipalType.ROLE,
+                  principalId,
+                  capability: SystemCapabilities.MANAGE_SUPPORT_KNOWLEDGE,
+                  grantedAt: now,
+                },
+              },
+              upsert: true,
+            },
+          }),
+        );
+
+        await tenantSafeBulkWrite(SystemGrant, supportKnowledgeOps, {
+          ordered: false,
+        });
+
         return;
       } catch (err) {
         if (attempt < maxRetries) {

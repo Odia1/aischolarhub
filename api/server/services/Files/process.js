@@ -46,7 +46,115 @@ const { getRetentionExpiry, getAgentFileRetentionExpiry } = require('./retention
 const { getStrategyFunctions } = require('./strategies');
 const { determineFileType } = require('~/server/utils');
 const { STTService } = require('./Audio/STTService');
+const {
+  isDocumentIngestionUpload,
+  scanDocumentForMalware,
+  validateDocumentIngestionUpload,
+} = require('./uploadSecurity');
 const db = require('~/models');
+
+const emitUploadSecurityAudit = async ({
+  req,
+  fileId,
+  toolResource,
+  error,
+}) => {
+  if (typeof db.recordAuditEntry !== 'function') {
+    return;
+  }
+
+  const userId =
+    req?.user?._id?.toString?.() ??
+    req?.user?.id;
+
+  if (!userId) {
+    return;
+  }
+
+  const reasonCode = String(error?.reasonCode || 'UNKNOWN');
+
+  const action =
+    reasonCode === 'MALWARE_SCANNER_UNAVAILABLE'
+      ? 'upload_security.scanner_unavailable'
+      : 'upload_security.rejected';
+
+  try {
+    await db.recordAuditEntry({
+      action,
+      outcome: 'denied',
+      severity:
+        reasonCode === 'MALWARE_DETECTED'
+          ? 'critical'
+          : 'warning',
+      actor: {
+        type: 'user',
+        id: userId,
+        name:
+          req.user.name ||
+          req.user.username ||
+          req.user.email ||
+          userId,
+      },
+      target: {
+        type: 'upload',
+        ...(fileId ? { id: String(fileId) } : {}),
+      },
+      metadata: {
+        reasonCode,
+        toolResource: String(toolResource || 'unknown'),
+      },
+      ...(req.user.tenantId
+        ? { tenantId: req.user.tenantId }
+        : {}),
+    });
+  } catch (auditError) {
+    /*
+     * Security rejection itself must not be reversed if audit persistence
+     * fails. Log the audit failure without filename or document content.
+     */
+    logger.error(
+      `[upload-security] audit write failed reason=${reasonCode}`,
+      auditError,
+    );
+  }
+};
+
+/**
+ * Enforces the common pre-storage upload-security boundary.
+ *
+ * - Every non-code upload is malware-scanned.
+ * - Supported document formats additionally receive structural inspection.
+ * - The temporary Multer file is still in quarantine at this point.
+ * - Rejections are audited without filenames or document content.
+ */
+const enforceUploadSecurity = async ({
+  req,
+  file,
+  fileId,
+  toolResource,
+  structuralDocumentCheck = true,
+}) => {
+  try {
+    if (structuralDocumentCheck && isDocumentIngestionUpload(file)) {
+      await validateDocumentIngestionUpload(file);
+    }
+
+    await scanDocumentForMalware(file);
+  } catch (err) {
+    await emitUploadSecurityAudit({
+      req,
+      fileId,
+      toolResource,
+      error: err,
+    });
+
+    logger.warn(
+      `[upload-security] rejected upload reason=${err?.reasonCode ?? 'UNKNOWN'}`,
+    );
+
+    throw err;
+  }
+};
 
 /**
  * Creates a modular file upload wrapper that ensures filename sanitization
@@ -590,6 +698,15 @@ const processFileUpload = async ({ req, res, metadata, sseStream }) => {
   }
 
   const { file } = req;
+
+  await enforceUploadSecurity({
+    req,
+    file,
+    fileId: file_id,
+    toolResource: metadata.tool_resource || 'assistant_upload',
+    structuralDocumentCheck: true,
+  });
+
   const sanitizedUploadFn = createSanitizedUploadWrapper(handleFileUpload);
   const {
     id,
@@ -704,6 +821,27 @@ const processAgentFileUpload = async ({ req, res, metadata, sseStream }) => {
   let fileInfoMetadata;
   const entity_id = messageAttachment === true ? undefined : agent_id;
   const basePath = mime.getType(file.originalname)?.startsWith('image') ? 'images' : 'uploads';
+
+  /**
+   * Common pre-storage hostile-upload gate.
+   *
+   * Execute-code intentionally retains its separate sandbox trust boundary.
+   * All other Agent/message uploads are malware-scanned. Supported document
+   * formats additionally receive structural inspection before parsing,
+   * permanent storage, or vector ingestion.
+   */
+  if (tool_resource !== EToolResources.execute_code) {
+    await enforceUploadSecurity({
+      req,
+      file,
+      fileId: file_id,
+      toolResource:
+        tool_resource ||
+        (messageAttachment ? 'message_attachment' : 'agent_upload'),
+      structuralDocumentCheck: true,
+    });
+  }
+
   if (tool_resource === EToolResources.execute_code) {
     const isCodeEnabled = await checkCapability(req, AgentCapabilities.execute_code);
     if (!isCodeEnabled) {

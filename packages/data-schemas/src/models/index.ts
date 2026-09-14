@@ -22,6 +22,7 @@ import { createConversationModel } from './convo';
 import { createToolCallModel } from './toolCall';
 import { createAclEntryModel } from './aclEntry';
 import { createAuditLogModel } from './auditLog';
+import { createSupportKnowledgeModel } from './supportKnowledge';
 import { createSessionModel } from './session';
 import { createBalanceModel } from './balance';
 import { createMessageModel } from './message';
@@ -87,6 +88,7 @@ export function createModels(mongoose: typeof import('mongoose')): {
   AclEntry: ReturnType<typeof createAclEntryModel>;
   SystemGrant: ReturnType<typeof createSystemGrantModel>;
   AuditLog: ReturnType<typeof createAuditLogModel>;
+  SupportKnowledge: ReturnType<typeof createSupportKnowledgeModel>;
   Group: ReturnType<typeof createGroupModel>;
   Department: ReturnType<typeof createDepartmentModel>;
   Course: ReturnType<typeof createCourseModel>;
@@ -137,6 +139,7 @@ export function createModels(mongoose: typeof import('mongoose')): {
     AclEntry: createAclEntryModel(mongoose),
     SystemGrant: createSystemGrantModel(mongoose),
     AuditLog: createAuditLogModel(mongoose),
+    SupportKnowledge: createSupportKnowledgeModel(mongoose),
     Group: createGroupModel(mongoose),
     Department: createDepartmentModel(mongoose),
     Course: createCourseModel(mongoose),

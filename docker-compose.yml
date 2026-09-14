@@ -18,6 +18,14 @@ services:
       - .env
 
     environment:
+      UPLOAD_MALWARE_SCAN_ENABLED: "true"
+      CLAMAV_HOST: clamav
+      CLAMAV_PORT: "3310"
+      CLAMAV_API_UPLOAD_ROOT: /app/uploads
+      CLAMAV_SCANNER_UPLOAD_ROOT: /scan/uploads
+      CLAMAV_SCAN_TIMEOUT_MS: "15000"
+      # DEV-only until Support Knowledge mutation + audit are transactional.
+      SUPPORT_KNOWLEDGE_MUTATIONS_ENABLED: "true"
       TZ: "America/Phoenix"
       HOST: "0.0.0.0"
       MEILI_HOST: "http://meilisearch:7700"
@@ -49,11 +57,18 @@ services:
       - appdata:/app/data
 
     depends_on:
-      - mongodb
-      - rag_api
-      - model-router
-      - searxng
-      - gemini-proxy
+      mongodb:
+        condition: service_started
+      rag_api:
+        condition: service_started
+      model-router:
+        condition: service_started
+      searxng:
+        condition: service_started
+      gemini-proxy:
+        condition: service_started
+      clamav:
+        condition: service_healthy
 
 
   mongodb:
@@ -260,6 +275,18 @@ services:
       - rag_api
       - model-router
 
+
+
+  clamav:
+    image: clamav/clamav:1.4.6-debian13-slim
+    container_name: aih-dev-clamav
+    restart: unless-stopped
+    expose:
+      - "3310"
+    volumes:
+      - ${PROJECT_DIR}/uploads/temp:/scan/uploads/temp:ro
+    cpus: "1.0"
+    mem_limit: 1536m
 
 volumes:
 

@@ -1,3 +1,19 @@
+/**
+ * process.spec.js tests file-processing routing, persistence, and retention.
+ * The upload-security implementation has its own dedicated test suite.
+ * Keep this boundary deterministic here so synthetic fixture paths do not
+ * invoke filesystem/ClamAV behavior.
+ */
+jest.mock('./uploadSecurity', () => ({
+  isDocumentIngestionUpload: jest.fn(() => true),
+  validateDocumentIngestionUpload: jest.fn().mockResolvedValue({
+    disposition: 'ACCEPT',
+  }),
+  scanDocumentForMalware: jest.fn().mockResolvedValue({
+    disposition: 'CLEAN',
+  }),
+}));
+
 jest.mock('uuid', () => ({ v4: jest.fn(() => 'mock-uuid') }));
 
 jest.mock('@librechat/data-schemas', () => ({
@@ -93,6 +109,7 @@ jest.mock('~/models', () => ({
   findFileById: jest.fn(),
   getConvo: jest.fn(),
   getExpiredFiles: jest.fn(),
+  findRagDuplicate: jest.fn().mockResolvedValue(null),
   addAgentResourceFile: jest.fn().mockResolvedValue({}),
   removeAgentResourceFiles: jest.fn(),
   removeAgentResourceFilesFromAllAgents: jest.fn(),
@@ -671,11 +688,24 @@ describe('processAgentFileUpload', () => {
       setupStoredFileUpload();
       const req = makeReq({ mimetype: 'text/plain', ocrConfig: null });
 
-      await processAgentFileUpload({
-        req,
-        res: mockRes,
-        metadata: { ...makeMetadata(), tool_resource: EToolResources.file_search },
-      });
+      // file_search computes a SHA-256 digest of the Multer-staged file
+      // before mocked storage/vector operations. This retention unit test
+      // uses a synthetic path, so provide exactly one in-memory digest stream.
+      const fs = require('fs');
+      const { Readable } = require('stream');
+      const digestStreamSpy = jest
+        .spyOn(fs, 'createReadStream')
+        .mockImplementationOnce(() => Readable.from(Buffer.from('fixture')));
+
+      try {
+        await processAgentFileUpload({
+          req,
+          res: mockRes,
+          metadata: { ...makeMetadata(), tool_resource: EToolResources.file_search },
+        });
+      } finally {
+        digestStreamSpy.mockRestore();
+      }
 
       expect(uploadVectors).toHaveBeenCalled();
       expect(getRetentionExpiry).not.toHaveBeenCalled();
@@ -698,11 +728,22 @@ describe('processAgentFileUpload', () => {
         interfaceConfig: { retentionMode: RetentionMode.ALL },
       });
 
-      await processAgentFileUpload({
-        req,
-        res: mockRes,
-        metadata: { ...makeMetadata(), tool_resource: EToolResources.file_search },
-      });
+      // Same synthetic staged-file boundary as the preceding retention test.
+      const fs = require('fs');
+      const { Readable } = require('stream');
+      const digestStreamSpy = jest
+        .spyOn(fs, 'createReadStream')
+        .mockImplementationOnce(() => Readable.from(Buffer.from('fixture')));
+
+      try {
+        await processAgentFileUpload({
+          req,
+          res: mockRes,
+          metadata: { ...makeMetadata(), tool_resource: EToolResources.file_search },
+        });
+      } finally {
+        digestStreamSpy.mockRestore();
+      }
 
       expect(uploadVectors).toHaveBeenCalled();
       expect(getRetentionExpiry).toHaveBeenCalledTimes(1);

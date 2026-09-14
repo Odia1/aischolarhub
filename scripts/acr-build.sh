@@ -99,6 +99,16 @@ fi
 
 scripts/release-tooling/validate-release-assets.sh source
 
+echo
+echo "===== DEV / TEST RELEASE GATE ====="
+
+if [[ ! -x scripts/release-tooling/validate-dev-test.sh ]]; then
+    echo "ERROR: DEV/test validator is missing."
+    exit 1
+fi
+
+scripts/release-tooling/validate-dev-test.sh
+
 if ! command -v az >/dev/null 2>&1; then
     echo "ERROR: Azure CLI is not installed."
     exit 1
@@ -151,6 +161,7 @@ az acr build \
     --registry "$REGISTRY" \
     --image "${IMAGE}:${TAG}" \
     --file Dockerfile \
+    --target runtime \
     "$CTX"
 
 # ------------------------------------------------------------
@@ -177,17 +188,16 @@ import sys
 
 image = sys.argv[1]
 p = Path("docker-compose.override.yaml")
+template = Path("docker-compose.override.example.yaml")
 
 if not p.exists():
-    p.write_text(
-        "services:\n"
-        "  api:\n"
-        f"    image: {image}\n"
-    )
-    print("Created docker-compose.override.yaml")
-    print("Compose API image set to:")
-    print(image)
-    raise SystemExit(0)
+    if not template.exists():
+        raise SystemExit(
+            "ERROR: docker-compose.override.example.yaml is missing"
+        )
+
+    p.write_text(template.read_text())
+    print("Created local docker-compose.override.yaml from tracked template")
 
 s = p.read_text()
 

@@ -36,6 +36,10 @@ import {
   MAX_AUDIT_VERIFY_ROWS,
   type AuditLogMethods,
 } from './auditLog';
+import {
+  createSupportKnowledgeMethods,
+  type SupportKnowledgeMethods,
+} from './supportKnowledge';
 import { createShareMethods, type ShareMethods } from './share';
 /* Tier 1 — Simple CRUD */
 import { createActionMethods, type ActionMethods } from './action';
@@ -320,6 +324,7 @@ export function createMethods(
     ...aclEntryMethods,
     ...systemGrantMethods,
     ...createAuditLogMethods(mongoose),
+    ...createSupportKnowledgeMethods(mongoose),
     ...createShareMethods(mongoose),
     ...createPluginAuthMethods(mongoose),
     /* Tier 1 */
@@ -416,3 +421,5 @@ export type {
   MCPAuthorityCredentialSourceDocument,
   InsightsMethods,
 };
+
+export type { SupportKnowledgeMethods } from './supportKnowledge';
