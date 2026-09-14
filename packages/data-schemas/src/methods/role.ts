@@ -145,17 +145,35 @@ export function createRoleMethods(
     const Role = mongoose.models.Role as Model<IRole>;
     const limit = options?.limit ?? 50;
     const offset = options?.offset ?? 0;
-    return await Role.find({})
-      .select('name description')
-      .sort({ name: 1 })
-      .skip(offset)
-      .limit(limit)
-      .lean();
+
+    /**
+     * The platform Access-management role registry shows canonical/global
+     * role definitions only.
+     *
+     * Tenant-scoped role copies must not be merged into this list because
+     * doing so produces duplicate semantic roles such as USER, ADMIN, or
+     * INSTITUTION_ADMIN.
+     */
+    return await runAsSystem(() =>
+      Role.find({
+        tenantId: { $in: [null, undefined] },
+      })
+        .select('name description')
+        .sort({ name: 1 })
+        .skip(offset)
+        .limit(limit)
+        .lean(),
+    );
   }
 
   async function countRoles(): Promise<number> {
     const Role = mongoose.models.Role;
-    return await Role.countDocuments({});
+
+    return await runAsSystem(() =>
+      Role.countDocuments({
+        tenantId: { $in: [null, undefined] },
+      }),
+    );
   }
 
   /**

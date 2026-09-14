@@ -100,3 +100,57 @@ git diff --check
 
 echo
 echo "DEV_TEST_VALIDATION_PASSED"
+
+echo
+echo "===== ROLE SCOPE REGRESSION ====="
+
+ROLE_TEST_NET=aih-role-test-net
+ROLE_TEST_MONGO=aih-role-test-mongo
+
+cleanup_role_test() {
+  docker rm -f "$ROLE_TEST_MONGO" >/dev/null 2>&1 || true
+  docker network rm "$ROLE_TEST_NET" >/dev/null 2>&1 || true
+}
+
+cleanup_role_test
+trap cleanup_role_test EXIT
+
+docker network create "$ROLE_TEST_NET" >/dev/null
+
+docker run -d --rm \
+  --name "$ROLE_TEST_MONGO" \
+  --network "$ROLE_TEST_NET" \
+  --tmpfs /data/db \
+  mongo:8.0.20 \
+  >/dev/null
+
+ready=0
+for _ in $(seq 1 30); do
+  if docker exec "$ROLE_TEST_MONGO" \
+    mongosh --quiet --eval 'db.adminCommand({ ping: 1 }).ok' \
+    2>/dev/null | grep -q '^1$'; then
+    ready=1
+    break
+  fi
+  sleep 1
+done
+
+if [ "$ready" -ne 1 ]; then
+  echo "FAIL: ephemeral Mongo did not become ready"
+  exit 1
+fi
+
+docker run --rm \
+  --network "$ROLE_TEST_NET" \
+  -e TEST_MONGO_URI="mongodb://$ROLE_TEST_MONGO:27017/aih_role_test" \
+  -w /app/packages/data-schemas \
+  aih-dev-test:local \
+  npx jest \
+    src/methods/role.methods.spec.ts \
+    --config jest.config.mjs \
+    --runInBand
+
+cleanup_role_test
+trap - EXIT
+
+echo "ROLE_SCOPE_REGRESSION_PASSED"

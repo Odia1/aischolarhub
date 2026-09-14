@@ -44,12 +44,18 @@ let countUsersByRole: ReturnType<typeof createRoleMethods>['countUsersByRole'];
 let updateRoleByName: ReturnType<typeof createRoleMethods>['updateRoleByName'];
 let listRoles: ReturnType<typeof createRoleMethods>['listRoles'];
 let countRoles: ReturnType<typeof createRoleMethods>['countRoles'];
-let mongoServer: MongoMemoryServer;
+let mongoServer: MongoMemoryServer | undefined;
 
 beforeAll(async () => {
-  mongoServer = await MongoMemoryServer.create();
-  const mongoUri = mongoServer.getUri();
-  await mongoose.connect(mongoUri);
+  const externalMongoUri = process.env.TEST_MONGO_URI?.trim();
+
+  if (externalMongoUri) {
+    await mongoose.connect(externalMongoUri);
+  } else {
+    mongoServer = await MongoMemoryServer.create();
+    await mongoose.connect(mongoServer.getUri());
+  }
+
   createModels(mongoose);
   Role = mongoose.models.Role;
   User = mongoose.models.User as mongoose.Model<IUser>;
@@ -71,7 +77,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await mongoose.disconnect();
-  await mongoServer.stop();
+  await mongoServer?.stop();
 });
 
 beforeEach(async () => {
@@ -1209,6 +1215,27 @@ describe('listRoles', () => {
     expect('permissions' in roles[0]).toBe(false);
   });
 
+  it('returns only canonical global roles when tenant-scoped copies exist', async () => {
+    await Role.create([
+      { name: 'USER', permissions: {} },
+      { name: 'INSTITUTION_ADMIN', permissions: {} },
+    ]);
+
+    await tenantStorage.run({ tenantId: 'tenant-a' }, async () => {
+      await Role.create([
+        { name: 'USER', permissions: {} },
+        { name: 'INSTITUTION_ADMIN', permissions: {} },
+      ]);
+    });
+
+    const roles = await listRoles();
+
+    expect(roles.map((r) => r.name)).toEqual([
+      'INSTITUTION_ADMIN',
+      'USER',
+    ]);
+  });
+
   it('returns empty array when no roles exist', async () => {
     const roles = await listRoles();
     expect(roles).toEqual([]);
@@ -1228,6 +1255,22 @@ describe('listRoles', () => {
 describe('countRoles', () => {
   beforeEach(async () => {
     await Role.deleteMany({});
+  });
+
+  it('counts only canonical global roles when tenant-scoped copies exist', async () => {
+    await Role.create([
+      { name: 'USER', permissions: {} },
+      { name: 'INSTITUTION_ADMIN', permissions: {} },
+    ]);
+
+    await tenantStorage.run({ tenantId: 'tenant-a' }, async () => {
+      await Role.create([
+        { name: 'USER', permissions: {} },
+        { name: 'INSTITUTION_ADMIN', permissions: {} },
+      ]);
+    });
+
+    expect(await countRoles()).toBe(2);
   });
 
   it('returns the total number of roles', async () => {

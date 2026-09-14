@@ -1205,17 +1205,17 @@ function canAssignRoleToUser(req, role) {
 }
 
 function allowedUserRole(req, role) {
-  const r = String(role || "").trim();
+  const r = String(role || "").trim().toUpperCase();
 
   // Institution Admins may only create ordinary users/instructors.
   if (isInstitutionAdmin(req.admin)) {
-    return r === "USER" || r === "Instructor";
+    return r === "USER" || r === "INSTRUCTOR";
   }
 
   // Only the immutable Superadmin may create a Platform Admin.
   if (isSuperAdmin(req.admin)) {
     return r === "USER" ||
-      r === "Instructor" ||
+      r === "INSTRUCTOR" ||
       r === "INSTITUTION_ADMIN" ||
       r === "PLATFORM_ADMIN";
   }
@@ -1224,12 +1224,12 @@ function allowedUserRole(req, role) {
   // but cannot create another Platform Admin.
   if (normalizedRole(req.admin) === "PLATFORM_ADMIN") {
     return r === "USER" ||
-      r === "Instructor" ||
+      r === "INSTRUCTOR" ||
       r === "INSTITUTION_ADMIN";
   }
 
   return r === "USER" ||
-    r === "Instructor" ||
+    r === "INSTRUCTOR" ||
     r === "INSTITUTION_ADMIN";
 }
 
