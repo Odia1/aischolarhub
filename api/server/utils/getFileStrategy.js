@@ -27,11 +27,12 @@ const { FileSources, FileContext } = require('librechat-data-provider');
 function getFileStrategy(appConfig, { isAvatar = false, isImage = false, context = null } = {}) {
   // Fallback to legacy single strategy if no granular config
   if (!appConfig?.fileStrategies) {
-    return appConfig.fileStrategy || FileSources.local; // Default to FileSources.local if undefined
+    return appConfig?.fileStrategy || process.env.CDN_PROVIDER || FileSources.local;
   }
 
   const strategies = appConfig.fileStrategies;
-  const defaultStrategy = strategies.default || appConfig.fileStrategy || FileSources.local;
+  const defaultStrategy =
+    strategies.default || appConfig?.fileStrategy || process.env.CDN_PROVIDER || FileSources.local;
 
   // Priority order for strategy selection:
   // 1. Specific file type strategy
