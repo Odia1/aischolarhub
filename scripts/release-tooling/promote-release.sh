@@ -7,6 +7,8 @@ MANIFEST="${1:-}"
 [[ -n "$MANIFEST" ]] || die "usage: $0 /path/to/release.env"
 require_file "$MANIFEST"
 
+MANIFEST="$(cd "$(dirname "$MANIFEST")" && pwd)/$(basename "$MANIFEST")"
+
 # shellcheck disable=SC1090
 source "$MANIFEST"
 
@@ -25,6 +27,7 @@ require_cmd python3
 require_cmd curl
 require_cmd sha256sum
 require_cmd flock
+require_cmd az
 
 LOCK="/tmp/aih-release-promotion.lock"
 exec 9>"$LOCK"
@@ -42,6 +45,11 @@ cp -a docker-compose.yml librechat.yaml "$BACKUP/"
 chmod 700 "$BACKUP"
 [[ -f "$BACKUP/.env" ]] && chmod 600 "$BACKUP/.env"
 pass "mutable PROD configuration checkpointed"
+
+note "Authenticating Docker to Azure Container Registry"
+az account show >/dev/null 2>&1 || die "Azure CLI is not authenticated"
+az acr login --name "${ACR_NAME:-seeds}" >/dev/null
+pass "ACR authentication"
 
 note "Pulling exact release image"
 docker pull "$EXPECTED_API_IMAGE"
@@ -84,13 +92,24 @@ PY
 docker compose config --quiet
 pass "candidate PROD Compose validates"
 
-# Ensure runtime services that are release dependencies are Compose-managed.
-for service in model-router searxng; do
-  if ! docker compose config --services | grep -qx "$service"; then
-    die "$service is not Compose-managed; refusing fragile promotion"
-  fi
-done
-pass "required runtime services are Compose-managed"
+# Ensure runtime services that are release dependencies are available.
+# model-router is Compose-managed in PROD.
+if ! docker compose config --services | grep -qx "model-router"; then
+  die "model-router is not Compose-managed; refusing fragile promotion"
+fi
+pass "model-router is Compose-managed"
+
+# SearXNG may be Compose-managed or an existing external PROD container.
+SEARXNG_COMPOSE_MANAGED=0
+if docker compose config --services | grep -qx "searxng"; then
+  SEARXNG_COMPOSE_MANAGED=1
+  pass "searxng is Compose-managed"
+else
+  SEARXNG_CONTAINER="${PROD_SEARXNG_CONTAINER:-aih-prod-searxng}"
+  searxng_state="$(docker inspect "$SEARXNG_CONTAINER" --format '{{.State.Status}}' 2>/dev/null || true)"
+  [[ "$searxng_state" == "running" ]] ||     die "external PROD SearXNG container is not running: $SEARXNG_CONTAINER"
+  pass "external PROD SearXNG container is running"
+fi
 
 # Required env names are checked only for presence; values are never printed.
 IFS=',' read -ra REQUIRED <<<"${REQUIRED_PROD_ENV_KEYS:-SEARXNG_INSTANCE_URL,ASH_MODEL_ROUTER_ENABLED,ASH_GOOGLE_API_KEYS,ASH_GROQ_API_KEYS,ASH_OPENROUTER_API_KEYS,ASH_CLOUDFLARE_ACCOUNT_IDS,ASH_CLOUDFLARE_API_TOKENS}"
@@ -117,7 +136,13 @@ if [[ -d "$MIGRATIONS_DIR" ]]; then
 fi
 
 note "Deploying managed runtime dependencies"
-docker compose up -d --no-deps --force-recreate model-router searxng
+docker compose up -d --no-deps --force-recreate model-router
+
+if [[ "$SEARXNG_COMPOSE_MANAGED" == "1" ]]; then
+  docker compose up -d --no-deps --force-recreate searxng
+else
+  note "Preserving external PROD SearXNG container"
+fi
 
 note "Deploying API"
 docker compose up -d --no-deps --force-recreate "$API_SERVICE"

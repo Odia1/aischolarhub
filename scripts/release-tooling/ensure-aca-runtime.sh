@@ -23,6 +23,13 @@ SEARXNG_IMAGE="${ACA_SEARXNG_IMAGE:-}"
 GEMINI_ENV_FILE="${ACA_GEMINI_ENV_FILE:-.gemini-proxy.env}"
 CANONICAL_MONGO_SECRET="${ACA_MONGO_SECRET_NAME:-mongo-uri-current}"
 
+# ACA production scaling policy:
+# keep the public entry point warm; allow internal runtime services to scale to zero.
+ACA_WEB_MIN_REPLICAS="${ACA_WEB_MIN_REPLICAS:-1}"
+ACA_WEB_MAX_REPLICAS="${ACA_WEB_MAX_REPLICAS:-3}"
+ACA_RUNTIME_MIN_REPLICAS="${ACA_RUNTIME_MIN_REPLICAS:-0}"
+ACA_RUNTIME_MAX_REPLICAS="${ACA_RUNTIME_MAX_REPLICAS:-3}"
+
 [[ -n "$RG" ]] || die "ACA_RESOURCE_GROUP is required"
 [[ -n "$MODEL_ROUTER_IMAGE" ]] || die "ACA_MODEL_ROUTER_IMAGE is required"
 [[ -n "$GEMINI_PROXY_IMAGE" ]] || die "ACA_GEMINI_PROXY_IMAGE (or ACA_GEMINI_IMAGE) is required"
@@ -142,9 +149,18 @@ ensure_app() {
       --user-assigned "$IDENTITY_ID" \
       --registry-server "$REGISTRY_SERVER" \
       --registry-identity "$IDENTITY_ID" \
-      --min-replicas 1 --max-replicas 1 \
+      --min-replicas "$ACA_RUNTIME_MIN_REPLICAS" \
+      --max-replicas "$ACA_RUNTIME_MAX_REPLICAS" \
       --output none
   fi
+}
+
+ensure_scale() {
+  local name="$1" min="$2" max="$3"
+  az containerapp update -g "$RG" -n "$name" \
+    --min-replicas "$min" \
+    --max-replicas "$max" \
+    >/dev/null
 }
 
 ensure_internal_tcp() {
@@ -163,6 +179,9 @@ az containerapp secret set -g "$RG" -n "$ANCHOR_APP" \
 az containerapp update -g "$RG" -n "$ANCHOR_APP" --set-env-vars \
   "MONGO_URI=secretref:${CANONICAL_MONGO_SECRET}" \
   "ATLAS_MONGO_DB_URI=secretref:${CANONICAL_MONGO_SECRET}" >/dev/null
+
+ensure_scale "$ANCHOR_APP" "$ACA_WEB_MIN_REPLICAS" "$ACA_WEB_MAX_REPLICAS"
+pass "$ANCHOR_APP scale = ${ACA_WEB_MIN_REPLICAS}..${ACA_WEB_MAX_REPLICAS}"
 
 REMOVE_MONGO_ENV=()
 anchor_has_env MONGO_INITDB_ROOT_USERNAME && REMOVE_MONGO_ENV+=(MONGO_INITDB_ROOT_USERNAME)
@@ -190,6 +209,7 @@ az containerapp update -g "$RG" -n "$MODEL_ROUTER_APP" --set-env-vars \
   ASH_OPENROUTER_API_KEYS=secretref:openrouter-keys \
   ASH_CLOUDFLARE_ACCOUNT_IDS="$CF_IDS" \
   ASH_CLOUDFLARE_API_TOKENS=secretref:cloudflare-tokens >/dev/null
+ensure_scale "$MODEL_ROUTER_APP" "$ACA_RUNTIME_MIN_REPLICAS" "$ACA_RUNTIME_MAX_REPLICAS"
 ensure_internal_tcp "$MODEL_ROUTER_APP" 8000
 pass "$MODEL_ROUTER_APP reconciled"
 
@@ -211,6 +231,7 @@ for name in "${GEMINI_NAMES[@]}"; do
 done
 az containerapp secret set -g "$RG" -n "$GEMINI_PROXY_APP" --secrets "${GP_SECRET_ARGS[@]}" >/dev/null
 az containerapp update -g "$RG" -n "$GEMINI_PROXY_APP" --set-env-vars "${GP_ENV_ARGS[@]}" >/dev/null
+ensure_scale "$GEMINI_PROXY_APP" "$ACA_RUNTIME_MIN_REPLICAS" "$ACA_RUNTIME_MAX_REPLICAS"
 ensure_internal_tcp "$GEMINI_PROXY_APP" 8000
 pass "$GEMINI_PROXY_APP reconciled"
 
@@ -219,6 +240,7 @@ az containerapp secret set -g "$RG" -n "$MCP_APP" --secrets semantic-scholar-api
 az containerapp update -g "$RG" -n "$MCP_APP" --set-env-vars \
   SEMANTIC_SCHOLAR_API_KEY=secretref:semantic-scholar-api-key \
   HOST=0.0.0.0 PORT=8000 >/dev/null
+ensure_scale "$MCP_APP" "$ACA_RUNTIME_MIN_REPLICAS" "$ACA_RUNTIME_MAX_REPLICAS"
 ensure_internal_tcp "$MCP_APP" 8000
 pass "$MCP_APP reconciled"
 
@@ -226,6 +248,7 @@ ensure_app "$SEARXNG_APP" "$SEARXNG_IMAGE"
 az containerapp secret set -g "$RG" -n "$SEARXNG_APP" --secrets searxng-secret="$SX_SECRET" >/dev/null
 az containerapp update -g "$RG" -n "$SEARXNG_APP" --set-env-vars \
   SEARXNG_SECRET=secretref:searxng-secret >/dev/null
+ensure_scale "$SEARXNG_APP" "$ACA_RUNTIME_MIN_REPLICAS" "$ACA_RUNTIME_MAX_REPLICAS"
 ensure_internal_tcp "$SEARXNG_APP" 8080
 pass "$SEARXNG_APP reconciled"
 

@@ -7,6 +7,8 @@ MANIFEST="${1:-}"
 [[ -n "$MANIFEST" ]] || die "usage: $0 /path/to/release.env"
 require_file "$MANIFEST"
 
+MANIFEST="$(cd "$(dirname "$MANIFEST")" && pwd)/$(basename "$MANIFEST")"
+
 # shellcheck disable=SC1090
 source "$MANIFEST"
 
@@ -16,6 +18,13 @@ source "$MANIFEST"
 : "${ROLLBACK_API_IMAGE:=}"
 : "${IMAGE_REPO:=seeds.azurecr.io/aischolarhub-custom}"
 : "${RETAIN_API_IMAGES:=}"
+
+# Optional registry housekeeping performed only after release verification.
+# Disabled by default.
+: "${PURGE_ACR_IMAGES:=0}"
+: "${ACR_NAME:=seeds}"
+: "${ACR_REPOSITORY:=aischolarhub-custom}"
+: "${ACR_DEV_RETENTION_DAYS:=45}"
 
 cd "$PROD_ROOT"
 
@@ -104,6 +113,26 @@ fi
 echo
 echo "===== STORAGE AFTER ====="
 docker system df
+
+if [[ "$PURGE_ACR_IMAGES" == "1" ]]; then
+  require_cmd az
+
+  note "Authenticating to Azure Container Registry for release cleanup"
+  az account show >/dev/null 2>&1 || die "Azure CLI is not authenticated"
+  az acr login --name "$ACR_NAME" >/dev/null
+  pass "ACR authentication"
+
+  note "Purging stale DEV/UAT ACR tags older than ${ACR_DEV_RETENTION_DAYS} days"
+
+  #
+  # IMPORTANT:
+  # Only development/UAT-style tags are eligible here.
+  # Production/accepted tags are never selected by this filter.
+  #
+  az acr run     --registry "$ACR_NAME"     --cmd "acr purge       --filter '${ACR_REPOSITORY}:dev-.*'       --filter '${ACR_REPOSITORY}:.*validation.*'       --ago ${ACR_DEV_RETENTION_DAYS}d       --untagged"     /dev/null
+
+  pass "stale ACR DEV/UAT cleanup completed"
+fi
 
 echo
 echo "========================================"

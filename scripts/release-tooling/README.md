@@ -110,3 +110,22 @@ The wrapper clears ambient `MONGO_URI`, `ATLAS_MONGO_DB_URI`, `MONGO_INITDB_ROOT
 Do not use rendered `docker compose config` output as a routine secret diagnostic.
 
 The canonical ACA Mongo secret is `mongo-uri-current`. `ensure-aca-runtime.sh` resolves either literal or secret-backed anchor Mongo configuration, normalizes both `ash-web` and `model-router` to `mongo-uri-current`, and removes obsolete Mongo bootstrap variables from `ash-web`.
+
+## ACA scale-to-zero benchmark
+
+Production-oriented defaults are:
+
+```text
+ash-web                 min=1 max=3
+model-router            min=0 max=3
+gemini-proxy            min=0 max=3
+academic-research-mcp   min=0 max=3
+searxng                 min=0 max=3
+```
+
+`ensure-aca-runtime.sh` reconciles these defaults. Override with
+`ACA_WEB_MIN_REPLICAS`, `ACA_WEB_MAX_REPLICAS`,
+`ACA_RUNTIME_MIN_REPLICAS`, and `ACA_RUNTIME_MAX_REPLICAS`.
+
+Use `measure-aca-coldstart.sh` to compare warm latency with actual
+scale-from-zero latency before deciding whether any service should remain warm.
