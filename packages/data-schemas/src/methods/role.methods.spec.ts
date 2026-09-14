@@ -1215,7 +1215,7 @@ describe('listRoles', () => {
     expect('permissions' in roles[0]).toBe(false);
   });
 
-  it('returns only canonical global roles when tenant-scoped copies exist', async () => {
+  it('deduplicates scoped role copies while preserving tenant-only roles', async () => {
     await Role.create([
       { name: 'USER', permissions: {} },
       { name: 'INSTITUTION_ADMIN', permissions: {} },
@@ -1225,6 +1225,8 @@ describe('listRoles', () => {
       await Role.create([
         { name: 'USER', permissions: {} },
         { name: 'INSTITUTION_ADMIN', permissions: {} },
+        { name: 'Instructor', permissions: {} },
+        { name: 'VisitingFaculty', permissions: {} },
       ]);
     });
 
@@ -1232,7 +1234,9 @@ describe('listRoles', () => {
 
     expect(roles.map((r) => r.name)).toEqual([
       'INSTITUTION_ADMIN',
+      'Instructor',
       'USER',
+      'VisitingFaculty',
     ]);
   });
 
@@ -1257,7 +1261,7 @@ describe('countRoles', () => {
     await Role.deleteMany({});
   });
 
-  it('counts only canonical global roles when tenant-scoped copies exist', async () => {
+  it('counts canonical role names across global and tenant scopes', async () => {
     await Role.create([
       { name: 'USER', permissions: {} },
       { name: 'INSTITUTION_ADMIN', permissions: {} },
@@ -1267,10 +1271,12 @@ describe('countRoles', () => {
       await Role.create([
         { name: 'USER', permissions: {} },
         { name: 'INSTITUTION_ADMIN', permissions: {} },
+        { name: 'Instructor', permissions: {} },
+        { name: 'VisitingFaculty', permissions: {} },
       ]);
     });
 
-    expect(await countRoles()).toBe(2);
+    expect(await countRoles()).toBe(4);
   });
 
   it('returns the total number of roles', async () => {

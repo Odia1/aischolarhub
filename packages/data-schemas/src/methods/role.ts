@@ -138,42 +138,61 @@ export function createRoleMethods(
   /**
    * List all roles in the system. Returns only name and description (projected).
    */
+  async function getCanonicalRoleList(): Promise<
+    Pick<IRole, '_id' | 'name' | 'description'>[]
+  > {
+    const Role = mongoose.models.Role as Model<IRole>;
+
+    const roles = await runAsSystem(() =>
+      Role.find({})
+        .select('name description tenantId')
+        .sort({ name: 1, tenantId: 1 })
+        .lean(),
+    );
+
+    const canonical = new Map<
+      string,
+      Pick<IRole, '_id' | 'name' | 'description'> & { tenantId?: string }
+    >();
+
+    for (const role of roles) {
+      const key = String(role.name || '').trim().toUpperCase();
+      if (!key) {
+        continue;
+      }
+
+      const existing = canonical.get(key);
+      const roleIsGlobal = role.tenantId == null;
+      const existingIsGlobal = existing?.tenantId == null;
+
+      if (!existing || (roleIsGlobal && !existingIsGlobal)) {
+        canonical.set(key, role);
+      }
+    }
+
+    return [...canonical.values()]
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map(({ _id, name, description }) => ({
+        _id,
+        name,
+        description,
+      }));
+  }
+
   async function listRoles(options?: {
     limit?: number;
     offset?: number;
   }): Promise<Pick<IRole, '_id' | 'name' | 'description'>[]> {
-    const Role = mongoose.models.Role as Model<IRole>;
     const limit = options?.limit ?? 50;
     const offset = options?.offset ?? 0;
+    const roles = await getCanonicalRoleList();
 
-    /**
-     * The platform Access-management role registry shows canonical/global
-     * role definitions only.
-     *
-     * Tenant-scoped role copies must not be merged into this list because
-     * doing so produces duplicate semantic roles such as USER, ADMIN, or
-     * INSTITUTION_ADMIN.
-     */
-    return await runAsSystem(() =>
-      Role.find({
-        tenantId: { $in: [null, undefined] },
-      })
-        .select('name description')
-        .sort({ name: 1 })
-        .skip(offset)
-        .limit(limit)
-        .lean(),
-    );
+    return roles.slice(offset, offset + limit);
   }
 
   async function countRoles(): Promise<number> {
-    const Role = mongoose.models.Role;
-
-    return await runAsSystem(() =>
-      Role.countDocuments({
-        tenantId: { $in: [null, undefined] },
-      }),
-    );
+    const roles = await getCanonicalRoleList();
+    return roles.length;
   }
 
   /**
