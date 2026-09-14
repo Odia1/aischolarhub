@@ -42,8 +42,10 @@ const mcp = require('./mcp');
 const rum = require('./rum');
 const insights = require('./insights');
 const knowledge = require('./knowledge');
+const support = require('./support');
 
 module.exports = {
+  support,
   knowledge,
   insights,
   rum,
