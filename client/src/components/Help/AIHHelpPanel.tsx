@@ -1,3 +1,4 @@
+import { useAuthContext } from '~/hooks/AuthContext';
 import { useEffect, useMemo, useState } from 'react';
 import { HelpCircle, Send, X } from 'lucide-react';
 
@@ -80,6 +81,7 @@ function knowledgeAnswer(
 }
 
 export default function AIHHelpPanel() {
+  const { token } = useAuthContext();
   const [open, setOpen] = useState(false);
   const [context, setContext] = useState<SupportContext | null>(null);
   const [contextError, setContextError] = useState(false);
@@ -99,6 +101,7 @@ export default function AIHHelpPanel() {
       credentials: 'include',
       headers: {
         Accept: 'application/json',
+        Authorization: `Bearer ${token}`,
       },
     })
       .then(async (response) => {
@@ -121,7 +124,7 @@ export default function AIHHelpPanel() {
     return () => {
       cancelled = true;
     };
-  }, [open, context, contextError]);
+  }, [open, context, contextError, token]);
 
   useEffect(() => {
     if (!open) return;
@@ -131,7 +134,10 @@ export default function AIHHelpPanel() {
     fetch('/api/support/knowledge', {
       method: 'GET',
       credentials: 'include',
-      headers: { Accept: 'application/json' },
+      headers: {
+        Accept: 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
     })
       .then(async (response) => {
         if (!response.ok) return { documents: [] };
@@ -151,7 +157,7 @@ export default function AIHHelpPanel() {
     return () => {
       cancelled = true;
     };
-  }, [open]);
+  }, [open, token]);
 
   const welcome = useMemo(() => {
     if (!context) {
