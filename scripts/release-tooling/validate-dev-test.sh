@@ -99,6 +99,10 @@ echo "===== 6. RELEASE SOURCE SANITY ====="
 git diff --check
 
 echo
+echo
+echo "===== UI THEME COMPLIANCE ====="
+scripts/release-tooling/check-ui-theme.sh
+
 echo "DEV_TEST_VALIDATION_PASSED"
 
 echo

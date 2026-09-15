@@ -149,7 +149,7 @@ export default function AIHHelpPanel() {
           />
 
           <section
-            className="relative flex h-full w-full max-w-md flex-col border-l border-border-light bg-surface-primary shadow-2xl"
+            className="relative flex h-full w-full max-w-md flex-col border-l border-border-light bg-surface-primary text-text-primary shadow-2xl"
             aria-label="AIH Help"
           >
             <header className="flex items-center justify-between border-b border-border-light bg-gradient-to-r from-cyan-500/10 via-sky-500/10 to-indigo-500/10 px-5 py-4">
@@ -244,7 +244,7 @@ export default function AIHHelpPanel() {
                   }}
                   rows={2}
                   placeholder="Ask AIH for help..."
-                  className="min-h-[48px] flex-1 resize-none rounded-lg border border-border-light bg-surface-primary px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-border-medium"
+                  className="min-h-[48px] flex-1 resize-none rounded-lg border border-border-light bg-surface-primary px-3 py-2 text-sm text-text-primary caret-text-primary outline-none placeholder:text-text-secondary focus:ring-2 focus:ring-border-medium"
                 />
 
                 <button

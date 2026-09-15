@@ -166,3 +166,15 @@ o	Researchers: 1,000,000 monthly tokens | 50MB max upload limit | Research Synth
 3.	Domain / Group Mapping Rules: Set up auto-assignment rules based on email patterns or institutional metadata from our spreadsheet (e.g., any email ending in @researcher.university.edu or containing specific LDAP attributes automatically drops into the Researchers group upon first login).
 
 •	Storage Allocation: Uploads from students in the Undergraduates group are automatically stored in temporary, auto-cleaning directories, while files uploaded by users in the Instructors group are stored in the permanent Shared Course Library.
+
+
+## UI Theme Compliance
+
+All AI Scholar Hub interfaces must follow the semantic theme contract in
+`docs/UI-THEME-POLICY.md`.
+
+Core text, backgrounds, borders, inputs, placeholders, hover states, and focus
+states must use theme-aware tokens so that light and dark modes remain readable.
+
+Hard-coded colors should be limited to deliberate branding or status accents,
+not normal application text and surfaces.
