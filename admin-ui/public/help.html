@@ -4,160 +4,175 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <link rel="icon" href="/favicon.ico?v=2" type="image/x-icon">
-<title>AIH — Administrator Help</title>
+<title>AIH — Help & Support</title>
 <style>
-body{
-  margin:0;
-  font-family:system-ui,sans-serif;
-  background:#f6f7f9;
-  color:#222;
-  line-height:1.55
-}
-header{
-  display:flex;
-  align-items:center;
-  gap:14px;
-  padding:18px 28px;
-  background:#20232a;
-  color:#fff
-}
-header img{
-  width:44px;
-  height:44px;
-  border-radius:9px;
-  object-fit:contain
-}
-header h1{
-  margin:0;
-  font-size:22px
-}
-header div{
-  color:#cfd3da;
-  font-size:13px
-}
-main{
-  max-width:900px;
-  margin:28px auto;
-  padding:0 20px 40px
-}
-section{
-  margin-bottom:18px;
-  padding:20px;
-  border:1px solid #ddd;
-  border-radius:10px;
-  background:#fff
-}
-h2{
-  margin:0 0 8px;
-  font-size:18px
-}
-p{
-  margin:7px 0
-}
-ul{
-  margin:8px 0 0;
-  padding-left:22px
-}
-.actions{
-  display:flex;
-  flex-wrap:wrap;
-  gap:10px;
-  margin-top:22px
-}
-.actions a{
-  display:inline-block;
-  padding:10px 14px;
-  border-radius:7px;
-  background:#20232a;
-  color:#fff;
-  text-decoration:none
-}
-.actions a.secondary{
-  background:#fff;
-  color:#20232a;
-  border:1px solid #aaa
-}
-footer{
-  padding:18px;
-  border-top:1px solid #ddd;
-  background:#fff;
-  color:#666;
-  text-align:center;
-  font-size:13px
-}
+body{margin:0;font-family:system-ui,sans-serif;background:#f6f7f9;color:#222;line-height:1.55}
+header{display:flex;align-items:center;gap:14px;padding:18px 28px;background:#20232a;color:#fff}
+header img{width:44px;height:44px;border-radius:9px;object-fit:contain}
+header h1{margin:0;font-size:22px}
+header .sub{color:#cfd3da;font-size:13px}
+main{max-width:980px;margin:28px auto;padding:0 20px 40px}
+.hero,.topic{margin-bottom:16px;padding:20px;border:1px solid #ddd;border-radius:10px;background:#fff}
+.hero{background:linear-gradient(135deg,#eefbff,#f2f1ff)}
+h2{margin:0 0 8px;font-size:18px}
+p{margin:7px 0}
+ul,ol{margin:8px 0 0;padding-left:22px}
+.search{width:100%;box-sizing:border-box;padding:12px;border:1px solid #bbb;border-radius:8px;font-size:15px;background:#fff;color:#222}
+.actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:20px}
+.actions a{display:inline-block;padding:10px 14px;border-radius:7px;background:#20232a;color:#fff;text-decoration:none}
+.actions a.secondary{background:#fff;color:#20232a;border:1px solid #aaa}
+.muted{color:#666;font-size:13px}
+footer{padding:18px;border-top:1px solid #ddd;background:#fff;color:#666;text-align:center;font-size:13px}
 </style>
 </head>
 <body>
 <header>
   <img src="/aih.png" alt="AIH">
   <div>
-    <h1>AIH Administrator Help</h1>
-    <div>AI Scholar Hub institutional administration</div>
+    <h1>AIH Help &amp; Support</h1>
+    <div class="sub">AI Scholar Hub administration and institutional workflows</div>
   </div>
 </header>
 
 <main>
-  <section>
-    <h2>Administration overview</h2>
+  <section class="hero">
+    <h2 id="welcome">Administrator Help</h2>
+    <p id="identity" class="muted">Checking authenticated administrator context…</p>
     <p>
-      This portal manages AIH institutions, users, academic groups,
-      RAG access, academic agents, and AI experience policies.
-      Available functions depend on your administrative role.
+      This help page covers permitted AI Scholar Hub administrative workflows.
+      It does not expose credentials, internal infrastructure, source code,
+      hidden diagnostics, or another institution's protected information.
     </p>
   </section>
 
-  <section>
-    <h2>Institutions and users</h2>
-    <ul>
-      <li>Superadmins manage the complete AIH platform.</li>
-      <li>Platform Admins manage institutions and their administrators.</li>
-      <li>Institution Admins manage users and instructors only within their institution.</li>
-      <li>Institution data must remain within its assigned institution context.</li>
-    </ul>
-  </section>
+  <input id="search" class="search" type="search"
+         placeholder="Search AIH administrator help…" aria-label="Search help">
 
-  <section>
-    <h2>Groups and academic structure</h2>
-    <p>
-      Groups contain users and instructors from one institution.
-      Administrative accounts are managed separately and are not ordinary
-      group members. Departments, courses, and subgroups can be used to
-      organize academic access.
-    </p>
-  </section>
+  <div id="topics" style="margin-top:16px">
+    <section class="topic" data-roles="ALL">
+      <h2>Getting started</h2>
+      <p>Use the Administrator Portal to manage the AIH functions permitted by your role. Institution Admins remain restricted to their own institution; Platform Admins have broader platform responsibilities; Superadmin authority remains separately protected.</p>
+    </section>
 
-  <section>
-    <h2>RAG access</h2>
-    <p>
-      RAG Access Points identify institution-owned document collections.
-      RAG Access Groups determine which groups, courses, departments, or
-      selected users may retrieve information from those collections.
-    </p>
-  </section>
+    <section class="topic" data-roles="ALL">
+      <h2>Users and account access</h2>
+      <ul>
+        <li>Create or maintain accounts only within your administrative authority.</li>
+        <li>Assign the minimum role required for the user's responsibilities.</li>
+        <li>Use the approved reset or SSO workflow for login problems.</li>
+        <li>Never request or store a user's password, token, or API key.</li>
+      </ul>
+    </section>
 
-  <section>
-    <h2>Academic agents and AI policy</h2>
-    <p>
-      Academic Agents define guided educational experiences. AI Experience
-      Policy controls the model classes and routes available to institutions,
-      roles, and agents.
-    </p>
-  </section>
+    <section class="topic" data-roles="ALL">
+      <h2>Groups and academic structure</h2>
+      <p>Departments, courses, groups, instructors, and learners provide the structure used for academic organization and authorization. Group membership must remain within the appropriate institution boundary.</p>
+    </section>
 
-  <section>
-    <h2>Need additional assistance?</h2>
-    <p>
-      Contact AIH support at <strong>ai@seedsnet.org</strong>.
-    </p>
-    <div class="actions">
-      <a href="mailto:ai@seedsnet.org">Email AIH Support</a>
-      <a class="secondary" href="/">Return to Administrator Portal</a>
-    </div>
-  </section>
+    <section class="topic" data-roles="ALL">
+      <h2>RAG and documents</h2>
+      <p>RAG Access Points identify controlled knowledge collections. RAG access policies and group relationships determine which users may retrieve from them. Stored documents are not automatically visible to every user.</p>
+      <p>Do not weaken authorization or security scanning to make a document accessible.</p>
+    </section>
+
+    <section class="topic" data-roles="ALL">
+      <h2>Academic Agents</h2>
+      <p>Academic Agents are specialized educational or research experiences. Agent availability, tools, institutional knowledge, and model routing remain governed by platform policy and user authorization.</p>
+    </section>
+
+    <section class="topic" data-roles="INSTITUTION_ADMIN PLATFORM_ADMIN SUPERADMIN ADMIN">
+      <h2>Institution administration</h2>
+      <p>Institution Admins manage permitted users, instructors, groups, academic structure, and institution-scoped resources within their institution. They must not manage another institution's protected data.</p>
+    </section>
+
+    <section class="topic" data-roles="PLATFORM_ADMIN SUPERADMIN ADMIN">
+      <h2>Platform administration</h2>
+      <p>Platform-level administrators may manage institutions and platform-wide configuration according to their capabilities. Permanent deletion and immutable Superadmin controls remain separately protected.</p>
+    </section>
+
+    <section class="topic" data-roles="ALL">
+      <h2>Common errors</h2>
+      <ul>
+        <li><strong>Authentication required:</strong> sign in again.</li>
+        <li><strong>Permission denied:</strong> verify role, institution, and scope.</li>
+        <li><strong>Document unavailable:</strong> verify RAG scope and processing status.</li>
+        <li><strong>Agent unavailable:</strong> verify role/institution entitlement.</li>
+        <li><strong>Upload rejected:</strong> verify supported format and remove unsafe active content.</li>
+      </ul>
+    </section>
+
+    <section class="topic" data-roles="ALL">
+      <h2>Troubleshooting and escalation</h2>
+      <ol>
+        <li>Record the visible error and the operation being attempted.</li>
+        <li>Verify the user's role, institution, group, and relevant capability.</li>
+        <li>Verify the expected RAG or Academic Agent scope where applicable.</li>
+        <li>Escalate unresolved platform defects without sending passwords, credentials, tokens, or sensitive infrastructure details.</li>
+      </ol>
+    </section>
+
+    <section class="topic" data-roles="ALL">
+      <h2>Security and privacy boundaries</h2>
+      <p>AIH Support is guidance, not an authorization bypass. Help cannot elevate roles, expose secrets, inspect unauthorized documents, reveal raw internal diagnostics, or modify security policy.</p>
+    </section>
+  </div>
+
+  <div class="actions">
+    <a href="/">Return to Administrator Portal</a>
+    <a class="secondary" href="mailto:ai@seedsnet.org">Escalate to AIH Support</a>
+  </div>
 </main>
 
 <footer>
   AI Scholar Hub • Conceived &amp; Developed by Prof. Priyadarsan Patra
 </footer>
+
+<script>
+let adminRole = "ALL";
+
+async function loadAdminContext() {
+  try {
+    const r = await fetch("/api/me", { credentials: "include" });
+    if (r.status === 401) {
+      location.href = "/login";
+      return;
+    }
+    if (!r.ok) throw new Error("Unable to load administrator context");
+
+    const me = await r.json();
+    adminRole = String(me.role || "ALL").trim().toUpperCase();
+
+    document.getElementById("welcome").textContent =
+      `AIH Help for ${me.name || me.email || "Administrator"}`;
+
+    document.getElementById("identity").textContent =
+      `${me.role || "Administrator"}${me.tenantId ? ` • ${me.tenantId}` : ""}`;
+
+    filterTopics();
+  } catch (_err) {
+    document.getElementById("identity").textContent =
+      "Administrator context unavailable.";
+  }
+}
+
+function filterTopics() {
+  const q = document.getElementById("search").value.trim().toLowerCase();
+
+  document.querySelectorAll(".topic").forEach(section => {
+    const roles = String(section.dataset.roles || "ALL").split(/\s+/);
+    const roleAllowed =
+      roles.includes("ALL") || roles.includes(adminRole);
+
+    const searchAllowed =
+      !q || section.textContent.toLowerCase().includes(q);
+
+    section.style.display =
+      roleAllowed && searchAllowed ? "" : "none";
+  });
+}
+
+document.getElementById("search").addEventListener("input", filterTopics);
+loadAdminContext();
+</script>
 </body>
 </html>

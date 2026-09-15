@@ -178,3 +178,23 @@ states must use theme-aware tokens so that light and dark modes remain readable.
 
 Hard-coded colors should be limited to deliberate branding or status accents,
 not normal application text and surfaces.
+
+
+## Release F Support Knowledge bootstrap
+
+After the immutable Release F runtime has passed DEV validation, a Platform
+Admin or Superadmin with `MANAGE_SUPPORT_KNOWLEDGE` runs the authenticated
+Support Knowledge baseline bootstrap:
+
+`POST /api/admin/support-knowledge/bootstrap-baseline`
+
+This is an explicit persisted-data migration and must be recorded separately
+from immutable runtime promotion.
+
+The operation is idempotent: already-published baseline articles are not
+overwritten. Creation and publication use the normal Support Knowledge model
+methods and audit path.
+
+The custom Administrator Portal must also be rebuilt/recreated when
+`admin-ui/` source changes; promoting the API runtime alone does not update
+that separate interface.

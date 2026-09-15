@@ -6,6 +6,222 @@ const db = require('~/models');
 
 const router = express.Router();
 
+const BASELINE_SUPPORT_KNOWLEDGE = [
+  {
+    title: 'Getting Started with AI Scholar Hub',
+    description: 'How to begin using AI Scholar Hub and choose the right learning or research experience.',
+    category: 'GETTING_STARTED',
+    audience: ['ALL'],
+    content: `AI Scholar Hub provides role-aware AI assistance for learning, teaching, research, and institutional knowledge.
+
+Getting started:
+1. Sign in with your approved AIH account.
+2. Choose the experience appropriate to your task.
+3. Use normal chat for general assistance.
+4. Use Academic Agents when you need a specialized educational or research workflow.
+5. Use authorized RAG or course knowledge when your institution has provided documents for your class, group, or institution.
+6. Review AI-generated answers critically and follow your institution's academic-integrity requirements.
+
+Available functions depend on your role, institution, group membership, and permissions.`
+  },
+  {
+    title: 'Account and Login Help',
+    description: 'Sign-in, account access, password, and institution-login guidance.',
+    category: 'GETTING_STARTED',
+    audience: ['ALL'],
+    content: `Your AI Scholar Hub account is associated with an institution and role.
+
+If you cannot sign in:
+1. Confirm that you are using the approved sign-in method for your institution.
+2. Check that you are using the correct account or institutional email.
+3. If local passwords are enabled, use the approved password-reset process.
+4. If your institution requires SSO, use the configured Google or Microsoft sign-in method.
+5. Contact your Institution Admin if your account is disabled, missing, or assigned to the wrong institution.
+
+Never provide passwords, authentication tokens, API keys, or recovery codes to AIH Support.`
+  },
+  {
+    title: 'RAG and Documents',
+    description: 'How institutional, course, group, and personal documents are used safely in AIH.',
+    category: 'RAG',
+    audience: ['ALL'],
+    content: `Retrieval-Augmented Generation (RAG) allows AI Scholar Hub to answer using authorized documents in addition to the language model's general knowledge.
+
+AIH may provide:
+- institution-wide knowledge;
+- department, course, class, or group knowledge;
+- instructor-authorized materials;
+- your own permitted personal files.
+
+Access is hierarchical and permission-controlled. A document being stored in AIH does not automatically mean every user can retrieve it.
+
+When using RAG:
+1. Select or upload only documents you are authorized to use.
+2. Ask questions that relate to the available material.
+3. Check important answers against the source documents.
+4. Do not upload secrets, credentials, or material you are not authorized to share.
+
+If expected course or institutional material is unavailable, contact the instructor or Institution Admin responsible for that knowledge collection.`
+  },
+  {
+    title: 'Academic Agents',
+    description: 'How to use AIH Academic Agents for specialized educational and research workflows.',
+    category: 'ACADEMIC_AGENTS',
+    audience: ['ALL'],
+    content: `Academic Agents are specialized AI assistants configured for particular learning, teaching, research, or scholarly workflows.
+
+To use an Academic Agent:
+1. Open AI Scholar Hub and select an available Academic Agent.
+2. Choose the agent that best matches your task, such as a Socratic Tutor, Research Synthesizer, Course Knowledge assistant, or another institution-approved agent.
+3. Describe your question or task clearly.
+4. Supply permitted documents or use authorized institutional knowledge when the agent supports them.
+5. Review the result critically and follow academic-integrity requirements.
+
+Academic Agents do not override your role, institution, RAG permissions, or security controls. An agent can use only the capabilities and knowledge sources authorized for your account.`
+  },
+  {
+    title: 'Instructor Workflows',
+    description: 'Using AIH for teaching, course knowledge, class support, and instructional workflows.',
+    category: 'INSTRUCTOR_WORKFLOWS',
+    audience: ['INSTRUCTOR', 'INSTITUTION_ADMIN', 'PLATFORM_ADMIN'],
+    content: `Instructors can use AI Scholar Hub to support teaching and learning while preserving academic and institutional boundaries.
+
+Typical instructor workflows include:
+- using instructional Academic Agents;
+- preparing explanations, lesson materials, and learning activities;
+- providing authorized course or class knowledge through RAG;
+- organizing learners through institution-approved groups and courses;
+- guiding students with Socratic or evidence-based assistance;
+- supporting research and scholarly work where permitted.
+
+Course and class documents should be assigned only to the intended institution, course, class, group, or user scope.
+
+AIH should support teaching judgment rather than replace instructor responsibility for curriculum, assessment, grading, or academic-integrity decisions.`
+  },
+  {
+    title: 'Institution Administration',
+    description: 'Institution, user, group, RAG, Academic Agent, and policy administration.',
+    category: 'INSTITUTION_ADMINISTRATION',
+    audience: ['INSTITUTION_ADMIN', 'PLATFORM_ADMIN'],
+    content: `AI Scholar Hub uses a multi-institution administrative model.
+
+Institution Admins manage authorized users, instructors, groups, academic structure, and permitted institutional resources within their own institution.
+
+Platform Admins manage institutions and broader platform configuration subject to Superadmin controls.
+
+Administrative responsibilities include:
+- maintaining accurate user roles and institution membership;
+- organizing courses, classes, departments, and groups;
+- controlling RAG access and document scope;
+- administering approved Academic Agent availability;
+- maintaining institution-specific limits and policies where authorized.
+
+Institution Admins must not access or modify another institution's users, documents, groups, or settings. Permanent institution deletion and designated Superadmin authority remain outside ordinary Institution Admin privileges.`
+  },
+  {
+    title: 'Troubleshooting AI Scholar Hub',
+    description: 'Common steps when AIH chat, documents, agents, or account functions do not behave as expected.',
+    category: 'TROUBLESHOOTING',
+    audience: ['ALL'],
+    content: `For common AI Scholar Hub problems:
+
+Chat or agent not responding:
+- retry the request once;
+- confirm that the selected experience or agent is available to your role;
+- avoid submitting extremely large prompts unnecessarily.
+
+Document or RAG answer missing:
+- confirm the document was uploaded successfully;
+- confirm you have permission to the relevant course, group, or institution knowledge;
+- ask a question that clearly relates to the document.
+
+Upload rejected:
+- confirm the file type is supported;
+- remove macros, executables, or suspicious active content;
+- re-export the document from a trusted application.
+
+Permission problem:
+- contact your instructor or Institution Admin rather than attempting to bypass the restriction.
+
+If the problem persists, provide AIH Support with a short description of the problem, the visible error message, and the action you were attempting. Do not send passwords, tokens, API keys, or other secrets.`
+  },
+  {
+    title: 'Common Errors',
+    description: 'Meaning and recommended action for common user-facing AIH errors.',
+    category: 'TROUBLESHOOTING',
+    audience: ['ALL'],
+    content: `Common AI Scholar Hub errors usually fall into these categories:
+
+Authentication required:
+Your session may have expired. Sign in again.
+
+Permission denied or unauthorized:
+Your role, institution, group membership, or capability does not permit the requested operation. Contact the appropriate administrator if you believe your access is incorrect.
+
+Document unavailable:
+The document may not be in your authorized RAG scope or may still be processing.
+
+Upload rejected:
+The file may be unsupported, unsafe, malformed, or contain active content that AIH does not accept.
+
+Agent unavailable:
+The Academic Agent may not be enabled for your role or institution.
+
+Temporary service error:
+Retry after a short interval. If the error persists, report the visible error and the operation you were performing.
+
+Do not work around access-control or document-security errors by attempting alternate unauthorized paths.`
+  },
+  {
+    title: 'Escalating an AIH Support Issue',
+    description: 'What information to provide when an issue requires administrator or platform support.',
+    category: 'TROUBLESHOOTING',
+    audience: ['ALL'],
+    content: `Escalate an AI Scholar Hub issue when normal guidance does not resolve the problem.
+
+Include:
+- your institution;
+- your role;
+- the AIH function you were using;
+- the visible error message;
+- a concise description of what you expected and what occurred;
+- the approximate time of the problem.
+
+Do not include:
+- passwords;
+- authentication or refresh tokens;
+- API keys;
+- private credentials;
+- hidden prompts;
+- confidential infrastructure details.
+
+Students and ordinary users should normally escalate first to their instructor or Institution Admin. Institution Admins may escalate unresolved platform issues to AIH platform support.`
+  },
+  {
+    title: 'Security and Privacy Boundaries',
+    description: 'What AIH Support can and cannot access or do.',
+    category: 'SECURITY_PRIVACY',
+    audience: ['ALL'],
+    content: `AIH Support is an authenticated, read-only support capability.
+
+It may use approved Support Knowledge and limited user-facing context such as your role and institution when needed to provide relevant guidance.
+
+AIH Support does not provide access to:
+- passwords, API keys, tokens, or credentials;
+- source code;
+- hidden prompts or internal diagnostics;
+- deployment topology;
+- raw infrastructure logs;
+- unauthorized files or RAG collections;
+- another institution's protected information.
+
+AIH Support cannot change your permissions, elevate your role, modify institution security policy, or bypass authentication and authorization.
+
+If a request requires administrative action, Support should explain the appropriate escalation path rather than attempting the privileged operation.`
+  },
+];
+
+
 const requireAdminAccess = requireCapability(SystemCapabilities.ACCESS_ADMIN);
 const requireManageSupportKnowledge = requireCapability(
   SystemCapabilities.MANAGE_SUPPORT_KNOWLEDGE,
@@ -152,6 +368,84 @@ function handleError(res, err) {
     error: 'Support Knowledge operation failed',
   });
 }
+
+
+router.post(
+  '/bootstrap-baseline',
+  requireSupportKnowledgeMutationsEnabled,
+  async (req, res) => {
+    try {
+      const actor = actorFromRequest(req);
+
+      if (!actor) {
+        return res.status(401).json({ error: 'Authenticated user required' });
+      }
+
+      const existing = await db.listSupportKnowledge();
+      const results = [];
+
+      for (const article of BASELINE_SUPPORT_KNOWLEDGE) {
+        const matches = existing.filter(
+          (doc) =>
+            String(doc.title || '').trim().toLowerCase() ===
+            article.title.toLowerCase(),
+        );
+
+        const published = matches.find(
+          (doc) => String(doc.status).toUpperCase() === 'PUBLISHED',
+        );
+
+        if (published) {
+          results.push({ title: article.title, action: 'already-published' });
+          continue;
+        }
+
+        let draft = matches.find(
+          (doc) => String(doc.status).toUpperCase() === 'DRAFT',
+        );
+
+        if (!draft) {
+          draft = await db.createSupportKnowledgeDraft({
+            title: article.title,
+            description: article.description,
+            category: article.category,
+            audience: article.audience,
+            content: article.content,
+            actorId: actor.userId,
+          });
+
+          await emitAudit(req, 'support_knowledge.created', draft, {
+            bootstrap: 'release-f-baseline',
+          });
+        }
+
+        const publishedDocument = await db.publishSupportKnowledge(
+          draft._id,
+          actor.userId,
+        );
+
+        await emitAudit(req, 'support_knowledge.published', publishedDocument, {
+          bootstrap: 'release-f-baseline',
+        });
+
+        results.push({
+          title: article.title,
+          action: 'published',
+          revision: Number(publishedDocument.revision),
+        });
+      }
+
+      return res.status(200).json({
+        ok: true,
+        baseline: 'release-f',
+        count: results.length,
+        results,
+      });
+    } catch (err) {
+      return handleError(res, err);
+    }
+  },
+);
 
 router.get('/', async (_req, res) => {
   try {

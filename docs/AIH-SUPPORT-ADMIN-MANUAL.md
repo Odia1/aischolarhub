@@ -116,3 +116,32 @@ available for atomic knowledge mutation plus audit recording.
 
 Read-only Support behavior and the authenticated Support boundary remain
 available independently.
+
+
+## Release F baseline Support corpus
+
+Release F supplies an audited, idempotent baseline bootstrap operation at:
+
+`POST /api/admin/support-knowledge/bootstrap-baseline`
+
+The endpoint is protected by JWT authentication, Admin access,
+`MANAGE_SUPPORT_KNOWLEDGE`, and the Support Knowledge mutation gate.
+
+It publishes the baseline articles required for:
+
+- Getting Started
+- Account/Login Help
+- RAG and Documents
+- Academic Agents
+- Instructor Workflows
+- Institution Administration
+- Troubleshooting
+- Common Errors
+- Escalation
+- Security and Privacy Boundaries
+
+Existing published articles with the same baseline title are retained rather
+than overwritten.
+
+The custom Administrator Portal exposes **Help & Support** in its header and
+provides role-aware administrator guidance.
