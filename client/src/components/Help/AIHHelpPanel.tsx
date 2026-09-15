@@ -132,7 +132,7 @@ export default function AIHHelpPanel() {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="fixed bottom-5 right-5 z-40 flex items-center gap-2 rounded-full border border-border-light bg-surface-primary px-4 py-3 text-sm font-medium shadow-lg transition hover:bg-surface-secondary"
+        className="fixed bottom-5 right-5 z-40 flex items-center gap-2 rounded-full border border-cyan-300/40 bg-gradient-to-r from-cyan-500 via-sky-500 to-indigo-500 px-4 py-3 text-sm font-semibold text-white shadow-xl shadow-cyan-500/20 transition hover:-translate-y-0.5 hover:shadow-2xl hover:shadow-cyan-500/30 focus:outline-none focus:ring-2 focus:ring-cyan-300 focus:ring-offset-2"
         aria-label="Open AIH Help"
       >
         <HelpCircle className="h-5 w-5" />
@@ -152,9 +152,9 @@ export default function AIHHelpPanel() {
             className="relative flex h-full w-full max-w-md flex-col border-l border-border-light bg-surface-primary shadow-2xl"
             aria-label="AIH Help"
           >
-            <header className="flex items-center justify-between border-b border-border-light px-5 py-4">
+            <header className="flex items-center justify-between border-b border-border-light bg-gradient-to-r from-cyan-500/10 via-sky-500/10 to-indigo-500/10 px-5 py-4">
               <div>
-                <h2 className="text-lg font-semibold">AIH Support</h2>
+                <h2 className="bg-gradient-to-r from-cyan-500 via-sky-500 to-indigo-500 bg-clip-text text-lg font-bold text-transparent">AIH Support</h2>
                 <p className="text-xs text-text-secondary">
                   Help with AI Scholar Hub
                 </p>
@@ -198,7 +198,7 @@ export default function AIHHelpPanel() {
                             key={topic}
                             type="button"
                             onClick={() => submit(topic)}
-                            className="rounded-full border border-border-light px-3 py-2 text-sm hover:bg-surface-secondary"
+                            className="rounded-full border border-cyan-300/30 bg-gradient-to-r from-cyan-500/5 to-indigo-500/5 px-3 py-2 text-sm transition hover:border-cyan-400/50 hover:from-cyan-500/10 hover:to-indigo-500/10"
                           >
                             {topic}
                           </button>
@@ -250,7 +250,7 @@ export default function AIHHelpPanel() {
                 <button
                   type="submit"
                   disabled={!input.trim()}
-                  className="rounded-lg bg-text-primary p-3 text-surface-primary disabled:opacity-40"
+                  className="rounded-lg bg-gradient-to-r from-cyan-500 to-indigo-500 p-3 text-white shadow-md transition hover:shadow-lg disabled:opacity-40"
                   aria-label="Send help question"
                 >
                   <Send className="h-5 w-5" />
