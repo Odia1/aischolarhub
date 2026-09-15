@@ -166,6 +166,32 @@ function knowledgeAnswer(
     return 'Academic Agents are specialized AI assistants for particular learning, teaching, or research tasks. Choose an agent that matches what you want to do, ask your question clearly, and use only documents or institutional knowledge you are authorized to access. The agents available to you depend on your role and institution.';
   }
 
+  /*
+   * Personal-document workflow questions need an actionable answer rather
+   * than the general RAG documentation article.
+   */
+  if (
+    q.includes('upload document') ||
+    q.includes('upload a document') ||
+    q.includes('upload my document') ||
+    q.includes('upload file') ||
+    q.includes('upload a file') ||
+    q.includes('upload my file') ||
+    q.includes('add document') ||
+    q.includes('add a document') ||
+    q.includes('add my document') ||
+    q.includes('add file') ||
+    q.includes('add a file') ||
+    q.includes('give my document') ||
+    q.includes('give my documents') ||
+    q.includes('my documents') ||
+    q.includes('my files') ||
+    q.includes('attach document') ||
+    q.includes('attach file')
+  ) {
+    return 'To use one of your own documents, open **Knowledge Sources** in the chat interface, choose the option for your personal documents or files, and upload the permitted file. Wait until processing completes, then return to the conversation and ask a question about that document. Only documents and Knowledge Sources that you are authorized to use will be available.';
+  }
+
   if (
     q.includes('rag') ||
     q.includes('knowledge source') ||
