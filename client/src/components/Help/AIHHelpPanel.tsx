@@ -339,18 +339,51 @@ export default function AIHHelpPanel() {
     }.`;
   }, [context]);
 
-  const submit = (value?: string) => {
+  const submit = async (value?: string) => {
     const question = String(value ?? input).trim();
     if (!question) {
       return;
     }
 
+    setInput('');
     setMessages((current) => [
       ...current,
       { role: 'user', text: question },
-      { role: 'assistant', text: knowledgeAnswer(question, context, knowledge) },
     ]);
-    setInput('');
+
+    let answer = '';
+
+    try {
+      const response = await fetch('/api/support/answer', {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ question }),
+      });
+
+      if (response.ok) {
+        const data = (await response.json()) as { answer?: string };
+        answer =
+          typeof data.answer === 'string'
+            ? data.answer.trim()
+            : '';
+      }
+    } catch {
+      // Deterministic Support Knowledge fallback below.
+    }
+
+    if (!answer) {
+      answer = knowledgeAnswer(question, context, knowledge);
+    }
+
+    setMessages((current) => [
+      ...current,
+      { role: 'assistant', text: answer },
+    ]);
   };
 
   return (
