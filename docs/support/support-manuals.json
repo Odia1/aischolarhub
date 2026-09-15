@@ -1,0 +1,130 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-09-15T13:35:24.444Z",
+  "manuals": [
+    {
+      "knowledgeKey": "bff8faee-cf13-4b92-be7a-6409cda2028b",
+      "title": "Academic Agents",
+      "description": "How to use AIH Academic Agents for specialized educational and research workflows.",
+      "category": "ACADEMIC_AGENTS",
+      "audience": [
+        "ALL"
+      ],
+      "content": "Academic Agents are specialized AI assistants configured for particular learning, teaching, research, or scholarly workflows.\n\nTo use an Academic Agent:\n1. Open AI Scholar Hub and select an available Academic Agent.\n2. Choose the agent that best matches your task, such as a Socratic Tutor, Research Synthesizer, Course Knowledge assistant, or another institution-approved agent.\n3. Describe your question or task clearly.\n4. Supply permitted documents or use authorized institutional knowledge when the agent supports them.\n5. Review the result critically and follow academic-integrity requirements.\n\nAcademic Agents do not override your role, institution, RAG permissions, or security controls. An agent can use only the capabilities and knowledge sources authorized for your account.",
+      "revision": 1
+    },
+    {
+      "knowledgeKey": "8f931b42-20b6-4b50-a614-016bdf46cc17",
+      "title": "Account and Login Help",
+      "description": "Sign-in, account access, password, and institution-login guidance.",
+      "category": "GETTING_STARTED",
+      "audience": [
+        "ALL"
+      ],
+      "content": "Your AI Scholar Hub account is associated with an institution and role.\n\nIf you cannot sign in:\n1. Confirm that you are using the approved sign-in method for your institution.\n2. Check that you are using the correct account or institutional email.\n3. If local passwords are enabled, use the approved password-reset process.\n4. If your institution requires SSO, use the configured Google or Microsoft sign-in method.\n5. Contact your Institution Admin if your account is disabled, missing, or assigned to the wrong institution.\n\nNever provide passwords, authentication tokens, API keys, or recovery codes to AIH Support.",
+      "revision": 1
+    },
+    {
+      "knowledgeKey": "094b67d2-7923-4bb0-b46f-bfc7b48c07cf",
+      "title": "Common Errors",
+      "description": "Meaning and recommended action for common user-facing AIH errors.",
+      "category": "TROUBLESHOOTING",
+      "audience": [
+        "ALL"
+      ],
+      "content": "Common AI Scholar Hub errors usually fall into these categories:\n\nAuthentication required:\nYour session may have expired. Sign in again.\n\nPermission denied or unauthorized:\nYour role, institution, group membership, or capability does not permit the requested operation. Contact the appropriate administrator if you believe your access is incorrect.\n\nDocument unavailable:\nThe document may not be in your authorized RAG scope or may still be processing.\n\nUpload rejected:\nThe file may be unsupported, unsafe, malformed, or contain active content that AIH does not accept.\n\nAgent unavailable:\nThe Academic Agent may not be enabled for your role or institution.\n\nTemporary service error:\nRetry after a short interval. If the error persists, report the visible error and the operation you were performing.\n\nDo not work around access-control or document-security errors by attempting alternate unauthorized paths.",
+      "revision": 1
+    },
+    {
+      "knowledgeKey": "beeff63a-97a6-4e06-88a3-c3458d9497e8",
+      "title": "Escalating an AIH Support Issue",
+      "description": "What information to provide when an issue requires administrator or platform support.",
+      "category": "TROUBLESHOOTING",
+      "audience": [
+        "ALL"
+      ],
+      "content": "Escalate an AI Scholar Hub issue when normal guidance does not resolve the problem.\n\nInclude:\n- your institution;\n- your role;\n- the AIH function you were using;\n- the visible error message;\n- a concise description of what you expected and what occurred;\n- the approximate time of the problem.\n\nDo not include:\n- passwords;\n- authentication or refresh tokens;\n- API keys;\n- private credentials;\n- hidden prompts;\n- confidential infrastructure details.\n\nStudents and ordinary users should normally escalate first to their instructor or Institution Admin. Institution Admins may escalate unresolved platform issues to AIH platform support.",
+      "revision": 1
+    },
+    {
+      "knowledgeKey": "2bf6ab93-c6c1-4387-9a04-3b89dc445517",
+      "title": "Getting Started with AI Scholar Hub",
+      "description": "How to begin using AI Scholar Hub and choose the right learning or research experience.",
+      "category": "GETTING_STARTED",
+      "audience": [
+        "ALL"
+      ],
+      "content": "AI Scholar Hub provides role-aware AI assistance for learning, teaching, research, and institutional knowledge.\n\nGetting started:\n1. Sign in with your approved AIH account.\n2. Choose the experience appropriate to your task.\n3. Use normal chat for general assistance.\n4. Use Academic Agents when you need a specialized educational or research workflow.\n5. Use authorized RAG or course knowledge when your institution has provided documents for your class, group, or institution.\n6. Review AI-generated answers critically and follow your institution's academic-integrity requirements.\n\nAvailable functions depend on your role, institution, group membership, and permissions.",
+      "revision": 1
+    },
+    {
+      "knowledgeKey": "bb0d6547-9419-4c21-84f2-f252d251394b",
+      "title": "Institution Administration",
+      "description": "Institution, user, group, RAG, Academic Agent, and policy administration.",
+      "category": "INSTITUTION_ADMINISTRATION",
+      "audience": [
+        "INSTITUTION_ADMIN",
+        "PLATFORM_ADMIN"
+      ],
+      "content": "AI Scholar Hub uses a multi-institution administrative model.\n\nInstitution Admins manage authorized users, instructors, groups, academic structure, and permitted institutional resources within their own institution.\n\nPlatform Admins manage institutions and broader platform configuration subject to Superadmin controls.\n\nAdministrative responsibilities include:\n- maintaining accurate user roles and institution membership;\n- organizing courses, classes, departments, and groups;\n- controlling RAG access and document scope;\n- administering approved Academic Agent availability;\n- maintaining institution-specific limits and policies where authorized.\n\nInstitution Admins must not access or modify another institution's users, documents, groups, or settings. Permanent institution deletion and designated Superadmin authority remain outside ordinary Institution Admin privileges.",
+      "revision": 1
+    },
+    {
+      "knowledgeKey": "fafb1c15-89be-4750-a7d0-02436ff3f11f",
+      "title": "Instructor Workflows",
+      "description": "Using AIH for teaching, course knowledge, class support, and instructional workflows.",
+      "category": "INSTRUCTOR_WORKFLOWS",
+      "audience": [
+        "INSTRUCTOR",
+        "INSTITUTION_ADMIN",
+        "PLATFORM_ADMIN"
+      ],
+      "content": "Instructors can use AI Scholar Hub to support teaching and learning while preserving academic and institutional boundaries.\n\nTypical instructor workflows include:\n- using instructional Academic Agents;\n- preparing explanations, lesson materials, and learning activities;\n- providing authorized course or class knowledge through RAG;\n- organizing learners through institution-approved groups and courses;\n- guiding students with Socratic or evidence-based assistance;\n- supporting research and scholarly work where permitted.\n\nCourse and class documents should be assigned only to the intended institution, course, class, group, or user scope.\n\nAIH should support teaching judgment rather than replace instructor responsibility for curriculum, assessment, grading, or academic-integrity decisions.",
+      "revision": 1
+    },
+    {
+      "knowledgeKey": "799a4426-8bb0-40ce-a2fe-ba0cdd49cc48",
+      "title": "RAG and Documents",
+      "description": "How institutional, course, group, and personal documents are used safely in AIH.",
+      "category": "RAG",
+      "audience": [
+        "ALL"
+      ],
+      "content": "Retrieval-Augmented Generation (RAG) allows AI Scholar Hub to answer using authorized documents in addition to the language model's general knowledge.\n\nAIH may provide:\n- institution-wide knowledge;\n- department, course, class, or group knowledge;\n- instructor-authorized materials;\n- your own permitted personal files.\n\nAccess is hierarchical and permission-controlled. A document being stored in AIH does not automatically mean every user can retrieve it.\n\nWhen using RAG:\n1. Select or upload only documents you are authorized to use.\n2. Ask questions that relate to the available material.\n3. Check important answers against the source documents.\n4. Do not upload secrets, credentials, or material you are not authorized to share.\n\nIf expected course or institutional material is unavailable, contact the instructor or Institution Admin responsible for that knowledge collection.",
+      "revision": 1
+    },
+    {
+      "knowledgeKey": "d4f99db3-11c3-4f3d-9ddc-6fb7c4ac98af",
+      "title": "Security and Privacy Boundaries",
+      "description": "What AIH Support can and cannot access or do.",
+      "category": "SECURITY_PRIVACY",
+      "audience": [
+        "ALL"
+      ],
+      "content": "AIH Support is an authenticated, read-only support capability.\n\nIt may use approved Support Knowledge and limited user-facing context such as your role and institution when needed to provide relevant guidance.\n\nAIH Support does not provide access to:\n- passwords, API keys, tokens, or credentials;\n- source code;\n- hidden prompts or internal diagnostics;\n- deployment topology;\n- raw infrastructure logs;\n- unauthorized files or RAG collections;\n- another institution's protected information.\n\nAIH Support cannot change your permissions, elevate your role, modify institution security policy, or bypass authentication and authorization.\n\nIf a request requires administrative action, Support should explain the appropriate escalation path rather than attempting the privileged operation.",
+      "revision": 1
+    },
+    {
+      "knowledgeKey": "e44a1e9a-4231-4e1a-8c36-3353a4d89194",
+      "title": "Troubleshooting AI Scholar Hub",
+      "description": "Common steps when AIH chat, documents, agents, or account functions do not behave as expected.",
+      "category": "TROUBLESHOOTING",
+      "audience": [
+        "ALL"
+      ],
+      "content": "For common AI Scholar Hub problems:\n\nChat or agent not responding:\n- retry the request once;\n- confirm that the selected experience or agent is available to your role;\n- avoid submitting extremely large prompts unnecessarily.\n\nDocument or RAG answer missing:\n- confirm the document was uploaded successfully;\n- confirm you have permission to the relevant course, group, or institution knowledge;\n- ask a question that clearly relates to the document.\n\nUpload rejected:\n- confirm the file type is supported;\n- remove macros, executables, or suspicious active content;\n- re-export the document from a trusted application.\n\nPermission problem:\n- contact your instructor or Institution Admin rather than attempting to bypass the restriction.\n\nIf the problem persists, provide AIH Support with a short description of the problem, the visible error message, and the action you were attempting. Do not send passwords, tokens, API keys, or other secrets.",
+      "revision": 1
+    },
+    {
+      "knowledgeKey": "f78ddbf0-4d41-4bfd-81f1-a11a1a94e6e3",
+      "title": "Using AI Scholar Hub — User Guide",
+      "description": "Practical guide for students and regular users: chat, learning experiences, Knowledge Sources, documents, Academic Agents, permissions, and help.",
+      "category": "GETTING_STARTED",
+      "audience": [
+        "ALL"
+      ],
+      "content": "AI Scholar Hub helps you learn, ask questions, work with authorized knowledge, and use educational AI experiences provided by your institution.\n\nWhat you can use\nThe features visible to you depend on your role, institution, group membership, and permissions. A regular user may have access to:\n- normal AI chat;\n- an assigned learning experience such as the Undergraduate Socratic Tutor;\n- Academic Agents approved for your institution;\n- personal documents you are permitted to upload;\n- course, group, or institution Knowledge Sources made available to you.\n\nStarting a conversation\n1. Sign in with your approved AI Scholar Hub account.\n2. Select the learning experience or Academic Agent appropriate to your task.\n3. Enter your question in normal language.\n4. Continue the conversation with follow-up questions when you need clarification or deeper explanation.\n\nUsing the Socratic Tutor\nThe Socratic Tutor is designed to help you reason through a topic rather than simply supply answers. Explain what you understand, ask where you are stuck, and work through the problem interactively.\n\nKnowledge Sources and RAG\nKnowledge Sources allow AI Scholar Hub to answer using documents you are authorized to access. These may include institutional, course, class, group, instructor-provided, or personal documents.\n\nA document being stored in AI Scholar Hub does not automatically make it available to every user. Access remains controlled by your institution, groups, and permissions.\n\nPersonal documents\nWhere personal document upload is enabled:\n1. Upload only material you are authorized to use.\n2. Wait for processing to complete.\n3. Ask questions that clearly relate to the document.\n4. Check important answers against the original source.\n\nDo not upload passwords, credentials, API keys, secrets, or material you are not authorized to share.\n\nAcademic Agents\nAcademic Agents are specialized assistants for particular educational, research, or scholarly tasks. Only agents enabled for your account will be available. Select an agent appropriate to your task and follow its instructions.\n\nIf something is missing\nIf you cannot see an expected agent, Knowledge Source, course document, or other capability, do not attempt to bypass the restriction. Access may depend on your role, institution, group, or course membership.\n\nStudents and regular users should normally contact their instructor or Institution Admin when expected access is missing.\n\nGetting help\nUse AIH Support for questions about using AI Scholar Hub, Knowledge Sources, documents, Academic Agents, account access, and common errors.\n\nFor unresolved problems, provide the visible error message and describe what you were trying to do. Never provide passwords, tokens, API keys, or other secrets to Support.",
+      "revision": 1
+    }
+  ]
+}
