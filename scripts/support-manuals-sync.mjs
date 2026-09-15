@@ -4,7 +4,7 @@ import { MongoClient, ObjectId } from 'mongodb';
 
 const mode = process.argv[2] || 'check';
 const canonicalPath =
-  process.argv[3] || '/app/docs/support/support-manuals.json';
+  process.argv[3] || '/app/scripts/support/support-manuals.json';
 
 if (!['export', 'check', 'apply'].includes(mode)) {
   console.error(

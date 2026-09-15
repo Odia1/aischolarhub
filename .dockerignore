@@ -64,6 +64,3 @@ data-node/
 uploads/
 logs/
 checkpoints/
-!docs/
-!docs/support/
-!docs/support/support-manuals.json

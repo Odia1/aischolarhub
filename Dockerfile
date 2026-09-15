@@ -95,9 +95,6 @@ CMD ["npm", "run", "backend"]
 # Prune all development/test dependencies from the accepted build.
 FROM full-build AS runtime
 
-# Release-managed AIH Support manuals.
-# Required by scripts/support-manuals-sync.mjs at DEV/PROD sync points.
-COPY --chown=node:node docs/support /app/docs/support
 
 RUN npm prune --production && \
     npm cache clean --force
