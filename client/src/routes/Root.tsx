@@ -25,6 +25,7 @@ import { TermsAndConditionsModal } from '~/components/ui';
 import useDrawerSwipe from '~/hooks/Nav/useDrawerSwipe';
 import { useHealthCheck } from '~/data-provider';
 import { Banner } from '~/components/Banners';
+import AIHHelpPanel from '~/components/Help/AIHHelpPanel';
 
 /** Isolates keyboard shortcut listeners so they only mount after auth. */
 function KeyboardShortcutsProvider() {
@@ -128,6 +129,7 @@ export default function Root() {
                   </div>
                 </div>
               </div>
+              <AIHHelpPanel />
             </PromptGroupsProvider>
             <KeyboardShortcutsProvider />
           </AgentsMapContext.Provider>
