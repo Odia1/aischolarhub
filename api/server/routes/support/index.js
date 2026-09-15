@@ -1,5 +1,6 @@
 const express = require('express');
-const { getInstitutionById } = require('~/models');
+const db = require('~/models');
+const { getInstitutionById } = db;
 const requireJwtAuth = require('~/server/middleware/requireJwtAuth');
 
 const router = express.Router();
@@ -43,6 +44,29 @@ const safeRoleLabel = (role) => {
   return ROLE_LABELS.get(value) ?? 'User';
 };
 
+const supportAudienceForRole = (role) => {
+  const value = String(role || '').trim().toUpperCase();
+
+  if (value === 'INSTRUCTOR') return 'INSTRUCTOR';
+  if (value === 'INSTITUTION_ADMIN') return 'INSTITUTION_ADMIN';
+  if (value === 'PLATFORM_ADMIN' || value === 'SUPERADMIN' || value === 'ADMIN') {
+    return 'PLATFORM_ADMIN';
+  }
+
+  return 'STUDENT';
+};
+
+const safePublishedDocument = (doc) => ({
+  id: doc._id?.toString?.() ?? String(doc._id),
+  title: String(doc.title || ''),
+  description:
+    typeof doc.description === 'string' && doc.description.trim()
+      ? doc.description.trim()
+      : null,
+  category: String(doc.category || 'OTHER'),
+  content: String(doc.content || ''),
+});
+
 const resolveInstitutionName = async (user) => {
   const tenantId = user?.tenantId?.toString?.();
 
@@ -67,6 +91,25 @@ const resolveInstitutionName = async (user) => {
     return null;
   }
 };
+
+
+router.get('/knowledge', async (req, res) => {
+  try {
+    const audience = supportAudienceForRole(req.user?.role);
+    const documents = await db.getPublishedSupportKnowledge({
+      audience,
+      limit: 100,
+    });
+
+    return res.status(200).json({
+      documents: documents.map(safePublishedDocument),
+    });
+  } catch (_err) {
+    return res.status(200).json({
+      documents: [],
+    });
+  }
+});
 
 router.get('/context', async (req, res) => {
   const institution = await resolveInstitutionName(req.user);

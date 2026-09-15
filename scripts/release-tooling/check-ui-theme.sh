@@ -13,7 +13,7 @@ cleanup() {
 trap cleanup EXIT
 
 scan_theme() {
-  grep -RniE \
+  grep -RHiE \
     '\b(text|bg)-(black|white)\b|\b(text|bg|border)-\[#([0-9a-fA-F]{3,8})\]' \
     client/src admin-ui/public \
     --include='*.tsx' \

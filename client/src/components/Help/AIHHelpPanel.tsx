@@ -18,6 +18,14 @@ type Message = {
   text: string;
 };
 
+type SupportKnowledgeDocument = {
+  id: string;
+  title: string;
+  description: string | null;
+  category: string;
+  content: string;
+};
+
 const TOPICS = [
   'Getting Started',
   'RAG & Documents',
@@ -26,44 +34,56 @@ const TOPICS = [
   'Troubleshooting',
 ];
 
-function guidedAnswer(question: string, context: SupportContext | null): string {
+function scoreDocument(question: string, doc: SupportKnowledgeDocument): number {
+  const words = question
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter((word) => word.length >= 3);
+
+  const haystack = [
+    doc.title,
+    doc.description ?? '',
+    doc.category,
+    doc.content,
+  ]
+    .join(' ')
+    .toLowerCase();
+
+  return words.reduce((score, word) => score + (haystack.includes(word) ? 1 : 0), 0);
+}
+
+function knowledgeAnswer(
+  question: string,
+  context: SupportContext | null,
+  knowledge: SupportKnowledgeDocument[],
+): string {
+  const ranked = knowledge
+    .map((doc) => ({ doc, score: scoreDocument(question, doc) }))
+    .filter(({ score }) => score > 0)
+    .sort((a, b) => b.score - a.score);
+
+  const best = ranked[0]?.doc;
+
+  if (best) {
+    return `${best.title}\n\n${best.content}`;
+  }
+
   const q = question.toLowerCase();
-
-  if (q.includes('rag') || q.includes('document') || q.includes('file')) {
-    return 'AIH RAG lets authorized users work with uploaded or institution-shared documents. Access depends on your institution, group membership, and RAG permissions. I can help you locate the upload or retrieval workflow.';
-  }
-
-  if (q.includes('agent')) {
-    return 'Academic Agents are purpose-built AIH assistants configured for specific academic workflows. Availability and creation rights depend on your role and institution permissions.';
-  }
-
-  if (q.includes('instructor') || q.includes('class') || q.includes('group')) {
-    return 'Instructor workflows can include class or group organization, shared RAG materials, and academic-agent use. Institution policies determine which groups and resources you can manage.';
-  }
-
-  if (
-    q.includes('error') ||
-    q.includes('problem') ||
-    q.includes('fail') ||
-    q.includes('not working') ||
-    q.includes('troubleshoot')
-  ) {
-    return 'Please describe what you were trying to do, what screen you were on, and the exact message you saw. Do not include passwords, API keys, tokens, or other secrets.';
-  }
 
   if (q.includes('start') || q.includes('begin') || q.includes('how do i use')) {
     return `You are signed in as ${context?.role ?? 'an AIH user'}${
       context?.institution ? ` at ${context.institution}` : ''
-    }. I can help you find the right AIH workflow for chat, documents, RAG, Academic Agents, or instructor tasks.`;
+    }. Ask about RAG, documents, Academic Agents, instructor workflows, or troubleshooting.`;
   }
 
-  return 'I can currently guide you on Getting Started, RAG & Documents, Academic Agents, Instructor Workflows, and Troubleshooting. Ask about one of those areas and I will point you to the right AIH workflow.';
+  return 'I could not find a published AIH Support article that matches that question yet. Try one of the common topics or contact your institution administrator.';
 }
 
 export default function AIHHelpPanel() {
   const [open, setOpen] = useState(false);
   const [context, setContext] = useState<SupportContext | null>(null);
   const [contextError, setContextError] = useState(false);
+  const [knowledge, setKnowledge] = useState<SupportKnowledgeDocument[]>([]);
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
 
@@ -103,6 +123,36 @@ export default function AIHHelpPanel() {
     };
   }, [open, context, contextError]);
 
+  useEffect(() => {
+    if (!open) return;
+
+    let cancelled = false;
+
+    fetch('/api/support/knowledge', {
+      method: 'GET',
+      credentials: 'include',
+      headers: { Accept: 'application/json' },
+    })
+      .then(async (response) => {
+        if (!response.ok) return { documents: [] };
+        return (await response.json()) as {
+          documents?: SupportKnowledgeDocument[];
+        };
+      })
+      .then((data) => {
+        if (!cancelled) {
+          setKnowledge(Array.isArray(data.documents) ? data.documents : []);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setKnowledge([]);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
+
   const welcome = useMemo(() => {
     if (!context) {
       return 'I can help you use AI Scholar Hub.';
@@ -122,7 +172,7 @@ export default function AIHHelpPanel() {
     setMessages((current) => [
       ...current,
       { role: 'user', text: question },
-      { role: 'assistant', text: guidedAnswer(question, context) },
+      { role: 'assistant', text: knowledgeAnswer(question, context, knowledge) },
     ]);
     setInput('');
   };
