@@ -29,33 +29,26 @@ running="$(docker inspect "$PROD_API_CONTAINER" --format '{{.Config.Image}}')"
 [[ "$running" == "$EXPECTED_API_IMAGE" ]] || die "wrong PROD API image: $running"
 pass "exact API image"
 
-docker exec -i "$PROD_API_CONTAINER" node - <<'NODE'
-const http = require('http');
-
-const req = http.get(
-  'http://127.0.0.1:3080/health',
-  {timeout: 5000},
-  res => {
-    if (res.statusCode !== 200) {
-      console.error(`FAIL: API health HTTP ${res.statusCode}`);
-      process.exit(1);
-    }
-    res.resume();
-    res.on('end', () => console.log('PASS: API health'));
-  }
-);
-
-req.on('timeout', () => {
-  req.destroy();
-  console.error('FAIL: API health timeout');
-  process.exit(1);
+note "Waiting for PROD API readiness"
+api_ready=0
+for attempt in $(seq 1 30); do
+  if docker exec "$PROD_API_CONTAINER" node -e "
+const http=require('http');
+const req=http.get('http://127.0.0.1:3080/health',{timeout:2000},res=>{
+  res.resume();
+  process.exit(res.statusCode===200 ? 0 : 1);
 });
+req.on('timeout',()=>{req.destroy();process.exit(1)});
+req.on('error',()=>process.exit(1));
+" >/dev/null 2>&1; then
+    api_ready=1
+    break
+  fi
+  sleep 2
+done
 
-req.on('error', err => {
-  console.error('FAIL: API health:', err.message);
-  process.exit(1);
-});
-NODE
+[[ "$api_ready" -eq 1 ]] || die "API health did not become ready within 60 seconds"
+pass "API health"
 
 container_env_has "$PROD_API_CONTAINER" "SEARXNG_INSTANCE_URL" || die "SEARXNG_INSTANCE_URL missing from API"
 pass "SearXNG environment"
