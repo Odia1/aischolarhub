@@ -28,29 +28,109 @@ type SupportKnowledgeDocument = {
 };
 
 const TOPICS = [
+  'What can I use?',
   'Getting Started',
   'RAG & Documents',
   'Academic Agents',
-  'Instructor Workflows',
   'Troubleshooting',
 ];
 
-function scoreDocument(question: string, doc: SupportKnowledgeDocument): number {
-  const words = question
+const SUPPORT_STOP_WORDS = new Set([
+  'a',
+  'about',
+  'an',
+  'and',
+  'are',
+  'can',
+  'do',
+  'for',
+  'how',
+  'i',
+  'in',
+  'is',
+  'me',
+  'my',
+  'of',
+  'on',
+  'the',
+  'to',
+  'use',
+  'what',
+  'with',
+]);
+
+function meaningfulWords(text: string): string[] {
+  return text
     .toLowerCase()
     .split(/[^a-z0-9]+/)
-    .filter((word) => word.length >= 3);
+    .filter(
+      (word) =>
+        word.length >= 3 &&
+        !SUPPORT_STOP_WORDS.has(word),
+    );
+}
 
-  const haystack = [
-    doc.title,
-    doc.description ?? '',
-    doc.category,
-    doc.content,
-  ]
-    .join(' ')
-    .toLowerCase();
+function scoreDocument(question: string, doc: SupportKnowledgeDocument): number {
+  const words = meaningfulWords(question);
 
-  return words.reduce((score, word) => score + (haystack.includes(word) ? 1 : 0), 0);
+  if (words.length === 0) {
+    return 0;
+  }
+
+  const title = doc.title.toLowerCase();
+  const description = (doc.description ?? '').toLowerCase();
+  const category = doc.category.toLowerCase();
+  const content = doc.content.toLowerCase();
+
+  return words.reduce((score, word) => {
+    if (title.includes(word)) score += 6;
+    if (description.includes(word)) score += 4;
+    if (category.includes(word)) score += 3;
+    if (content.includes(word)) score += 1;
+    return score;
+  }, 0);
+}
+
+function conciseKnowledgeAnswer(doc: SupportKnowledgeDocument): string {
+  const content = doc.content.trim();
+
+  /*
+   * AIH Help should answer a user question, not reproduce an entire manual
+   * article. Keep enough of the authoritative document to be useful while
+   * leaving the full Support Knowledge document as the source of truth.
+   */
+  const paragraphs = content
+    .split(/\n\s*\n/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  let answer = '';
+
+  for (const paragraph of paragraphs) {
+    const candidate = answer
+      ? `${answer}\n\n${paragraph}`
+      : paragraph;
+
+    if (candidate.length > 900 && answer) {
+      break;
+    }
+
+    answer = candidate;
+
+    if (answer.length >= 650) {
+      break;
+    }
+  }
+
+  if (!answer) {
+    answer = doc.description ?? 'Relevant AIH Support guidance is available.';
+  }
+
+  if (answer.length > 1000) {
+    answer = `${answer.slice(0, 997).trimEnd()}...`;
+  }
+
+  return `${doc.title}\n\n${answer}`;
 }
 
 function knowledgeAnswer(
@@ -58,26 +138,90 @@ function knowledgeAnswer(
   context: SupportContext | null,
   knowledge: SupportKnowledgeDocument[],
 ): string {
+  const q = question.toLowerCase().trim();
+
+  /*
+   * Common natural-language questions should receive direct, role-aware
+   * answers instead of being forced through document keyword matching.
+   */
+  if (
+    q === 'what can i use?' ||
+    q === 'what can i use' ||
+    q.includes('what can i do') ||
+    q.includes('what is available') ||
+    q.includes('what features')
+  ) {
+    const institution = context?.institution
+      ? ` at ${context.institution}`
+      : '';
+
+    return `As ${context?.role ?? 'an AIH user'}${institution}, you can use the AI Scholar Hub experiences and tools enabled for your account. These may include normal AI chat, your assigned learning experience, approved Academic Agents, and authorized personal, course, group, or institutional knowledge through RAG. What you see depends on your role, institution, group membership, and permissions.`;
+  }
+
+  if (
+    q === 'academic agents' ||
+    q.includes('what are academic agents') ||
+    q.includes('how do i use an academic agent')
+  ) {
+    return 'Academic Agents are specialized AI assistants for particular learning, teaching, or research tasks. Choose an agent that matches what you want to do, ask your question clearly, and use only documents or institutional knowledge you are authorized to access. The agents available to you depend on your role and institution.';
+  }
+
+  if (
+    q.includes('rag') ||
+    q.includes('knowledge source') ||
+    q.includes('document')
+  ) {
+    const ragDoc = knowledge.find(
+      (doc) =>
+        doc.category === 'RAG' ||
+        doc.title.toLowerCase().includes('rag'),
+    );
+
+    if (ragDoc) {
+      return conciseKnowledgeAnswer(ragDoc);
+    }
+  }
+
+  if (
+    q.includes('password') ||
+    q.includes('token') ||
+    q.includes('privacy') ||
+    q.includes('security') ||
+    q.includes('permission')
+  ) {
+    const securityDoc = knowledge.find(
+      (doc) =>
+        doc.category === 'SECURITY_PRIVACY' ||
+        doc.title.toLowerCase().includes('security'),
+    );
+
+    if (securityDoc) {
+      return conciseKnowledgeAnswer(securityDoc);
+    }
+  }
+
+  if (
+    q.includes('start') ||
+    q.includes('begin') ||
+    q.includes('how do i use')
+  ) {
+    return `You are signed in as ${context?.role ?? 'an AIH user'}${
+      context?.institution ? ` at ${context.institution}` : ''
+    }. You can ask me how to use AI Scholar Hub, RAG and documents, Academic Agents, or how to resolve a visible problem.`;
+  }
+
   const ranked = knowledge
     .map((doc) => ({ doc, score: scoreDocument(question, doc) }))
-    .filter(({ score }) => score > 0)
+    .filter(({ score }) => score >= 3)
     .sort((a, b) => b.score - a.score);
 
   const best = ranked[0]?.doc;
 
   if (best) {
-    return `${best.title}\n\n${best.content}`;
+    return conciseKnowledgeAnswer(best);
   }
 
-  const q = question.toLowerCase();
-
-  if (q.includes('start') || q.includes('begin') || q.includes('how do i use')) {
-    return `You are signed in as ${context?.role ?? 'an AIH user'}${
-      context?.institution ? ` at ${context.institution}` : ''
-    }. Ask about RAG, documents, Academic Agents, instructor workflows, or troubleshooting.`;
-  }
-
-  return 'I could not find a published AIH Support article that matches that question yet. Try one of the common topics or contact your institution administrator.';
+  return 'I could not find a close match in the published AIH Support guidance. Try asking about getting started, RAG and documents, Academic Agents, account access, or troubleshooting. If the issue involves access that you believe should be available, contact your instructor or Institution Admin.';
 }
 
 export default function AIHHelpPanel() {

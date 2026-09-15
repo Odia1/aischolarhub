@@ -18,6 +18,14 @@ h2{margin:0 0 8px;font-size:18px}
 p{margin:7px 0}
 ul,ol{margin:8px 0 0;padding-left:22px}
 .search{width:100%;box-sizing:border-box;padding:12px;border:1px solid #bbb;border-radius:8px;font-size:15px;background:#fff;color:#222}
+.support-box{margin:18px 0;padding:20px;border:1px solid #cfd8e3;border-radius:10px;background:#fff}
+.support-box textarea{width:100%;box-sizing:border-box;min-height:90px;padding:12px;border:1px solid #bbb;border-radius:8px;font:inherit;resize:vertical}
+.support-row{display:flex;gap:10px;align-items:center;margin-top:10px;flex-wrap:wrap}
+.support-row button{padding:10px 16px;border:0;border-radius:7px;background:#20232a;color:#fff;font-weight:600;cursor:pointer}
+.support-row button:disabled{opacity:.45;cursor:not-allowed}
+.support-answer{display:none;margin-top:14px;padding:16px;border:1px solid #ddd;border-radius:8px;background:#f8fafc;white-space:pre-wrap}
+.support-question{margin-top:14px;padding:12px;border-radius:8px;background:#eef4f8;white-space:pre-wrap}
+.support-status{font-size:13px;color:#666}
 .actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:20px}
 .actions a{display:inline-block;padding:10px 14px;border-radius:7px;background:#20232a;color:#fff;text-decoration:none}
 .actions a.secondary{background:#fff;color:#20232a;border:1px solid #aaa}
@@ -42,6 +50,33 @@ footer{padding:18px;border-top:1px solid #ddd;background:#fff;color:#666;text-al
       This help page covers permitted AI Scholar Hub administrative workflows.
       It does not expose credentials, internal infrastructure, source code,
       hidden diagnostics, or another institution's protected information.
+    </p>
+  </section>
+
+  <section class="support-box" aria-labelledby="support-title">
+    <h2 id="support-title">Ask AIH Support</h2>
+    <p>
+      Ask about AI Scholar Hub administration, users, institutions, groups,
+      RAG, Academic Agents, troubleshooting, or permitted workflows.
+    </p>
+
+    <textarea id="supportQuestion"
+              placeholder="Ask AIH Support a question…"
+              aria-label="Ask AIH Support"></textarea>
+
+    <div class="support-row">
+      <button id="supportSubmit" type="button">Submit question</button>
+      <span id="supportStatus" class="support-status">
+        Loading published Support Knowledge…
+      </span>
+    </div>
+
+    <div id="supportQuestionEcho" class="support-question" style="display:none"></div>
+    <div id="supportAnswer" class="support-answer" aria-live="polite"></div>
+
+    <p class="muted">
+      Do not enter passwords, API keys, access tokens, recovery codes,
+      or other secrets.
     </p>
   </section>
 
@@ -129,6 +164,86 @@ footer{padding:18px;border-top:1px solid #ddd;background:#fff;color:#666;text-al
 
 <script>
 let adminRole = "ALL";
+let supportKnowledgeDocs = [];
+
+function supportWords(text) {
+  return String(text || "")
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter(word => word.length >= 3);
+}
+
+function supportScore(question, doc) {
+  const haystack = [
+    doc.title || "",
+    doc.description || "",
+    doc.category || "",
+    doc.content || ""
+  ].join(" ").toLowerCase();
+
+  return supportWords(question)
+    .reduce((score, word) => score + (haystack.includes(word) ? 1 : 0), 0);
+}
+
+function answerSupportQuestion(question) {
+  const ranked = supportKnowledgeDocs
+    .map(doc => ({ doc, score: supportScore(question, doc) }))
+    .filter(item => item.score > 0)
+    .sort((a, b) => b.score - a.score);
+
+  if (ranked.length) {
+    const best = ranked[0].doc;
+    return `${best.title}\n\n${best.content}`;
+  }
+
+  return "I could not find a published AIH Support article that matches that question yet. Try the administrator help topics below or escalate the issue to AIH Support.";
+}
+
+async function loadSupportKnowledge() {
+  const status = document.getElementById("supportStatus");
+
+  try {
+    const r = await fetch("/api/support/knowledge", {
+      method: "GET",
+      credentials: "include",
+      headers: { "Accept": "application/json" }
+    });
+
+    if (r.status === 401) {
+      location.href = "/login";
+      return;
+    }
+
+    if (!r.ok) throw new Error("Support Knowledge unavailable");
+
+    const data = await r.json();
+    supportKnowledgeDocs =
+      Array.isArray(data.documents) ? data.documents : [];
+
+    status.textContent = supportKnowledgeDocs.length
+      ? `${supportKnowledgeDocs.length} published Support Knowledge articles available.`
+      : "No published Support Knowledge is currently available.";
+  } catch (_err) {
+    supportKnowledgeDocs = [];
+    status.textContent = "AIH Support Knowledge is temporarily unavailable.";
+  }
+}
+
+function submitSupportQuestion() {
+  const input = document.getElementById("supportQuestion");
+  const question = input.value.trim();
+
+  if (!question) return;
+
+  const echo = document.getElementById("supportQuestionEcho");
+  const answer = document.getElementById("supportAnswer");
+
+  echo.textContent = `You asked: ${question}`;
+  echo.style.display = "block";
+
+  answer.textContent = answerSupportQuestion(question);
+  answer.style.display = "block";
+}
 
 async function loadAdminContext() {
   try {
@@ -172,7 +287,22 @@ function filterTopics() {
 }
 
 document.getElementById("search").addEventListener("input", filterTopics);
-loadAdminContext();
+
+document.getElementById("supportSubmit")
+  .addEventListener("click", submitSupportQuestion);
+
+document.getElementById("supportQuestion")
+  .addEventListener("keydown", event => {
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      submitSupportQuestion();
+    }
+  });
+
+Promise.all([
+  loadAdminContext(),
+  loadSupportKnowledge()
+]);
 </script>
 </body>
 </html>

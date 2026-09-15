@@ -34,6 +34,7 @@ await client.connect();
 const db = client.db("LibreChat");
 const users = db.collection("users");
 const institutions = db.collection("institutions");
+const supportKnowledge = db.collection("supportknowledges");
 const INSTITUTION_CATEGORIES = new Set(["SCHOOL", "HIGHER_EDUCATION", "MIXED"]);
 
 function normalizeInstitutionLimits(value = {}, current = {}) {
@@ -1436,6 +1437,82 @@ app.get("/api/me", (req, res) => {
   delete admin.refreshToken;
   delete admin.backupCodes;
   res.json(admin);
+});
+
+/*
+ * AIH Support for the Administrator Portal.
+ *
+ * This is intentionally read-only and uses the existing authenticated
+ * admin_session boundary. It exposes only PUBLISHED Support Knowledge
+ * appropriate to the administrator's role.
+ */
+app.get("/api/support/knowledge", async (req, res) => {
+  try {
+    const role = normalizedRole(req.admin);
+    const audience =
+      role === "INSTITUTION_ADMIN"
+        ? "INSTITUTION_ADMIN"
+        : "PLATFORM_ADMIN";
+
+    const now = new Date();
+
+    const documents = await supportKnowledge
+      .find(
+        {
+          status: "PUBLISHED",
+          $and: [
+            {
+              $or: [
+                { effectiveAt: { $exists: false } },
+                { effectiveAt: null },
+                { effectiveAt: { $lte: now } }
+              ]
+            },
+            {
+              audience: { $in: ["ALL", audience] }
+            }
+          ]
+        },
+        {
+          projection: {
+            _id: 1,
+            title: 1,
+            description: 1,
+            category: 1,
+            content: 1,
+            updatedAt: 1,
+            knowledgeKey: 1,
+            revision: 1
+          }
+        }
+      )
+      .sort({ updatedAt: -1, knowledgeKey: 1, revision: -1 })
+      .limit(100)
+      .toArray();
+
+    res.set("Cache-Control", "no-store");
+
+    res.json({
+      documents: documents.map(doc => ({
+        id: String(doc._id),
+        title: String(doc.title || ""),
+        description:
+          typeof doc.description === "string" && doc.description.trim()
+            ? doc.description.trim()
+            : null,
+        category: String(doc.category || "OTHER"),
+        content: String(doc.content || "")
+      }))
+    });
+  } catch (e) {
+    console.error("[admin-support-knowledge]", e);
+
+    /*
+     * Fail closed without leaking database/internal details.
+     */
+    res.set("Cache-Control", "no-store");
+    res.status(200).json({ documents: [] });
+  }
 });
 
 app.get("/api/users", async (req, res) => {
