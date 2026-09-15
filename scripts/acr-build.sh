@@ -187,17 +187,10 @@ import re
 import sys
 
 image = sys.argv[1]
-p = Path("docker-compose.override.yaml")
-template = Path("docker-compose.override.example.yaml")
+p = Path("docker-compose.yml")
 
 if not p.exists():
-    if not template.exists():
-        raise SystemExit(
-            "ERROR: docker-compose.override.example.yaml is missing"
-        )
-
-    p.write_text(template.read_text())
-    print("Created local docker-compose.override.yaml from tracked template")
+    raise SystemExit("ERROR: docker-compose.yml is missing")
 
 s = p.read_text()
 
