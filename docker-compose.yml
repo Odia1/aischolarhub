@@ -168,7 +168,7 @@ services:
       - .env
 
     environment:
-      MONGO_URI: "mongodb://${MONGO_INITDB_ROOT_USERNAME}:${MONGO_INITDB_ROOT_PASSWORD}@mongodb:27017/LibreChat?authSource=admin"
+      MONGO_URI: "${MONGO_URI}"
       ASH_MODEL_ROUTER_API_KEY: "${ASH_MODEL_ROUTER_API_KEY:-}"
       GEMINI_PROXY_API_KEY: "${GEMINI_PROXY_API_KEY}"
 
@@ -259,7 +259,7 @@ services:
       - "127.0.0.1:3090:3090"
 
     environment:
-      MONGO_URI: "mongodb://${MONGO_INITDB_ROOT_USERNAME}:${MONGO_INITDB_ROOT_PASSWORD}@mongodb:27017/LibreChat?authSource=admin"
+      MONGO_URI: "${MONGO_URI}"
       JWT_SECRET: "${JWT_SECRET}"
       LIBRECHAT_INTERNAL_URL: "http://api:3080"
       RAG_API_URL: "http://rag_api:8000"

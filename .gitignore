@@ -219,3 +219,6 @@ __pycache__/
 
 # Local/generated DEV runtime override
 docker-compose.override.yaml
+
+# Release I proof credentials / local artifacts
+release-artifacts/release-i/*.env
