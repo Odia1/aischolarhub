@@ -113,7 +113,7 @@ const primeFiles = async (options) => {
       continue;
     }
     if (i === 0) {
-      toolContext = `- Note: The ${Tools.file_search} tool is available for relevant document-grounded questions. Use it only when the user's request plausibly concerns one of these documents, institutional/course/group knowledge, or the user explicitly asks to search files. Do not invoke File Search for ordinary general-knowledge questions merely because documents are available:`;
+      toolContext = `- Note: The ${Tools.file_search} tool is available for relevant document-grounded questions. For questions about AI Scholar Hub itself, institutional identity, creator/origin, governance, policies, capabilities, course/group knowledge, or other institution-specific facts, use ${Tools.file_search} before web search and prefer first-party institutional evidence over external sources. Do not infer AI Scholar Hub authorship or ownership from the underlying model or technology provider. Use File Search when the user's request plausibly concerns one of these documents, institutional/course/group knowledge, or explicitly asks to search files. Do not invoke File Search for unrelated general-knowledge questions merely because documents are available:`;
     }
     toolContext += `\n\t- ${file.filename}${
       agentResourceIds.has(file.file_id)
@@ -133,7 +133,7 @@ const primeFiles = async (options) => {
 
   if (authorizedKnowledgeScopeKeys.length) {
     if (!files.length) {
-      toolContext = `- Note: Authorized institutional knowledge is available through ${Tools.file_search}. Use it only when the user's request plausibly concerns institutional, course, department, group, policy, or document-specific information, or when the user explicitly asks to search institutional files. Do not invoke it for unrelated general-world questions.`;
+      toolContext = `- Note: Authorized institutional knowledge is available through ${Tools.file_search}. For questions about AI Scholar Hub itself, the institution, its identity, creator/origin, governance, policies, capabilities, courses, departments, groups, support documentation, or other institution-specific facts, use ${Tools.file_search} before web search and ground the answer in that first-party evidence. Treat authorized institutional knowledge as the authoritative source for AI Scholar Hub-specific facts. Do not infer AI Scholar Hub authorship, ownership, identity, or governance from an underlying AI/model/provider such as OpenAI, Google, Azure, or another technology vendor. If the institutional evidence does not establish the requested fact, say that it is not established by the available institutional knowledge rather than guessing. Do not invoke File Search for unrelated general-world questions.`;
     } else {
       toolContext += '\n\t- Authorized institutional knowledge';
     }

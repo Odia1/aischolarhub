@@ -1,5 +1,6 @@
 # app/routes/document_routes.py
 import os
+import logging
 import sys
 import uuid
 from pathlib import Path
@@ -110,6 +111,13 @@ from app.utils.document_loader import (
 from app.utils.health import is_health_ok
 
 router = APIRouter()
+
+# Production log hygiene: keep application warnings/errors while suppressing
+# routine successful HTTP/database/access chatter.
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
+logging.getLogger("pymongo").setLevel(logging.WARNING)
+logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
 
 _INGESTION_ATTEMPT_ID_KEY = "_rag_ingestion_attempt_id"
 _INGESTION_ATTEMPT_STARTED_AT_NS_KEY = "_rag_ingestion_attempt_started_at_ns"
@@ -682,7 +690,7 @@ async def _process_documents_async_pipeline(
     num_batches = calculate_num_batches(total_chunks, EMBEDDING_BATCH_SIZE)
     consumer_count = max(1, min(parallel_execution, num_batches))
 
-    logger.info(
+    logger.debug(
         "Starting async pipeline | user_id=%s | file_id=%s | total_chunks=%d | batch_size=%d | consumers=%d | %s",
         user_id,
         file_id,
@@ -844,7 +852,7 @@ async def _process_documents_async_pipeline(
         for batch_num in range(1, num_batches + 1):
             all_ids.extend(successful_batch_ids[batch_num])
 
-        logger.info(
+        logger.debug(
             "Async pipeline completed | user_id=%s | file_id=%s | inserted_ids=%d | %s",
             user_id,
             file_id,
@@ -943,7 +951,7 @@ async def _process_documents_batched_sync(
     all_ids = []
     num_batches = calculate_num_batches(total_chunks, EMBEDDING_BATCH_SIZE)
 
-    logger.info(
+    logger.debug(
         "Processing file %s with sync batching: %d batches of %d chunks each",
         file_id,
         num_batches,
@@ -958,7 +966,7 @@ async def _process_documents_batched_sync(
         batch_documents = documents[start_idx:end_idx]
         batch_ids = [file_id] * len(batch_documents)
 
-        logger.info(
+        logger.debug(
             "Processing batch %d/%d: chunks %d-%d (%d chunks)",
             batch_idx + 1,
             num_batches,
@@ -1077,7 +1085,7 @@ async def store_data_in_vector_db(
         knowledge_scope_key,
     )
 
-    logger.info(
+    logger.debug(
         "Documents prepared | %s",
         build_ingestion_context(
             route_name=route_name,

@@ -129,7 +129,7 @@ def _partition_sync(
     finally:
         duration_ms = (time.perf_counter() - started) * 1000
 
-        if duration_ms >= 25:
+        if duration_ms >= 500:
             logger.info(
                 "[PERF] component=knowledge-authorization "
                 "tenant=%s requestedFiles=%d durationMs=%.1f",
