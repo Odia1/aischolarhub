@@ -1,4 +1,5 @@
 import React from 'react';
+import { TooltipAnchor } from '@librechat/client';
 import { VisuallyHidden } from '@ariakit/react';
 import { CheckCircle2, Pin, PinOff } from 'lucide-react';
 import type { TModelSpec } from 'librechat-data-provider';
@@ -28,6 +29,10 @@ export function ModelSpecItem({ spec, isSelected, posInSet, setSize }: ModelSpec
 
   const isFavorite = isFavoriteSpec(spec.name);
 
+  const helpText =
+    spec.description?.trim() ||
+    `Select ${spec.label || spec.name} for this conversation.`;
+
   const handleFavoriteClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     toggleFavoriteSpec(spec.name);
@@ -42,26 +47,49 @@ export function ModelSpecItem({ spec, isSelected, posInSet, setSize }: ModelSpec
       aria-setsize={setSize}
       className="group flex w-full cursor-pointer items-center justify-between rounded-lg px-2 text-sm"
     >
-      <div
-        className={cn(
-          'flex w-full min-w-0 gap-2 px-1 py-1',
-          spec.description ? 'items-start' : 'items-center',
-        )}
-      >
-        {showIconInMenu && (
-          <div className="flex-shrink-0">
-            <SpecIcon
-              currentSpec={spec}
-              endpointsConfig={endpointsConfig}
-              agentAvatarURL={agentAvatarURL}
-            />
+      {spec.description ? (
+        <div
+          className={cn(
+            'flex w-full min-w-0 gap-2 px-1 py-1',
+            'items-start',
+          )}
+        >
+          {showIconInMenu && (
+            <div className="flex-shrink-0">
+              <SpecIcon
+                currentSpec={spec}
+                endpointsConfig={endpointsConfig}
+                agentAvatarURL={agentAvatarURL}
+              />
+            </div>
+          )}
+          <div className="flex min-w-0 flex-col gap-1">
+            <span className="truncate text-left">{spec.label}</span>
+            <SpecDescription description={spec.description} />
           </div>
-        )}
-        <div className="flex min-w-0 flex-col gap-1">
-          <span className="truncate text-left">{spec.label}</span>
-          <SpecDescription description={spec.description} />
         </div>
-      </div>
+      ) : (
+        <TooltipAnchor
+          aria-label={spec.label || spec.name}
+          description={helpText}
+          render={
+            <div className="flex w-full min-w-0 items-center gap-2 px-1 py-1">
+              {showIconInMenu && (
+                <div className="flex-shrink-0">
+                  <SpecIcon
+                    currentSpec={spec}
+                    endpointsConfig={endpointsConfig}
+                    agentAvatarURL={agentAvatarURL}
+                  />
+                </div>
+              )}
+              <div className="flex min-w-0 flex-col gap-1">
+                <span className="truncate text-left">{spec.label}</span>
+              </div>
+            </div>
+          }
+        />
+      )}
       <button
         type="button"
         tabIndex={isActive ? 0 : -1}

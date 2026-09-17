@@ -67,6 +67,8 @@ class Credential:
             "groq": "GR",
             "openrouter": "OR",
             "cloudflare": "CF",
+            "deepseek": "DS",
+            "huggingface": "HF",
         }
         return f"{prefixes[self.provider]}{self.slot:02d}"
 
@@ -109,6 +111,20 @@ def load_credentials() -> dict[str, list[Credential]]:
             )
         ],
     }
+
+    credentials["huggingface"] = [
+        Credential("huggingface", index, secret)
+        for index, secret in enumerate(
+            csv_values("ASH_HUGGINGFACE_API_KEYS"), start=1
+        )
+    ]
+
+    credentials["deepseek"] = [
+        Credential("deepseek", index, secret)
+        for index, secret in enumerate(
+            csv_values("ASH_DEEPSEEK_API_KEYS"), start=1
+        )
+    ]
 
     account_ids = csv_values("ASH_CLOUDFLARE_ACCOUNT_IDS")
     tokens = csv_values("ASH_CLOUDFLARE_API_TOKENS")
@@ -208,6 +224,16 @@ ROUTES = {
             5,
         ),
     ],
+    "sparring": [
+        Route(
+            "huggingface-deepseek-v3-2-sparring",
+            "sparring",
+            "huggingface",
+            "deepseek-ai/DeepSeek-V3.2",
+            100,
+        ),
+    ],
+
 }
 
 thought_signatures: dict[str, str] = {}
@@ -396,6 +422,10 @@ def upstream_url(credential: Credential) -> str:
         return "https://api.groq.com/openai/v1/chat/completions"
     if credential.provider == "openrouter":
         return "https://openrouter.ai/api/v1/chat/completions"
+    if credential.provider == "huggingface":
+        return "https://router.huggingface.co/v1/chat/completions"
+    if credential.provider == "deepseek":
+        return "https://api.deepseek.com/chat/completions"
     if credential.provider == "cloudflare":
         return (
             "https://api.cloudflare.com/client/v4/accounts/"

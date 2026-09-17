@@ -18,8 +18,8 @@ Getting started:
 1. Sign in with your approved AIH account.
 2. Choose the experience appropriate to your task.
 3. Use normal chat for general assistance.
-4. Use Academic Agents when you need a specialized educational or research workflow.
-5. Use authorized RAG or course knowledge when your institution has provided documents for your class, group, or institution.
+4. Invoke Academic Agents from the composer when you need specialized help for a particular educational, research, or scholarly task.
+5. Use authorized Knowledge Sources when your institution has provided documents for your class, group, or institution.
 6. Review AI-generated answers critically and follow your institution's academic-integrity requirements.
 
 Available functions depend on your role, institution, group membership, and permissions.`
@@ -41,43 +41,44 @@ If you cannot sign in:
 Never provide passwords, authentication tokens, API keys, or recovery codes to AIH Support.`
   },
   {
-    title: 'RAG and Documents',
-    description: 'How institutional, course, group, and personal documents are used safely in AIH.',
+    title: 'Knowledge Sources and Documents',
+    description: 'How institutional, course, group, and personal Knowledge Sources are used safely in AIH.',
     category: 'RAG',
     audience: ['ALL'],
-    content: `Retrieval-Augmented Generation (RAG) allows AI Scholar Hub to answer using authorized documents in addition to the language model's general knowledge.
+    content: `Knowledge Sources allow AI Scholar Hub to answer using documents and information you are authorized to access.
 
 AIH may provide:
-- institution-wide knowledge;
-- department, course, class, or group knowledge;
+- institution-wide Knowledge Sources;
+- department, course, class, or group Knowledge Sources;
 - instructor-authorized materials;
 - your own permitted personal files.
 
-Access is hierarchical and permission-controlled. A document being stored in AIH does not automatically mean every user can retrieve it.
+Access is hierarchical and permission-controlled. A document being stored in AIH does not automatically make it available to every user.
 
-When using RAG:
-1. Select or upload only documents you are authorized to use.
+When using Knowledge Sources:
+1. Select or upload only material you are authorized to use.
 2. Ask questions that relate to the available material.
-3. Check important answers against the source documents.
+3. Check important answers against the original sources.
 4. Do not upload secrets, credentials, or material you are not authorized to share.
 
-If expected course or institutional material is unavailable, contact the instructor or Institution Admin responsible for that knowledge collection.`
+If expected course or institutional material is unavailable, contact the instructor or Institution Admin responsible for that Knowledge Source.`
   },
   {
     title: 'Academic Agents',
     description: 'How to use AIH Academic Agents for specialized educational and research workflows.',
     category: 'ACADEMIC_AGENTS',
     audience: ['ALL'],
-    content: `Academic Agents are specialized AI assistants configured for particular learning, teaching, research, or scholarly workflows.
+    content: `Academic Agents are specialized academic assistants invoked from within a conversation for particular learning, teaching, research, or scholarly tasks. Your Primary Experience remains the persistent way AI Scholar Hub works with you.
 
 To use an Academic Agent:
-1. Open AI Scholar Hub and select an available Academic Agent.
-2. Choose the agent that best matches your task, such as a Socratic Tutor, Research Synthesizer, Course Knowledge assistant, or another institution-approved agent.
-3. Describe your question or task clearly.
-4. Supply permitted documents or use authorized institutional knowledge when the agent supports them.
-5. Review the result critically and follow academic-integrity requirements.
+1. Keep or choose the appropriate Primary Experience in the header.
+2. Open Agents from the composer.
+3. Choose the specialized Agent that best matches the task, such as Literature Review, Research Gap Finder, Evidence of Learning / Oral Defense, Debate & Sparring Partner, or Research Integrity & Contribution Reviewer.
+4. Describe the task clearly.
+5. Supply permitted documents or select authorized Knowledge Sources when useful.
+6. Review the result critically and follow academic-integrity requirements.
 
-Academic Agents do not override your role, institution, RAG permissions, or security controls. An agent can use only the capabilities and knowledge sources authorized for your account.`
+Academic Agents do not override your role, institution, Knowledge Source permissions, or security controls. An Agent can use only the capabilities and Knowledge Sources authorized for your account.`
   },
   {
     title: 'Instructor Workflows',
@@ -89,7 +90,7 @@ Academic Agents do not override your role, institution, RAG permissions, or secu
 Typical instructor workflows include:
 - using instructional Academic Agents;
 - preparing explanations, lesson materials, and learning activities;
-- providing authorized course or class knowledge through RAG;
+- providing authorized course or class Knowledge Sources;
 - organizing learners through institution-approved groups and courses;
 - guiding students with Socratic or evidence-based assistance;
 - supporting research and scholarly work where permitted.
@@ -100,7 +101,7 @@ AIH should support teaching judgment rather than replace instructor responsibili
   },
   {
     title: 'Institution Administration',
-    description: 'Institution, user, group, RAG, Academic Agent, and policy administration.',
+    description: 'Institution, user, group, Knowledge Source, Academic Agent, and policy administration.',
     category: 'INSTITUTION_ADMINISTRATION',
     audience: ['INSTITUTION_ADMIN', 'PLATFORM_ADMIN'],
     content: `AI Scholar Hub uses a multi-institution administrative model.
@@ -112,7 +113,7 @@ Platform Admins manage institutions and broader platform configuration subject t
 Administrative responsibilities include:
 - maintaining accurate user roles and institution membership;
 - organizing courses, classes, departments, and groups;
-- controlling RAG access and document scope;
+- controlling Knowledge Source access and document scope;
 - administering approved Academic Agent availability;
 - maintaining institution-specific limits and policies where authorized.
 
@@ -130,7 +131,7 @@ Chat or agent not responding:
 - confirm that the selected experience or agent is available to your role;
 - avoid submitting extremely large prompts unnecessarily.
 
-Document or RAG answer missing:
+Knowledge Source answer missing:
 - confirm the document was uploaded successfully;
 - confirm you have permission to the relevant course, group, or institution knowledge;
 - ask a question that clearly relates to the document.
@@ -159,7 +160,7 @@ Permission denied or unauthorized:
 Your role, institution, group membership, or capability does not permit the requested operation. Contact the appropriate administrator if you believe your access is incorrect.
 
 Document unavailable:
-The document may not be in your authorized RAG scope or may still be processing.
+The document may not be in your authorized Knowledge Source scope or may still be processing.
 
 Upload rejected:
 The file may be unsupported, unsafe, malformed, or contain active content that AIH does not accept.
@@ -214,14 +215,14 @@ The features visible to you depend on your role, institution, group membership, 
 
 Starting a conversation
 1. Sign in with your approved AI Scholar Hub account.
-2. Select the learning experience or Academic Agent appropriate to your task.
+2. Choose the Primary Experience appropriate to your continuing work, then invoke an Academic Agent from the composer when a particular task needs specialized help.
 3. Enter your question in normal language.
 4. Continue the conversation with follow-up questions when you need clarification or deeper explanation.
 
 Using the Socratic Tutor
 The Socratic Tutor is designed to help you reason through a topic rather than simply supply answers. Explain what you understand, ask where you are stuck, and work through the problem interactively.
 
-Knowledge Sources and RAG
+Knowledge Sources
 Knowledge Sources allow AI Scholar Hub to answer using documents you are authorized to access. These may include institutional, course, class, group, instructor-provided, or personal documents.
 
 A document being stored in AI Scholar Hub does not automatically make it available to every user. Access remains controlled by your institution, groups, and permissions.
@@ -236,7 +237,7 @@ Where personal document upload is enabled:
 Do not upload passwords, credentials, API keys, secrets, or material you are not authorized to share.
 
 Academic Agents
-Academic Agents are specialized assistants for particular educational, research, or scholarly tasks. Only agents enabled for your account will be available. Select an agent appropriate to your task and follow its instructions.
+Academic Agents provide specialized assistance for particular educational, research, or scholarly tasks. Only Agents enabled for your account are available. Invoke an Agent from the composer when the current task needs specialized help; the Agent does not replace your underlying Primary Experience.
 
 If something is missing
 If you cannot see an expected agent, Knowledge Source, course document, or other capability, do not attempt to bypass the restriction. Access may depend on your role, institution, group, or course membership.
@@ -244,7 +245,18 @@ If you cannot see an expected agent, Knowledge Source, course document, or other
 Students and regular users should normally contact their instructor or Institution Admin when expected access is missing.
 
 Getting help
-Use AIH Support for questions about using AI Scholar Hub, Knowledge Sources, documents, Academic Agents, account access, and common errors.
+Skills
+AI Scholar Hub includes compact reusable academic workflows. Release I provides:
+- Study a Topic — focused explanation, examples, checks for understanding, and recap.
+- Analyze a Research Paper — research question, methods, findings, limitations, and key claims.
+
+Research Integrity & Contribution Reviewer
+This Academic Agent provides professor-style review of accuracy, evidence, methods, novelty and contribution, citation integrity, reasoning, overclaiming, and revision priorities. It can verify only sources it can actually inspect and must not declare research misconduct without adequate evidence.
+
+Academic integrity
+AI Scholar Hub is designed to strengthen learning, authorship, evidence, attribution, and scholarly judgment. It should distinguish evidence from inference and uncertainty, preserve provenance, and never fabricate citations, evidence, measurements, or source access.
+
+Use AIH Support for questions about using AI Scholar Hub, Primary Experiences, Academic Agents, Tools, Skills, Knowledge Sources, documents, account access, and common errors.
 
 For unresolved problems, provide the visible error message and describe what you were trying to do. Never provide passwords, tokens, API keys, or other secrets to Support.`
   },
@@ -263,7 +275,7 @@ AIH Support does not provide access to:
 - hidden prompts or internal diagnostics;
 - deployment topology;
 - raw infrastructure logs;
-- unauthorized files or RAG collections;
+- unauthorized files or Knowledge Sources;
 - another institution's protected information.
 
 AIH Support cannot change your permissions, elevate your role, modify institution security policy, or bypass authentication and authorization.

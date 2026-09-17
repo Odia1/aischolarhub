@@ -75,7 +75,7 @@
     ragPanel.innerHTML = `
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap">
         <div>
-          <h2>RAG Knowledge Administration</h2>
+          <h2>Knowledge Sources</h2>
           <div class="muted">
             Manage institutional knowledge corpora and their audience policies.
           </div>
@@ -85,25 +85,25 @@
 
       <div class="org-grid" style="margin-top:12px">
         <div class="org-card">
-          <h3>RAG Access Points</h3>
+          <h3>Knowledge Sources</h3>
           <div class="muted">
             Document corpora attached to the institution, a department, a
             course/class, or an organizational group. Upload documents here.
           </div>
           <div class="org-toolbar">
-            <button type="button" class="primary" onclick="openRagForm()">+ RAG Access Point</button>
+            <button type="button" class="primary" onclick="openRagForm()">+ Knowledge Source</button>
           </div>
           <div id="ragLocationList" class="org-list"></div>
         </div>
 
         <div class="org-card">
-          <h3>RAG Access Groups</h3>
+          <h3>Knowledge Access Policies</h3>
           <div class="muted">
             Audience policies that may grant one or more Groups, Subgroups, or
-            selected users access to multiple RAG Access Points.
+            selected users access to multiple Knowledge Sources.
           </div>
           <div class="org-toolbar">
-            <button type="button" class="primary" onclick="openRagGroupForm()">+ RAG Access Group</button>
+            <button type="button" class="primary" onclick="openRagGroupForm()">+ Knowledge Access Policy</button>
           </div>
           <div id="ragGroupList" class="org-list"></div>
         </div>
@@ -310,7 +310,7 @@
                        data-perm="${esc2(uid)}"
                        value="MANAGE_RAG"
                        ${perms.has('MANAGE_RAG')?'checked':''}>
-                RAG
+                Knowledge Sources
               </label>
 
               <label>
@@ -436,7 +436,7 @@
           : state.groups;
       const selected=existing?.targetId||'';
 
-      dialog(existing?'Edit RAG Access Point':'Create RAG Access Point',
+      dialog(existing?'Edit Knowledge Source':'Create Knowledge Source',
         `<label class="muted">Knowledge scope</label>
          <select name="type" ${existing?'disabled':''}>
            <option value="DEPARTMENT" ${type==='DEPARTMENT'?'selected':''}>Department / School</option>
@@ -772,7 +772,7 @@
          <select name="groupIds" multiple>${options(state.groups,selectedGroups)}</select>
          <label class="muted">Selected users (used by Selected users mode)</label>
          <select name="userIds" multiple>${options(state.users,selectedUsers)}</select>
-         <label class="muted">RAG Access Points granted by this policy</label>
+         <label class="muted">Knowledge Sources granted by this policy</label>
          <select name="ragLocationIds" multiple>${options(state.rag,selectedLocations)}</select>
          <label><input type="checkbox" name="enabled" ${existing?.enabled!==false?'checked':''}> Enabled</label>`,
         async d=>{

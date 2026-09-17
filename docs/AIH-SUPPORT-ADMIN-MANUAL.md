@@ -145,3 +145,55 @@ than overwritten.
 
 The custom Administrator Portal exposes **Help & Support** in its header and
 provides role-aware administrator guidance.
+
+<!-- AIH_RELEASE_I_ADMIN_EVALUATION_START -->
+
+## Release I Evaluation
+
+Evaluation is a cross-cutting platform capability controlled by the
+Superadmin.
+
+Evaluation has separate controls for:
+
+- **Telemetry:** OFF, ON, or TIMED;
+- **Semantic evaluation:** OFF, ON, or TIMED;
+- scope: platform, institution, Experience, or Academic Agent;
+- telemetry and semantic sampling rates; and
+- **Lean Efficiency** measurement.
+
+A timed policy becomes ineffective automatically outside its configured
+window.
+
+Lean Efficiency measures useful outcomes relative to resources such as token
+use, latency, tool activity, retrieval activity, model cost, and operational
+overhead.
+
+Ordinary usage accounting remains authoritative. Evaluation does not duplicate
+normal token accounting.
+
+Semantic evaluation is intentionally separated from the synchronous user
+response path. Enabling semantic sampling must not introduce a second
+evaluator-model call into every normal chat response.
+
+Evaluation policy changes are Superadmin-only, server-enforced, and auditable.
+
+## Support Knowledge maintenance
+
+Material user-interface or workflow changes must be reflected in approved
+Support Knowledge before production promotion.
+
+For Release I, Support Knowledge must use these user-facing terms:
+
+- Primary Experience;
+- Academic Agent;
+- Tools;
+- Skills;
+- Knowledge Sources;
+- Research Integrity & Contribution Reviewer;
+- Evaluation and Lean Efficiency where relevant to administrators.
+
+Do not expose model-provider routing, credentials, deployment topology, raw
+logs, internal diagnostics, or other implementation details through AIH
+Support.
+
+<!-- AIH_RELEASE_I_ADMIN_EVALUATION_END -->

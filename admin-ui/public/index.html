@@ -843,23 +843,158 @@ form{
          class="admin-tab-panel"
          data-admin-tab-panel="audit">
 
-  <div class="planned-placeholder">
-    <div class="planned-header">
-      <h2>Audit &amp; Platform Settings</h2>
-      <span class="planned-badge">Planned</span>
+  <div>
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap">
+      <div>
+        <h2>Audit &amp; Platform Settings</h2>
+        <div class="muted">
+          Privileged platform controls and auditable operational policy.
+        </div>
+      </div>
     </div>
 
-    <p class="planned-description">
-      Administrative audit, platform policy and operational controls
-      will be consolidated here.
-    </p>
+    <div id="evaluationCard"
+         style="display:none;margin-top:18px;padding:18px;border:1px solid #dfe3e8;border-radius:14px;background:#fff">
 
-    <ul class="planned-scope">
-      <li><strong>Audit:</strong> administrative actions, actors, targets and outcomes</li>
-      <li><strong>Security:</strong> privileged-access and administrative policy review</li>
-      <li><strong>Platform policy:</strong> global operational configuration</li>
-      <li><strong>Operations:</strong> platform-level health and administrative controls</li>
-    </ul>
+      <div style="display:flex;justify-content:space-between;gap:16px;align-items:flex-start;flex-wrap:wrap">
+        <div>
+          <h3 style="margin:0 0 6px 0">Evaluation</h3>
+          <div class="muted" style="max-width:760px">
+            Measure educational quality, system effectiveness and lean efficiency.
+            Evaluation is Superadmin-governed, scoped, sampled and inactive outside
+            a configured timed window.
+          </div>
+        </div>
+        <div id="evaluationEffectiveState"
+             style="font-weight:700">
+          Loading…
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;margin-top:18px">
+
+        <label>
+          <div class="muted">Telemetry</div>
+          <select id="evaluationTelemetryMode" style="width:100%">
+            <option value="OFF">Off</option>
+            <option value="ON">On</option>
+            <option value="TIMED">Timed</option>
+          </select>
+        </label>
+
+        <label>
+          <div class="muted">Semantic evaluation</div>
+          <select id="evaluationSemanticMode" style="width:100%">
+            <option value="OFF">Off</option>
+            <option value="ON">On</option>
+            <option value="TIMED">Timed</option>
+          </select>
+        </label>
+
+        <label>
+          <div class="muted">Scope</div>
+          <select id="evaluationScopeType" style="width:100%">
+            <option value="PLATFORM">Platform</option>
+            <option value="INSTITUTION">Institution</option>
+            <option value="EXPERIENCE">Experience</option>
+            <option value="AGENT">Academic Agent</option>
+          </select>
+        </label>
+
+        <label>
+          <div class="muted">Scope IDs</div>
+          <input id="evaluationScopeIds"
+                 placeholder="Comma-separated; blank for Platform"
+                 style="width:100%">
+        </label>
+
+        <label>
+          <div class="muted">Start</div>
+          <input id="evaluationStartsAt"
+                 type="datetime-local"
+                 style="width:100%">
+        </label>
+
+        <label>
+          <div class="muted">End</div>
+          <input id="evaluationEndsAt"
+                 type="datetime-local"
+                 style="width:100%">
+        </label>
+
+        <label>
+          <div class="muted">Telemetry sampling</div>
+          <input id="evaluationTelemetrySampling"
+                 type="number"
+                 min="0"
+                 max="100"
+                 step="1"
+                 value="100"
+                 style="width:100%">
+          <div class="muted">Percent of eligible interactions</div>
+        </label>
+
+        <label>
+          <div class="muted">Semantic sampling</div>
+          <input id="evaluationSemanticSampling"
+                 type="number"
+                 min="0"
+                 max="100"
+                 step="1"
+                 value="5"
+                 style="width:100%">
+          <div class="muted">Percent selected for offline/deferred review</div>
+        </label>
+
+      </div>
+
+      <label style="display:flex;gap:8px;align-items:center;margin-top:16px">
+        <input id="evaluationLeanEfficiency"
+               type="checkbox"
+               checked>
+        <span>
+          <strong>Lean Efficiency</strong>
+          <span class="muted">
+            — measure useful output against tokens, latency, tools,
+            retrieval and cost.
+          </span>
+        </span>
+      </label>
+
+      <label style="display:block;margin-top:14px">
+        <div class="muted">Reason / evaluation objective</div>
+        <input id="evaluationReason"
+               maxlength="500"
+               placeholder="e.g. two-week institutional pilot"
+               style="width:100%">
+      </label>
+
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:16px">
+        <button type="button"
+                class="primary"
+                onclick="saveEvaluationPolicy()">
+          Save Evaluation Policy
+        </button>
+
+        <button type="button"
+                onclick="loadEvaluationSummary()">
+          Refresh Summary
+        </button>
+
+        <span id="evaluationStatus"
+              class="muted"></span>
+      </div>
+
+      <div id="evaluationSummary"
+           style="margin-top:16px"></div>
+
+      <div class="muted"
+           style="margin-top:14px">
+        Semantic evaluation does not add a second model call to the live
+        user-response path. Eligible interactions are only marked for
+        deferred or offline evaluation.
+      </div>
+    </div>
   </div>
 
 </section>
@@ -5073,6 +5208,270 @@ async function logout() {
 
 <script>
 (function(){
+  function evalIsSuperadmin() {
+    return !!(
+      typeof currentMe !== 'undefined' &&
+      currentMe &&
+      currentMe.superAdmin === true &&
+      ['SUPERADMIN','ADMIN'].includes(
+        String(currentMe.role || '').toUpperCase()
+      )
+    );
+  }
+
+  function evalDateLocal(value) {
+    if (!value) return '';
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return '';
+    const offset = d.getTimezoneOffset() * 60000;
+    return new Date(d.getTime() - offset)
+      .toISOString()
+      .slice(0,16);
+  }
+
+  function evalEscape(value) {
+    return String(value ?? '')
+      .replaceAll('&','&amp;')
+      .replaceAll('<','&lt;')
+      .replaceAll('>','&gt;')
+      .replaceAll('"','&quot;')
+      .replaceAll("'",'&#039;');
+  }
+
+  window.loadEvaluationPolicy = async function() {
+    const card = document.getElementById('evaluationCard');
+    if (!card) return;
+
+    if (!evalIsSuperadmin()) {
+      card.style.display = 'none';
+      return;
+    }
+
+    card.style.display = '';
+
+    const status = document.getElementById('evaluationStatus');
+    const effective = document.getElementById('evaluationEffectiveState');
+
+    try {
+      if (status) status.textContent = 'Loading…';
+
+      const r = await fetch(
+        '/api/superadmin/evaluation-policy',
+        { credentials:'same-origin' }
+      );
+      const d = await r.json().catch(() => ({}));
+
+      if (!r.ok)
+        throw new Error(d.error || 'Failed to load Evaluation policy');
+
+      const p = d.policy || {};
+
+      document.getElementById('evaluationTelemetryMode').value =
+        p.telemetryMode || 'OFF';
+
+      document.getElementById('evaluationSemanticMode').value =
+        p.semanticMode || 'OFF';
+
+      document.getElementById('evaluationScopeType').value =
+        p.scopeType || 'PLATFORM';
+
+      document.getElementById('evaluationScopeIds').value =
+        Array.isArray(p.scopeIds) ? p.scopeIds.join(', ') : '';
+
+      document.getElementById('evaluationStartsAt').value =
+        evalDateLocal(p.startsAt);
+
+      document.getElementById('evaluationEndsAt').value =
+        evalDateLocal(p.endsAt);
+
+      document.getElementById('evaluationTelemetrySampling').value =
+        Math.round(Number(p.telemetrySamplingRate ?? 1) * 100);
+
+      document.getElementById('evaluationSemanticSampling').value =
+        Math.round(Number(p.semanticSamplingRate ?? 0.05) * 100);
+
+      document.getElementById('evaluationLeanEfficiency').checked =
+        p.leanEfficiencyEnabled !== false;
+
+      document.getElementById('evaluationReason').value =
+        p.reason || '';
+
+      const active = [];
+      if (p.telemetryEffective) active.push('Telemetry');
+      if (p.semanticEffective) active.push('Semantic');
+
+      if (effective) {
+        effective.textContent =
+          active.length
+            ? `Active: ${active.join(' + ')}`
+            : 'Evaluation inactive';
+      }
+
+      if (status) status.textContent = '';
+
+      await loadEvaluationSummary();
+
+    } catch (e) {
+      if (status)
+        status.textContent = e.message || 'Failed to load Evaluation policy';
+      if (effective)
+        effective.textContent = 'Unavailable';
+    }
+  };
+
+  window.saveEvaluationPolicy = async function() {
+    if (!evalIsSuperadmin()) return;
+
+    const status = document.getElementById('evaluationStatus');
+
+    const scopeIds = String(
+      document.getElementById('evaluationScopeIds')?.value || ''
+    )
+      .split(',')
+      .map(x => x.trim())
+      .filter(Boolean);
+
+    const startValue =
+      document.getElementById('evaluationStartsAt')?.value || '';
+
+    const endValue =
+      document.getElementById('evaluationEndsAt')?.value || '';
+
+    const body = {
+      telemetryMode:
+        document.getElementById('evaluationTelemetryMode').value,
+
+      semanticMode:
+        document.getElementById('evaluationSemanticMode').value,
+
+      scopeType:
+        document.getElementById('evaluationScopeType').value,
+
+      scopeIds,
+
+      startsAt:
+        startValue ? new Date(startValue).toISOString() : null,
+
+      endsAt:
+        endValue ? new Date(endValue).toISOString() : null,
+
+      telemetrySamplingRate:
+        Number(
+          document.getElementById('evaluationTelemetrySampling').value
+        ) / 100,
+
+      semanticSamplingRate:
+        Number(
+          document.getElementById('evaluationSemanticSampling').value
+        ) / 100,
+
+      leanEfficiencyEnabled:
+        document.getElementById('evaluationLeanEfficiency').checked,
+
+      reason:
+        document.getElementById('evaluationReason').value
+    };
+
+    try {
+      if (status) status.textContent = 'Saving…';
+
+      const r = await fetch(
+        '/api/superadmin/evaluation-policy',
+        {
+          method:'PUT',
+          credentials:'same-origin',
+          headers:{'Content-Type':'application/json'},
+          body:JSON.stringify(body)
+        }
+      );
+
+      const d = await r.json().catch(() => ({}));
+
+      if (!r.ok)
+        throw new Error(d.error || 'Failed to save Evaluation policy');
+
+      if (status)
+        status.textContent = 'Evaluation policy saved';
+
+      await loadEvaluationPolicy();
+
+    } catch (e) {
+      if (status)
+        status.textContent = e.message || 'Failed to save Evaluation policy';
+    }
+  };
+
+  window.loadEvaluationSummary = async function() {
+    if (!evalIsSuperadmin()) return;
+
+    const host = document.getElementById('evaluationSummary');
+    if (!host) return;
+
+    try {
+      const r = await fetch(
+        '/api/superadmin/evaluation-summary',
+        { credentials:'same-origin' }
+      );
+
+      const d = await r.json().catch(() => ({}));
+
+      if (!r.ok)
+        throw new Error(d.error || 'Failed to load Evaluation summary');
+
+      const ev = Array.isArray(d.evaluationEvents)
+        ? d.evaluationEvents
+        : [];
+
+      const totalEvents =
+        ev.reduce((n,x) => n + Number(x.count || 0), 0);
+
+      const telemetry =
+        ev.find(x => x._id === 'TELEMETRY') || {};
+
+      const semantic =
+        ev.find(x => x._id === 'SEMANTIC') || {};
+
+      host.innerHTML = `
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px">
+          <div class="org-card">
+            <div class="muted">Evaluation events</div>
+            <strong>${totalEvents.toLocaleString()}</strong>
+          </div>
+          <div class="org-card">
+            <div class="muted">Telemetry samples</div>
+            <strong>${Number(telemetry.count || 0).toLocaleString()}</strong>
+          </div>
+          <div class="org-card">
+            <div class="muted">Semantic candidates</div>
+            <strong>${Number(semantic.count || 0).toLocaleString()}</strong>
+          </div>
+          <div class="org-card">
+            <div class="muted">Average latency</div>
+            <strong>${
+              telemetry.averageLatencyMs == null
+                ? '—'
+                : `${Math.round(Number(telemetry.averageLatencyMs))} ms`
+            }</strong>
+          </div>
+        </div>
+        <div class="muted" style="margin-top:8px">
+          Window:
+          ${evalEscape(d.window?.start || '')}
+          to
+          ${evalEscape(d.window?.end || '')}
+        </div>
+      `;
+
+    } catch (e) {
+      host.innerHTML =
+        `<div class="muted">${evalEscape(e.message || 'Summary unavailable')}</div>`;
+    }
+  };
+})();
+</script>
+
+<script>
+(function(){
   const ADMIN_TAB_KEY = 'aiScholarHubAdminTab';
 
   window.showAdminTab = function(name){
@@ -5093,6 +5492,13 @@ async function logout() {
     });
 
     try { sessionStorage.setItem(ADMIN_TAB_KEY, requested); } catch (_) {}
+
+    if (
+      requested === 'audit' &&
+      typeof window.loadEvaluationPolicy === 'function'
+    ) {
+      window.loadEvaluationPolicy();
+    }
   };
 
   window.refreshAdminTabVisibility = function(){

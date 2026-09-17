@@ -27,7 +27,6 @@ const KnowledgeSourcesButton = ({
         disabled={disabled}
         onClick={() => setIsOpen(true)}
         aria-label="Choose Knowledge Sources"
-        title="Choose Knowledge Sources"
         className={[
           'group inline-flex h-8 shrink-0 items-center gap-1.5',
           'rounded-full border border-sky-200',

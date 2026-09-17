@@ -73,6 +73,21 @@ function normalizeInstitutionCategory(value) {
 const adminAudit = db.collection("adminAudit");
 const transactions = db.collection("transactions");
 
+/*
+ * AIH Evaluation
+ *
+ * evaluationPolicies:
+ *   Superadmin-governed platform evaluation control.
+ *
+ * evaluationEvents:
+ *   Optional sampled/semantic evaluation results only.
+ *
+ * Ordinary usage/token accounting remains in existing transaction
+ * infrastructure and is not duplicated here.
+ */
+const evaluationPolicies = db.collection("evaluationPolicies");
+const evaluationEvents = db.collection("evaluationEvents");
+
 const aiProviders = db.collection("aiProviders");
 const aiModels = db.collection("aiModels");
 const modelEntitlements = db.collection("modelEntitlements");
@@ -131,6 +146,15 @@ const AIS_CLASS_CATALOG = [
     providerCostTier: "BALANCED",
     model: "class-b",
     label: "Class B — General Academic",
+    costTier: "BALANCED"
+  },
+  {
+    providerKey: "ais-free-router",
+    providerName: "AI Scholar Free Router",
+    endpointType: "custom",
+    providerCostTier: "BALANCED",
+    model: "sparring",
+    label: "Debate & Sparring — Deep Reasoning",
     costTier: "BALANCED"
   },
   {
@@ -221,7 +245,8 @@ const CORE_ACADEMIC_AGENT_IDS = new Set([
   "MUSIC_STUDIO_AGENT",
   "EVIDENCE_OF_LEARNING",
   "RESEARCH_CLAIM_AUDITOR",
-  "CURRICULUM_COHERENCE"
+  "CURRICULUM_COHERENCE",
+  "DEBATE_SPARRING_PARTNER"
 ]);
 
 const ACADEMIC_AUDIENCES = new Set([
@@ -456,6 +481,20 @@ await Promise.all([
   ),
   personaPromptPolicies.createIndex(
     { tenantId: 1, modelSpecName: 1, enabled: 1 }
+  ),
+
+  evaluationPolicies.createIndex(
+    { policyKey: 1 },
+    { unique: true }
+  ),
+  evaluationEvents.createIndex(
+    { timestamp: -1 }
+  ),
+  evaluationEvents.createIndex(
+    { tenantId: 1, timestamp: -1 }
+  ),
+  evaluationEvents.createIndex(
+    { evaluationType: 1, timestamp: -1 }
   )
 ]);
 
@@ -1352,6 +1391,489 @@ app.use(requireAdmin);
  * SUPERADMIN SECURITY CENTER — AUDIT API
  * ============================================================
  */
+
+
+/*
+ * ============================================================
+ * SUPERADMIN — AIH EVALUATION CONTROL
+ * ============================================================
+ *
+ * Evaluation is intentionally lean:
+ *   - ordinary usage/token data is reused, not duplicated;
+ *   - semantic LLM evaluation is separately gated and sampled;
+ *   - TIMED modes become ineffective automatically outside the window;
+ *   - no client-side switch can bypass this server policy.
+ */
+
+const EVALUATION_MODES = new Set(["OFF", "ON", "TIMED"]);
+const EVALUATION_SCOPE_TYPES = new Set([
+  "PLATFORM",
+  "INSTITUTION",
+  "EXPERIENCE",
+  "AGENT"
+]);
+
+function defaultEvaluationPolicy() {
+  return {
+    policyKey: "PLATFORM",
+    telemetryMode: "OFF",
+    semanticMode: "OFF",
+    startsAt: null,
+    endsAt: null,
+    scopeType: "PLATFORM",
+    scopeIds: [],
+    telemetrySamplingRate: 1,
+    semanticSamplingRate: 0.05,
+    leanEfficiencyEnabled: true,
+    updatedBy: null,
+    updatedAt: null,
+    reason: ""
+  };
+}
+
+function normalizeEvaluationMode(value, fallback = "OFF") {
+  const mode = String(value ?? fallback).trim().toUpperCase();
+
+  if (!EVALUATION_MODES.has(mode)) {
+    const e = new Error("Evaluation mode must be OFF, ON, or TIMED");
+    e.statusCode = 400;
+    throw e;
+  }
+
+  return mode;
+}
+
+function normalizeEvaluationRate(value, fallback) {
+  if (value === undefined || value === null || value === "")
+    return fallback;
+
+  const n = Number(value);
+
+  if (!Number.isFinite(n) || n < 0 || n > 1) {
+    const e = new Error("Evaluation sampling rate must be between 0 and 1");
+    e.statusCode = 400;
+    throw e;
+  }
+
+  return n;
+}
+
+function normalizeEvaluationDate(value, label) {
+  if (value === undefined || value === null || value === "")
+    return null;
+
+  const d = new Date(value);
+
+  if (Number.isNaN(d.getTime())) {
+    const e = new Error(`${label} must be a valid date/time`);
+    e.statusCode = 400;
+    throw e;
+  }
+
+  return d;
+}
+
+function normalizeEvaluationScopeIds(value) {
+  if (!Array.isArray(value))
+    return [];
+
+  return [
+    ...new Set(
+      value
+        .map(x => String(x || "").trim())
+        .filter(Boolean)
+    )
+  ].slice(0, 100);
+}
+
+function evaluationModeActive(mode, startsAt, endsAt, now = new Date()) {
+  if (mode === "ON")
+    return true;
+
+  if (mode !== "TIMED")
+    return false;
+
+  if (!(startsAt instanceof Date) || !(endsAt instanceof Date))
+    return false;
+
+  return now >= startsAt && now < endsAt;
+}
+
+function effectiveEvaluationPolicy(policy) {
+  const p = {
+    ...defaultEvaluationPolicy(),
+    ...(policy || {})
+  };
+
+  const now = new Date();
+
+  return {
+    ...p,
+    telemetryEffective:
+      evaluationModeActive(
+        p.telemetryMode,
+        p.startsAt,
+        p.endsAt,
+        now
+      ),
+    semanticEffective:
+      evaluationModeActive(
+        p.semanticMode,
+        p.startsAt,
+        p.endsAt,
+        now
+      ),
+    effectiveAt: now
+  };
+}
+
+app.get(
+  "/api/superadmin/evaluation-policy",
+  requireSuperAdmin,
+  async (_req, res) => {
+    try {
+      const existing = await evaluationPolicies.findOne({
+        policyKey: "PLATFORM"
+      });
+
+      res.json({
+        ok: true,
+        policy: effectiveEvaluationPolicy(existing)
+      });
+    } catch (e) {
+      console.error("[EVALUATION-POLICY-GET]", e);
+      res.status(500).json({
+        error: "Failed to retrieve Evaluation policy"
+      });
+    }
+  }
+);
+
+app.put(
+  "/api/superadmin/evaluation-policy",
+  requireSuperAdmin,
+  async (req, res) => {
+    try {
+      const current =
+        await evaluationPolicies.findOne({
+          policyKey: "PLATFORM"
+        }) ||
+        defaultEvaluationPolicy();
+
+      const telemetryMode =
+        normalizeEvaluationMode(
+          req.body.telemetryMode,
+          current.telemetryMode
+        );
+
+      const semanticMode =
+        normalizeEvaluationMode(
+          req.body.semanticMode,
+          current.semanticMode
+        );
+
+      const scopeType = String(
+        req.body.scopeType ??
+        current.scopeType ??
+        "PLATFORM"
+      ).trim().toUpperCase();
+
+      if (!EVALUATION_SCOPE_TYPES.has(scopeType)) {
+        const e = new Error(
+          "Evaluation scope must be PLATFORM, INSTITUTION, EXPERIENCE, or AGENT"
+        );
+        e.statusCode = 400;
+        throw e;
+      }
+
+      const scopeIds =
+        normalizeEvaluationScopeIds(
+          req.body.scopeIds ?? current.scopeIds
+        );
+
+      if (scopeType !== "PLATFORM" && scopeIds.length === 0) {
+        const e = new Error(
+          "At least one scope ID is required for scoped Evaluation"
+        );
+        e.statusCode = 400;
+        throw e;
+      }
+
+      let startsAt =
+        normalizeEvaluationDate(
+          req.body.startsAt !== undefined
+            ? req.body.startsAt
+            : current.startsAt,
+          "Evaluation start"
+        );
+
+      let endsAt =
+        normalizeEvaluationDate(
+          req.body.endsAt !== undefined
+            ? req.body.endsAt
+            : current.endsAt,
+          "Evaluation end"
+        );
+
+      const usesTimedMode =
+        telemetryMode === "TIMED" ||
+        semanticMode === "TIMED";
+
+      if (usesTimedMode) {
+        if (!startsAt || !endsAt) {
+          const e = new Error(
+            "TIMED Evaluation requires both start and end date/time"
+          );
+          e.statusCode = 400;
+          throw e;
+        }
+
+        if (endsAt <= startsAt) {
+          const e = new Error(
+            "Evaluation end must be after start"
+          );
+          e.statusCode = 400;
+          throw e;
+        }
+      }
+
+      /*
+       * When no timed mode is active, stale dates have no runtime effect.
+       * Keep them for audit/review rather than silently destroying history.
+       */
+
+      const telemetrySamplingRate =
+        normalizeEvaluationRate(
+          req.body.telemetrySamplingRate,
+          current.telemetrySamplingRate ?? 1
+        );
+
+      const semanticSamplingRate =
+        normalizeEvaluationRate(
+          req.body.semanticSamplingRate,
+          current.semanticSamplingRate ?? 0.05
+        );
+
+      const leanEfficiencyEnabled =
+        req.body.leanEfficiencyEnabled === undefined
+          ? current.leanEfficiencyEnabled !== false
+          : req.body.leanEfficiencyEnabled === true;
+
+      const reason = String(
+        req.body.reason ?? ""
+      ).trim().slice(0, 500);
+
+      const now = new Date();
+
+      const doc = {
+        policyKey: "PLATFORM",
+        telemetryMode,
+        semanticMode,
+        startsAt,
+        endsAt,
+        scopeType,
+        scopeIds,
+        telemetrySamplingRate,
+        semanticSamplingRate,
+        leanEfficiencyEnabled,
+        updatedBy: String(
+          req.admin?.email ||
+          req.admin?._id ||
+          ""
+        ),
+        updatedAt: now,
+        reason
+      };
+
+      await evaluationPolicies.updateOne(
+        { policyKey: "PLATFORM" },
+        {
+          $set: doc,
+          $setOnInsert: {
+            createdAt: now
+          }
+        },
+        { upsert: true }
+      );
+
+      await audit(
+        "EVALUATION_POLICY_UPDATED",
+        req,
+        {
+          safeDetails: {
+            telemetryMode,
+            semanticMode,
+            startsAt:
+              startsAt?.toISOString() || null,
+            endsAt:
+              endsAt?.toISOString() || null,
+            scopeType,
+            scopeIds,
+            telemetrySamplingRate,
+            semanticSamplingRate,
+            leanEfficiencyEnabled,
+            reason
+          }
+        }
+      );
+
+      res.json({
+        ok: true,
+        policy: effectiveEvaluationPolicy(doc)
+      });
+    } catch (e) {
+      console.error("[EVALUATION-POLICY-PUT]", e);
+
+      res.status(e.statusCode || 500).json({
+        error:
+          e.message ||
+          "Failed to update Evaluation policy"
+      });
+    }
+  }
+);
+
+app.get(
+  "/api/superadmin/evaluation-summary",
+  requireSuperAdmin,
+  async (req, res) => {
+    try {
+      const existing =
+        await evaluationPolicies.findOne({
+          policyKey: "PLATFORM"
+        });
+
+      const policy =
+        effectiveEvaluationPolicy(existing);
+
+      const now = new Date();
+
+      const defaultStart =
+        new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+      const start =
+        normalizeEvaluationDate(
+          req.query.start,
+          "Summary start"
+        ) ||
+        policy.startsAt ||
+        defaultStart;
+
+      const end =
+        normalizeEvaluationDate(
+          req.query.end,
+          "Summary end"
+        ) ||
+        (
+          policy.endsAt && policy.endsAt < now
+            ? policy.endsAt
+            : now
+        );
+
+      /*
+       * Existing transaction accounting remains authoritative for tokens.
+       * Evaluation does not create duplicate token records.
+       */
+      const transactionMatch = {
+        createdAt: {
+          $gte: start,
+          $lt: end
+        },
+        tokenType: {
+          $in: ["prompt", "completion"]
+        }
+      };
+
+      const tokenAggregation = await transactions.aggregate([
+        { $match: transactionMatch },
+        {
+          $group: {
+            _id: "$tokenType",
+            transactions: { $sum: 1 },
+            rawAmount: {
+              $sum: {
+                $abs: {
+                  $ifNull: ["$rawAmount", 0]
+                }
+              }
+            },
+            inputTokens: {
+              $sum: {
+                $abs: {
+                  $ifNull: ["$inputTokens", 0]
+                }
+              }
+            },
+            writeTokens: {
+              $sum: {
+                $abs: {
+                  $ifNull: ["$writeTokens", 0]
+                }
+              }
+            },
+            readTokens: {
+              $sum: {
+                $abs: {
+                  $ifNull: ["$readTokens", 0]
+                }
+              }
+            }
+          }
+        }
+      ]).toArray();
+
+      const eventSummary = await evaluationEvents.aggregate([
+        {
+          $match: {
+            timestamp: {
+              $gte: start,
+              $lt: end
+            }
+          }
+        },
+        {
+          $group: {
+            _id: "$evaluationType",
+            count: { $sum: 1 },
+            averageLatencyMs: {
+              $avg: "$latencyMs"
+            },
+            averagePromptTokens: {
+              $avg: "$promptTokens"
+            },
+            averageCompletionTokens: {
+              $avg: "$completionTokens"
+            },
+            totalCostUSD: {
+              $sum: {
+                $ifNull: ["$costUSD", 0]
+              }
+            }
+          }
+        }
+      ]).toArray();
+
+      res.json({
+        ok: true,
+        window: {
+          start: start.toISOString(),
+          end: end.toISOString()
+        },
+        policy,
+        ordinaryUsage: tokenAggregation,
+        evaluationEvents: eventSummary
+      });
+    } catch (e) {
+      console.error("[EVALUATION-SUMMARY]", e);
+
+      res.status(e.statusCode || 500).json({
+        error:
+          e.message ||
+          "Failed to retrieve Evaluation summary"
+      });
+    }
+  }
+);
 
 app.get("/api/superadmin/audit", requireSuperAdmin, async (req, res) => {
   try {
@@ -5791,10 +6313,10 @@ async function ensureCoreAcademicAgents(tenantId) {
         agentId: "RESEARCH_CLAIM_AUDITOR",
         agentType: "AGENT",
 
-        name: "Research Claim Auditor",
+        name: "Research Integrity & Contribution Reviewer",
 
         description:
-          "Audits important scholarly claims against supplied or retrieved evidence and identifies unsupported extensions, excessive inference, contradictory evidence and unverifiable source claims.",
+          "Reviews scholarly work for accuracy, evidentiary support, methodological soundness, novelty and contribution, citation integrity, reasoning quality and potential overclaiming, while providing professor-style guidance for revision.",
 
         modelSpecName: "PhD & Post-Doc Research",
 
@@ -5844,11 +6366,17 @@ async function ensureCoreAcademicAgents(tenantId) {
             "Identify which cited sources were actually available for inspection",
             "Determine what each inspected source establishes",
             "Separate evidence from interpretation and inference",
+            "Assess whether the methods and analysis adequately support the conclusions",
+            "Evaluate the claimed novelty or contribution against the available prior-work evidence",
+            "Identify overclaiming, causal claims unsupported by study design, and material logical gaps",
+            "Check citation integrity, attribution and source verifiability without inferring misconduct from style alone",
             "Identify unsupported extensions",
             "Identify overstated causality or certainty",
             "Preserve material contradictory evidence",
             "Qualify novelty and gap claims by search scope",
-            "Produce a structured claim-to-evidence report"
+            "Identify questions a professor or reviewer should ask",
+            "Prioritize revisions that would most improve rigor, contribution and integrity",
+            "Produce a structured scholarly review report"
           ]
         },
 
@@ -5894,14 +6422,14 @@ async function ensureCoreAcademicAgents(tenantId) {
           masteryTracking: false,
 
           strategy:
-            "Build an explicit claim-to-evidence chain. Never claim to have inspected a source unless it was supplied or retrieved. Clearly distinguish what the evidence establishes from interpretation, inference and uncertainty."
+            "Review as a rigorous but constructive professor or scholarly reviewer. Build an explicit claim-to-evidence chain; assess methodological soundness; distinguish genuine contribution from incremental extension; identify what prior work must be checked before accepting novelty claims; preserve contradictory evidence; flag unverifiable citations and unsupported conclusions; and clearly separate evidence, interpretation, inference and uncertainty. Never claim to have inspected a source unless it was supplied or retrieved. Do not diagnose plagiarism, fabrication, falsification or misconduct from writing style or suspicion alone; state the specific evidence needed to substantiate an integrity concern. Conclude with the highest-priority revisions and questions a professor or reviewer should ask."
         },
 
         toolUi: {
           category: "RESEARCH_AND_SCHOLARSHIP",
-          label: "Audit Research Claims",
+          label: "Review Research Integrity & Contribution",
           shortDescription:
-            "Check whether important claims are actually supported.",
+            "Review evidence, methods, novelty, contribution, citations, reasoning and scholarly integrity.",
           requiresExplicitInvocation: true,
           persistentPrimaryExperience: true
         },
@@ -6025,6 +6553,109 @@ async function ensureCoreAcademicAgents(tenantId) {
           label: "Review Curriculum Coherence",
           shortDescription:
             "Find prerequisite gaps, duplication and outcome-assessment problems.",
+          requiresExplicitInvocation: true,
+          persistentPrimaryExperience: true
+        },
+
+        createdAt: now,
+        updatedAt: now
+      }
+
+,
+      {
+        tenantId,
+
+        agentId: "DEBATE_SPARRING_PARTNER",
+        agentType: "AGENT",
+
+        name: "Debate & Sparring Partner",
+
+        description:
+          "Rigorous intellectual sparring that steelmans a position before challenging assumptions, evidence, logic and counterarguments.",
+
+        modelSpecName: "Debate & Sparring Partner",
+
+        enabled: true,
+
+        allowedRoles: [
+          "USER",
+          "INSTRUCTOR",
+          "INSTITUTION_ADMIN",
+          "SUPERADMIN"
+        ],
+
+        audiences: [
+          "UNDERGRADUATE",
+          "COLLEGE_FACULTY",
+          "RESEARCHER",
+          "SCHOOL_TEACHER"
+        ],
+
+        integrityPolicyId,
+
+        capabilities: [
+          "DEBATE_SPARRING.USE",
+          "DEBATE_SPARRING.CHALLENGE",
+          "DEBATE_SPARRING.STEELMAN",
+          "DEBATE_SPARRING.STRESS_TEST"
+        ],
+
+        tools: [],
+        mcpServers: [],
+
+        workflow: {
+          type: "INTELLECTUAL_SPARRING",
+          steps: [
+            "Identify the user's central thesis",
+            "State the strongest reasonable version of the thesis before criticizing it",
+            "Identify hidden assumptions, ambiguities, weak evidence and logical gaps",
+            "Develop the strongest credible counterargument",
+            "Use counterexamples and evidence when useful",
+            "Distinguish factual disagreements from value disagreements",
+            "Ask pointed Socratic questions when they expose weaknesses better than direct rebuttal",
+            "Concede points that survive scrutiny",
+            "Identify what evidence or reasoning would most strengthen the user's position"
+          ]
+        },
+
+        modelPolicy: {
+          mode: "PERSONA_ROUTE",
+          costTier: "BALANCED"
+        },
+
+        researchMaturityPolicy: {
+          adaptive: true,
+          allowedLevels: [
+            "DEVELOPING",
+            "INDEPENDENT",
+            "ADVANCED"
+          ]
+        },
+
+        visibility: "INSTITUTION",
+
+        ragPolicy: {
+          personalRag: "INHERIT_USER_ACCESS",
+          sharedScopeMode: "NONE",
+          ragGroupIds: []
+        },
+
+        pedagogy: {
+          mode: "SOCRATIC",
+          diagnoseFirst: false,
+          activeRetrieval: false,
+          adaptiveDifficulty: true,
+          misconceptionRepair: true,
+          masteryTracking: false,
+          strategy:
+            "Strengthen reasoning rather than merely disagree. Steelman first, then challenge the strongest assumptions, evidence and logic. Present the strongest credible counterargument, distinguish factual disputes from value disagreements, concede sound points, and never manufacture objections merely to appear adversarial. Keep responses concise, precise and intellectually engaging; prefer a few high-value points, avoid repetition and rhetorical filler, and ask no more than two focused questions at a time."
+        },
+
+        toolUi: {
+          category: "LEARNING_AND_ASSESSMENT",
+          label: "Debate & Sparring Partner",
+          shortDescription:
+            "Stress-test an argument through steelmanning, counterarguments and Socratic challenge.",
           requiresExplicitInvocation: true,
           persistentPrimaryExperience: true
         },

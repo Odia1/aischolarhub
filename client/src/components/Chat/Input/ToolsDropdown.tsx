@@ -229,7 +229,7 @@ const ToolsDropdown = ({ disabled }: ToolsDropdownProps) => {
       onClick: handleSkillsToggle,
       hideOnClick: false,
       render: (props) => (
-        <div {...props} data-testid="tools-menu-skills">
+        <div {...props} data-testid="tools-menu-skills" title="Use compact, pre-built academic workflows such as Study a Topic and Analyze a Research Paper.">
           <div className="flex items-center gap-2">
             <ScrollText className="icon-md" aria-hidden="true" />
             <span>{localize('com_ui_skills')}</span>
@@ -261,7 +261,7 @@ const ToolsDropdown = ({ disabled }: ToolsDropdownProps) => {
       onClick: handleMemoryToggle,
       hideOnClick: false,
       render: (props) => (
-        <div {...props} data-testid="tools-menu-memory">
+        <div {...props} data-testid="tools-menu-memory" title="Use permitted information from previous interactions to personalize assistance.">
           <div className="flex items-center gap-2">
             <Brain className="icon-md" aria-hidden="true" />
             <span>{localize('com_ui_memory')}</span>
@@ -293,7 +293,7 @@ const ToolsDropdown = ({ disabled }: ToolsDropdownProps) => {
       onClick: handleCodeInterpreterToggle,
       hideOnClick: false,
       render: (props) => (
-        <div {...props}>
+        <div {...props} title="Run code for calculations, data analysis, and computational tasks.">
           <div className="flex items-center gap-2">
             <TerminalSquareIcon className="icon-md" aria-hidden="true" />
             <span>{localize('com_ui_run_code')}</span>
@@ -347,15 +347,13 @@ const ToolsDropdown = ({ disabled }: ToolsDropdownProps) => {
     });
   }
 
-  if (dropdownItems.length === 0) {
-    return null;
-  }
+  const hasAvailableTools = dropdownItems.length > 0;
 
   const menuTrigger = (
     <TooltipAnchor
       render={
         <Ariakit.MenuButton
-          disabled={isDisabled}
+          disabled={isDisabled || !hasAvailableTools}
           id="tools-dropdown-button"
           aria-label="Tools Options"
           className={cn(
@@ -369,7 +367,7 @@ const ToolsDropdown = ({ disabled }: ToolsDropdownProps) => {
         </Ariakit.MenuButton>
       }
       id="tools-dropdown-button"
-      description={localize('com_ui_tools')}
+      description="Additional capabilities such as web search, code, Skills, memory, connected tools and content creation."
       disabled={isDisabled}
     />
   );

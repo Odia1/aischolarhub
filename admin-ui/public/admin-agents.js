@@ -69,9 +69,16 @@
         <div class="panel">
           <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap">
             <div>
-              <h2>Academic Agents</h2>
+              <h2>Primary Experiences & Academic Agents</h2>
               <div class="muted">
-                AI Scholar Hub agents teach, coach and synthesize using explicit pedagogical policies.
+                Primary Experiences define how AI Scholar Hub works with a user over time.
+                Academic Agents add a specialized workflow without replacing the user's underlying experience.
+              </div>
+              <div class="org-small" style="margin-top:7px">
+                <b>Primary Experience</b> = persistent interaction mode &nbsp;•&nbsp;
+                <b>Academic Agent</b> = specialized workflow &nbsp;•&nbsp;
+                <b>Tools & Capabilities</b> = operations an experience or agent may use &nbsp;•&nbsp;
+                <b>Knowledge Sources</b> = authorized personal or institutional information
               </div>
             </div>
 
@@ -142,7 +149,7 @@
             `).join('') || `
               <div class="org-card">
                 <div class="muted">
-                  No Academic Agents configured for this institution.
+                  No Primary Experiences or Academic Agents configured for this institution.
                 </div>
               </div>
             `}

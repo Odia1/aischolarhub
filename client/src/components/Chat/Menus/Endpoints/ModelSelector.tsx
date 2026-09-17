@@ -1,124 +1,145 @@
 import React, { useMemo } from 'react';
 import { TooltipAnchor } from '@librechat/client';
+import { GraduationCap, Sparkles, ChevronDown } from 'lucide-react';
 import { getConfigDefaults } from 'librechat-data-provider';
 import type { ModelSelectorProps } from '~/common';
-import {
-  renderModelSpecs,
-  renderEndpoints,
-  renderSearchResults,
-  renderCustomGroups,
-} from './components';
+import { renderModelSpecs } from './components';
 import { ModelSelectorProvider, useModelSelectorContext } from './ModelSelectorContext';
-import { useShortcutAriaKey, useShortcutHint } from '~/hooks/useKeyboardShortcuts';
 import { ModelSelectorChatProvider } from './ModelSelectorChatContext';
-import { getSelectedIcon, getDisplayValue } from './utils';
 import { CustomMenu as Menu } from './CustomMenu';
 import DialogManager from './DialogManager';
-import { useLocalize } from '~/hooks';
 
 const defaultInterface = getConfigDefaults().interface;
 
-function ModelSelectorContent() {
-  const localize = useLocalize();
-  const modelSelectorHint = useShortcutHint('openModelSelector', localize('com_ui_select_model'));
-  const modelSelectorAriaKey = useShortcutAriaKey('openModelSelector');
+type AIHModelSpec = {
+  academicAgentType?: string;
+};
 
+function getAcademicAgentType(spec: AIHModelSpec) {
+  return String(spec.academicAgentType || '').trim().toUpperCase();
+}
+
+function isAcademicAgentSpec(spec: AIHModelSpec) {
+  return getAcademicAgentType(spec) === 'AGENT';
+}
+
+function isPrimaryExperienceSpec(spec: AIHModelSpec) {
+  return getAcademicAgentType(spec) === 'MODE';
+}
+
+function ModelSelectorContent() {
   const {
-    // LibreChat
-    agentsMap,
     modelSpecs,
-    mappedEndpoints,
     endpointsConfig,
-    // State
     searchValue,
-    searchResults,
     selectedValues,
-    // Functions
     setSearchValue,
     setSelectedValues,
-    // Dialog
     keyDialogOpen,
     onOpenChange,
     keyDialogEndpoint,
   } = useModelSelectorContext();
 
-  const selectedIcon = useMemo(
-    () =>
-      getSelectedIcon({
-        mappedEndpoints: mappedEndpoints ?? [],
-        selectedValues,
-        modelSpecs,
-        endpointsConfig,
-        agentsMap,
-      }),
-    [mappedEndpoints, selectedValues, modelSpecs, endpointsConfig, agentsMap],
-  );
-  const selectedDisplayValue = useMemo(
-    () =>
-      getDisplayValue({
-        localize,
-        agentsMap,
-        modelSpecs,
-        selectedValues,
-        mappedEndpoints,
-      }),
-    [localize, agentsMap, modelSpecs, selectedValues, mappedEndpoints],
+  const primaryExperiences = useMemo(
+    () => modelSpecs.filter((spec) => isPrimaryExperienceSpec(spec)),
+    [modelSpecs],
   );
 
-  const trigger = (
+
+  const selectedSpec = useMemo(
+    () => modelSpecs.find((spec) => spec.name === selectedValues.modelSpec),
+    [modelSpecs, selectedValues.modelSpec],
+  );
+
+  const selectedIsAgent = selectedSpec ? isAcademicAgentSpec(selectedSpec) : false;
+
+  const experienceLabel =
+    selectedSpec && !selectedIsAgent
+      ? selectedSpec.label || selectedSpec.name
+      : 'Experience';
+
+  const agentLabel =
+    selectedSpec && selectedIsAgent
+      ? selectedSpec.label || 'Academic Agent'
+      : 'Agents';
+
+  const normalizedSearch = searchValue.trim().toLowerCase();
+
+  const filterSpecs = <T extends { name?: string; label?: string; description?: string }>(
+    specs: T[],
+  ) => {
+    if (!normalizedSearch) {
+      return specs;
+    }
+
+    return specs.filter((spec) =>
+      [spec.label, spec.name, spec.description]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(normalizedSearch)),
+    );
+  };
+
+  const applyValues = (values: Record<string, any>) => {
+    setSelectedValues({
+      endpoint: values.endpoint || '',
+      model: values.model || '',
+      modelSpec: values.modelSpec || '',
+    });
+  };
+
+  const experienceTrigger = (
     <TooltipAnchor
-      aria-label={localize('com_ui_select_model')}
-      description={modelSelectorHint}
+      aria-label="Choose Primary Experience"
+      description="Choose how AI Scholar Hub works with you"
       render={
         <button
-          data-testid="model-selector-button"
-          aria-keyshortcuts={modelSelectorAriaKey}
-          className="my-1 flex h-9 max-w-full items-center gap-2 rounded-xl border border-border-light bg-presentation px-3 py-2 text-sm text-text-primary hover:bg-surface-active-alt"
-          aria-label={localize('com_ui_select_model')}
+          type="button"
+          data-testid="aih-experience-selector"
+          className={[
+            'group my-1 flex h-10 max-w-[48vw] items-center gap-2 rounded-full',
+            'border border-border-light bg-presentation px-3.5 text-sm',
+            'text-text-primary shadow-sm transition-all duration-200',
+            'hover:bg-surface-active-alt hover:shadow-md',
+            !selectedIsAgent && selectedSpec ? 'ring-1 ring-border-light' : '',
+          ].join(' ')}
         >
-          {selectedIcon && React.isValidElement(selectedIcon) && (
-            <div className="flex flex-shrink-0 items-center justify-center overflow-hidden">
-              {selectedIcon}
-            </div>
-          )}
-          <span className="truncate text-left">{selectedDisplayValue}</span>
+          <span className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-surface-secondary">
+            <GraduationCap className="h-4 w-4" aria-hidden="true" />
+          </span>
+
+          <span className="hidden text-[11px] font-medium uppercase tracking-wide text-text-secondary xl:inline">
+            Experience
+          </span>
+
+          <span className="truncate font-medium">{experienceLabel}</span>
+
+          <ChevronDown
+            className="h-3.5 w-3.5 flex-shrink-0 text-text-secondary transition-transform group-data-[state=open]:rotate-180"
+            aria-hidden="true"
+          />
         </button>
       }
     />
   );
 
   return (
-    <div className="relative flex min-w-0 max-w-[60vw] flex-col items-center gap-2 sm:max-w-xs">
-      <Menu
-        values={selectedValues}
-        onValuesChange={(values: Record<string, any>) => {
-          setSelectedValues({
-            endpoint: values.endpoint || '',
-            model: values.model || '',
-            modelSpec: values.modelSpec || '',
-          });
-        }}
-        onSearch={(value) => setSearchValue(value)}
-        combobox={<input id="model-search" placeholder=" " />}
-        comboboxLabel={localize('com_endpoint_search_models')}
-        trigger={trigger}
-      >
-        {searchResults ? (
-          renderSearchResults(searchResults, localize, searchValue)
-        ) : (
-          <>
-            {/* Render ungrouped modelSpecs (no group field) */}
-            {renderModelSpecs(
-              modelSpecs?.filter((spec) => !spec.group) || [],
-              selectedValues.modelSpec || '',
-            )}
-            {/* Render endpoints (will include grouped specs matching endpoint names) */}
-            {renderEndpoints(mappedEndpoints ?? [])}
-            {/* Render custom groups (specs with group field not matching any endpoint) */}
-            {renderCustomGroups(modelSpecs || [], mappedEndpoints ?? [])}
-          </>
-        )}
-      </Menu>
+    <div className="relative flex min-w-0 max-w-full items-center gap-1.5 sm:gap-2">
+      {primaryExperiences.length > 0 && (
+        <Menu
+          values={selectedValues}
+          onValuesChange={applyValues}
+          onSearch={(value) => setSearchValue(value)}
+          combobox={<input id="experience-search" placeholder=" " />}
+          comboboxLabel="Search Primary Experiences"
+          trigger={experienceTrigger}
+        >
+          {renderModelSpecs(
+            filterSpecs(primaryExperiences),
+            selectedValues.modelSpec || '',
+          )}
+        </Menu>
+      )}
+
       <DialogManager
         keyDialogOpen={keyDialogOpen}
         onOpenChange={onOpenChange}
@@ -133,7 +154,6 @@ export default function ModelSelector({ startupConfig }: ModelSelectorProps) {
   const interfaceConfig = startupConfig?.interface ?? defaultInterface;
   const modelSpecs = startupConfig?.modelSpecs?.list ?? [];
 
-  // Hide the selector when modelSelect is false and there are no model specs to show
   if (interfaceConfig.modelSelect === false && modelSpecs.length === 0) {
     return null;
   }

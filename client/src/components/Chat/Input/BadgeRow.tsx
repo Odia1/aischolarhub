@@ -344,15 +344,14 @@ function BadgeRow({
           />
         </div>
 
+        <div className="rounded-xl border border-slate-200/90 bg-slate-50/80 shadow-sm transition-colors hover:border-sky-200 hover:bg-sky-50/70 dark:border-slate-700 dark:bg-slate-900/30">
+          <ToolsDropdown disabled={isSubmitting} />
+        </div>
+
         <div className="rounded-xl border border-cyan-200/80 bg-cyan-50/65 shadow-sm transition-colors hover:bg-cyan-100/70 dark:border-cyan-800/50 dark:bg-cyan-950/20">
           <KnowledgeSourcesButton disabled={isSubmitting} />
         </div>
 
-        {showEphemeralBadges === true && (
-          <div className="rounded-xl border border-slate-200/90 bg-slate-50/80 shadow-sm transition-colors hover:border-sky-200 hover:bg-sky-50/70 dark:border-slate-700 dark:bg-slate-900/30">
-            <ToolsDropdown disabled={isSubmitting} />
-          </div>
-        )}
         {tempBadges.map((badge, index) => (
           <React.Fragment key={badge.id}>
             {dragState.draggedBadge && dragState.insertIndex === index && ghostBadge && (

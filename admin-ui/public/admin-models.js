@@ -295,7 +295,7 @@
                 ${experienceClass ? 'Inherited' : 'Unassigned'}
               </span>
               <button type="button" onclick="showAdminTab('agents')">
-                Edit Agent Policy
+                Edit Experience / Agent Policy
               </button>
             </div>
           </div>
@@ -397,8 +397,9 @@
             <div class="org-card">
               <h3>Primary Experience Routing</h3>
               <div class="muted">
-                Configure exactly three institution-level educational experiences.
-                The selected class must also be allowed by its entitlement.
+                Configure the institution's persistent Primary Experiences.
+                A Primary Experience defines the user's educational interaction mode.
+                Runtime classes remain governed separately by entitlement.
               </div>
               <div class="org-list">${primaryExperienceRows()}</div>
             </div>
@@ -406,7 +407,9 @@
             <div class="org-card">
               <h3>Academic Agent Routing</h3>
               <div class="muted">
-                Specialized agents inherit the class of their associated primary experience.
+                Academic Agents are specialized workflows layered on a Primary Experience.
+                They inherit or use a governed runtime; they do not redefine
+                the user's persistent experience.
               </div>
               <div class="org-list">${academicAgentRows()}</div>
             </div>

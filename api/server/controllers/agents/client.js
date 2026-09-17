@@ -2261,6 +2261,8 @@ class AgentClient extends BaseClient {
 
   /** @type {sendCompletion} */
   async sendCompletion(payload, opts = {}) {
+    const evaluationStartedAt = Date.now();
+
     await this.chatCompletion({
       payload,
       onProgress: opts.onProgress,
@@ -2270,6 +2272,158 @@ class AgentClient extends BaseClient {
 
     const completion = filterMalformedContentParts(this.contentParts);
     const metadata = this.buildResponseMetadata();
+
+    /*
+     * AIH Evaluation — lean, sampled, best-effort.
+     *
+     * One decision/event is made per completed interaction, after the
+     * authoritative response usage rollup has been assembled.
+     *
+     * Evaluation must never fail, delay, or alter the user's answer.
+     * No prompt text, response text, retrieved document text or secrets
+     * are persisted here.
+     */
+    try {
+      const {
+        getEvaluationDecision,
+        recordEvaluationEvent,
+      } = require('../../services/Evaluation');
+
+      const requestUser =
+        this.options?.req?.user ||
+        this.options?.user ||
+        null;
+
+      const tenantId =
+        requestUser?.tenantId ??
+        this.options?.tenantId ??
+        payload?.tenantId ??
+        null;
+
+      const userId =
+        requestUser?._id ??
+        requestUser?.id ??
+        this.options?.userId ??
+        payload?.userId ??
+        null;
+
+      const conversationId =
+        payload?.conversationId ??
+        this.options?.conversationId ??
+        null;
+
+      /*
+       * Academic Intelligence may expose these identifiers through
+       * request/options/payload depending on the active conversation path.
+       * Missing identifiers are intentionally left null rather than guessed.
+       */
+      const experienceId =
+        payload?.experienceId ??
+        payload?.personaId ??
+        this.options?.experienceId ??
+        this.options?.personaId ??
+        null;
+
+      const agentId =
+        payload?.academicAgentId ??
+        payload?.agentId ??
+        this.options?.academicAgentId ??
+        this.options?.agentId ??
+        null;
+
+      const decision = await getEvaluationDecision({
+        tenantId,
+        experienceId,
+        agentId,
+      });
+
+      const usage = metadata?.usage || {};
+
+      const numberValue = (...values) => {
+        for (const value of values) {
+          const n = Number(value);
+          if (Number.isFinite(n)) return n;
+        }
+        return null;
+      };
+
+      const promptTokens = numberValue(
+        usage.prompt_tokens,
+        usage.input_tokens,
+        usage.promptTokens,
+        usage.inputTokens,
+      );
+
+      const completionTokens = numberValue(
+        usage.completion_tokens,
+        usage.output_tokens,
+        usage.completionTokens,
+        usage.outputTokens,
+      );
+
+      const costUSD = numberValue(
+        usage.cost,
+        usage.costUSD,
+        usage.total_cost,
+        usage.totalCost,
+      );
+
+      if (decision.telemetry) {
+        /*
+         * Do not await the write on the critical return path.
+         * Mongo write errors are contained locally.
+         */
+        void recordEvaluationEvent({
+          evaluationType: 'TELEMETRY',
+          tenantId,
+          userId,
+          conversationId,
+          experienceId,
+          agentId,
+          latencyMs: Date.now() - evaluationStartedAt,
+          promptTokens,
+          completionTokens,
+          costUSD,
+          success: true,
+        }).catch((error) => {
+          console.warn(
+            '[AIH Evaluation] telemetry write failed:',
+            error?.message || error,
+          );
+        });
+      }
+
+      /*
+       * Semantic evaluation is only selected here.
+       * No evaluator model is called synchronously.
+       */
+      if (decision.semantic) {
+        void recordEvaluationEvent({
+          evaluationType: 'SEMANTIC',
+          tenantId,
+          userId,
+          conversationId,
+          experienceId,
+          agentId,
+          latencyMs: Date.now() - evaluationStartedAt,
+          promptTokens,
+          completionTokens,
+          costUSD,
+          success: true,
+        }).catch((error) => {
+          console.warn(
+            '[AIH Evaluation] semantic-candidate write failed:',
+            error?.message || error,
+          );
+        });
+      }
+    } catch (error) {
+      console.warn(
+        '[AIH Evaluation] evaluation skipped:',
+        error?.message || error,
+      );
+    }
+
     return metadata ? { completion, metadata } : { completion };
   }
 

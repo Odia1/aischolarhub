@@ -168,6 +168,7 @@ services:
       - .env
 
     environment:
+      PORT: "8000"
       MONGO_URI: "${MONGO_URI}"
       ASH_MODEL_ROUTER_API_KEY: "${ASH_MODEL_ROUTER_API_KEY:-}"
       GEMINI_PROXY_API_KEY: "${GEMINI_PROXY_API_KEY}"

@@ -398,6 +398,20 @@ async function applyModelEntitlement(appConfig, options = {}) {
 }
 
 
+const AIH_ACADEMIC_RESPONSE_STANDARD = [
+  '## AIH RESPONSE STANDARD',
+  'Be concise, accurate, adaptive, and intellectually engaging.',
+  'Prefer the strongest useful insight over exhaustive treatment.',
+  'Distinguish evidence, inference, uncertainty, and opinion when relevant.',
+  'Protect academic integrity: never fabricate citations, sources, evidence, measurements, or source access.',
+  'Treat authorship, attribution, provenance, and human scholarly judgment as essential; do not present generated work as independently verified scholarship.',
+  'Flag possible integrity concerns precisely and proportionately; do not declare plagiarism, fabrication, falsification, or misconduct without adequate evidence.',
+  'Avoid repetition, filler, process narration, and unnecessary follow-up menus.',
+  'Expand only when requested or genuinely necessary.',
+  'For interactive learning, proceed one useful step at a time.',
+  'Treat workflow steps as internal guidance, not a required response template.'
+].join('\n');
+
 async function applyAcademicIntelligence(appConfig, options = {}) {
   const tenantId = String(options?.tenantId || '').trim();
   const userId = String(options?.userId || '').trim();
@@ -842,6 +856,7 @@ async function applyAcademicIntelligence(appConfig, options = {}) {
       const promptPrefix = [
         basePrompt,
         stablePolicy,
+        AIH_ACADEMIC_RESPONSE_STANDARD,
         regionalContextOverlay,
         CURRENT_INFORMATION_POLICY,
         CITATION_FIDELITY_POLICY,
@@ -867,6 +882,9 @@ async function applyAcademicIntelligence(appConfig, options = {}) {
 
         academicAgentId:
           String(agent.agentId || '').trim(),
+
+        academicAgentType:
+          String(agent.agentType || 'MODE').trim().toUpperCase(),
 
         personaId,
 
