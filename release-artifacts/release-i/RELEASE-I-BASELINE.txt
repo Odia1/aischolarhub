@@ -1,0 +1,83 @@
+AI SCHOLAR HUB — RELEASE I BASELINE
+===================================
+
+Release:
+Release I
+
+Baseline status:
+FROZEN FOR PROMOTION
+
+Git branch:
+release-i
+
+Git commit:
+489b073910eb0dfbd24783d1f99a43178e004a31
+
+Lean runtime image:
+seeds.azurecr.io/aischolarhub-custom:dev-20260917-489b073910-release-i
+
+Lean runtime image ID:
+sha256:b4a44a3281804241ec96b0012a880bf3dad99e60eb8d06207e0a4422c1d4955c
+
+Accepted DEV test image:
+sha256:75a3d2ce9115bc081354916c3773f8deb52e6150b04644416ac91fa0e338b4a3
+
+Pre-integrity rollback checkpoint:
+sha256:506c755d1feb512fb6533b65784af1b9c77879312996eeeb699b80fdfe6678ae
+
+RELEASE-I CAPABILITIES
+----------------------
+- Primary Experience / Academic Agent interaction model
+- Composer: Agents / Tools / Knowledge Sources
+- Governed Academic Agent selection
+- Debate & Sparring Partner
+- Research Integrity & Contribution Reviewer
+- Study a Topic Skill
+- Analyze a Research Paper Skill
+- Platform-wide academic-integrity response standard
+- Evaluation service
+- Superadmin Evaluation controls
+- Lean Efficiency telemetry
+- AIH Support / Help terminology and documentation refresh
+
+SUPPORT KNOWLEDGE
+-----------------
+Canonical manuals: 11
+Published manuals: 11
+Updated to revision 2: 9
+Final synchronization result: Changes required: 0
+
+Canonical manifests:
+- docs/support/support-manuals.json
+- scripts/support/support-manuals.json
+
+RELEASE-I DOCUMENTATION
+-----------------------
+- docs/AIH-SUPPORT-USER-MANUAL.md
+- docs/AIH-SUPPORT-ADMIN-MANUAL.md
+- release-artifacts/release-i/AIH-INTERACTION-ARCHITECTURE.md
+
+PROMOTION DECLARATIONS
+----------------------
+Runtime/image:
+Promote immutable Release-I runtime image above.
+
+Environment/config:
+Must be explicitly declared in PROD-PROMOTION-MANIFEST.txt.
+
+Mongo/index migration:
+No new schema/index migration unless explicitly declared in promotion manifest.
+
+Data/bootstrap:
+Support Knowledge canonical synchronization required in target environment.
+
+Persistent storage migration:
+NONE unless explicitly declared in promotion manifest.
+
+Rollback:
+Use named prior immutable runtime image and corresponding declared configuration/data procedure.
+
+RELEASE POLICY
+--------------
+No further Release-I feature development after this baseline.
+Any source change after this point requires a new commit, new image, and new baseline.
