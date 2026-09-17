@@ -1,0 +1,71 @@
+AI SCHOLAR HUB — RELEASE I PROD PROMOTION
+
+Release branch: release-i
+Runtime source commit: a03e03938713f547564f3f26075f64b4d9f99752
+Build-tool fix commit: 5d8c183dc
+Compose pin commit: 7eccffcff
+
+MAIN RUNTIME IMAGE
+seeds.azurecr.io/aischolarhub-custom:dev-20260917-a03e03938-release-i
+
+DIGEST
+sha256:4e5761aebaa0ae72d3217311cfa0d0b6438865daca7fe8f835bb8e513848b393
+
+AZURE DEPLOYMENT
+Container App: ash-web
+Revision: ash-web--0000021
+State: Healthy / Running
+
+DATABASE
+Mongo backend: Azure DocumentDB
+MONGO_URI: secretref:mongo-uri-docdb
+ATLAS_MONGO_DB_URI: secretref:mongo-uri-docdb
+Previous Atlas secret retained temporarily for rollback.
+
+DOCUMENTDB MIGRATION
+Collections copied: 68
+Documents copied: 1197
+Count mismatches: 0
+Index failures: 0
+Compatibility suite: 12/12 PASS
+
+RAG
+JWT -> DocumentDB authorization -> pgvector -> embeddings -> scoped RAG verified HTTP 200.
+RAG reachable from main runtime.
+
+EMBEDDINGS
+Internal ACA embeddings service retained.
+HTTPS internal endpoint validated.
+Scale policy: minReplicas=0, maxReplicas=2.
+
+NETWORKING
+DocumentDB firewall restricted to ACA NAT egress.
+Broad Azure-services access disabled.
+Temporary VM migration firewall rules removed.
+
+APPLICATION FIXES
+- AIH institutional knowledge takes precedence over web search for AIH-specific facts.
+- Undergrad and K-12 grounding strengthened.
+- RAG runtime logging reduced in source for next RAG image cycle.
+- ACR build script now verifies effective Compose API image.
+
+MIGRATION CATEGORIES
+Runtime/image promotion: promote-aca-ui.sh
+Environment/config: DocumentDB secret-reference cutover
+Mongo/index migration: verified Atlas->DocumentDB clone
+Data/bootstrap repair: none
+PostgreSQL migration: none
+Storage migration: none
+Post-deploy verification: Azure health/readiness + browser acceptance
+Rollback: previous immutable image + mongo-uri-current Atlas reference
+
+ROLLBACK
+1. Restore prior ash-web immutable image.
+2. Restore MONGO_URI and ATLAS_MONGO_DB_URI to mongo-uri-current.
+3. Revalidate login, chat, RAG, agents, and admin access.
+4. Do not delete Atlas until post-release observation is complete.
+
+KNOWN NON-BLOCKING ITEMS
+- One Meilisearch message reported unindexed during startup.
+- One FlowStateManager expired/missing callback warning observed.
+- Promotion script health probe needs correction; app readiness itself passed.
