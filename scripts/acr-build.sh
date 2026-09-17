@@ -216,7 +216,11 @@ print("Compose API image set to:")
 print(image)
 PY2
 
-grep -n 'image:.*aischolarhub-custom' docker-compose.override.yaml
+echo "Effective Compose API image:"
+docker compose config \
+  | sed -n '/^  api:/,/^  [a-zA-Z0-9_-]\\+:/p' \
+  | grep 'image:' \
+  | head -1
 
 # ------------------------------------------------------------
 # 6. Recreate API only
